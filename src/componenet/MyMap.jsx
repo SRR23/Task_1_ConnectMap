@@ -31,10 +31,20 @@ const MyMap = () => {
   const [currentPolyline, setCurrentPolyline] = useState([]);
   const [showSavedRoutes, setShowSavedRoutes] = useState(false);
   const [mapPolylines, setMapPolylines] = useState([]);
+  const [startPoint, setStartPoint] = useState(null);
+  const [lastPoint, setLastPoint] = useState(null);
 
   useEffect(() => {
     const savedPolylines = JSON.parse(localStorage.getItem("polylines")) || [];
     setPolylines(savedPolylines);
+
+    // Retrieve the fast and last saved point
+    const savedStartPoint = JSON.parse(localStorage.getItem("startPoint"));
+    const savedLastPoint = JSON.parse(localStorage.getItem("lastPoint"));
+    if (savedLastPoint && savedStartPoint) {
+      setStartPoint(savedStartPoint);
+      setLastPoint(savedLastPoint);
+    }
   }, []);
 
   const handleMapClick = useCallback((e) => {
@@ -47,7 +57,16 @@ const MyMap = () => {
       const updatedPolylines = [...polylines, currentPolyline];
       setPolylines(updatedPolylines);
       localStorage.setItem("polylines", JSON.stringify(updatedPolylines));
-      setCurrentPolyline([]); 
+
+      // Store the start and last point of the saved route
+      const startPoint = currentPolyline[0];  // First point
+      const lastPoint = currentPolyline[currentPolyline.length - 1];
+      localStorage.setItem("startPoint", JSON.stringify(startPoint));
+      setStartPoint(startPoint);
+      localStorage.setItem("lastPoint", JSON.stringify(lastPoint));
+      setLastPoint(lastPoint);
+
+      setCurrentPolyline([]);
       alert("Route saved!");
     } else {
       alert("You need at least two points to save a route.");
@@ -76,9 +95,19 @@ const MyMap = () => {
         return polyline;
       });
       setMapPolylines(newPolylines);
+
+      // Retrieve and set the last point
+      const savedLastPoint = JSON.parse(localStorage.getItem("lastPoint"));
+      const savedStartPoint = JSON.parse(localStorage.getItem("startPoint"));
+      if (savedLastPoint && savedStartPoint) {
+        setStartPoint(savedStartPoint);
+        setLastPoint(savedLastPoint);
+      }
     } else {
       mapPolylines.forEach((polyline) => polyline.setMap(null));
       setMapPolylines([]);
+      setStartPoint(null);
+      setLastPoint(null);
     }
   }, [showSavedRoutes, polylines, map]);
 
@@ -109,6 +138,10 @@ const MyMap = () => {
         {currentPolyline.length > 0 && (
           <Polyline path={currentPolyline} options={{ strokeColor: "#FF0000", strokeWeight: 3 }} />
         )}
+
+        {/* Show a marker at the start and last saved point */}
+        {startPoint && <MarkerF position={startPoint} title="Start Point" />}
+        {lastPoint && <MarkerF position={lastPoint} title="Last Saved Point" />}
       </GoogleMap>
     </>
   );
