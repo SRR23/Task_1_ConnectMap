@@ -91,7 +91,9 @@ const MyMap = () => {
 
   useEffect(() => {
     if (selectedPoints.length === 2) {
-      setShortestDistance(calculateDistance(selectedPoints[0], selectedPoints[1]));
+      setShortestDistance(
+        calculateDistance(selectedPoints[0], selectedPoints[1])
+      );
     }
   }, [selectedPoints]);
 
@@ -141,7 +143,20 @@ const MyMap = () => {
   return (
     <>
       <div>
-        <button onClick={() => setCurrentPolyline([])}>Delete Current Route</button>
+        
+        <button
+          onClick={() => {
+            setCurrentPolyline([]);
+            setSelectedPoints([]);
+            if (!localStorage.getItem("polylines")) {
+              setStartPoint(null);
+              localStorage.removeItem("startPoint");
+            }
+          }}
+        >
+          Delete Current Route
+        </button>
+
         <button onClick={toggleSavedRoutes}>
           {showSavedRoutes ? "Hide Previous Routes" : "Show Previous Routes"}
         </button>
@@ -149,7 +164,9 @@ const MyMap = () => {
         <button onClick={() => setSelectedPoints([])}>Reset Selection</button>
       </div>
       {distance && <p>Last Route Distance: {distance} km</p>}
-      {shortestDistance && <p>Selected Points Distance: {shortestDistance} km</p>}
+      {shortestDistance && (
+        <p>Selected Points Distance: {shortestDistance} km</p>
+      )}
       <GoogleMap
         mapContainerStyle={containerStyle}
         center={center}
