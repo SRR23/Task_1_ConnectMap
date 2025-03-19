@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { GoogleMap, useLoadScript, Polyline, MarkerF } from "@react-google-maps/api";
+import {
+  GoogleMap,
+  useLoadScript,
+  Polyline,
+  MarkerF,
+} from "@react-google-maps/api";
 
 const containerStyle = {
   width: "100%",
@@ -20,6 +25,21 @@ const districts = [
   { id: 8, name: "Mymensingh", lat: 24.7471, lng: 90.4203 },
 ];
 
+const calculateDistance = (point1, point2) => {
+  const toRad = (value) => (value * Math.PI) / 180;
+  const R = 6371; // Earth radius in km
+  const dLat = toRad(point2.lat - point1.lat);
+  const dLng = toRad(point2.lng - point1.lng);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(point1.lat)) *
+      Math.cos(toRad(point2.lat)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return (R * c).toFixed(2); // Distance in km
+};
+
 const MyMap = () => {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
@@ -33,6 +53,9 @@ const MyMap = () => {
   const [mapPolylines, setMapPolylines] = useState([]);
   const [startPoint, setStartPoint] = useState(null);
   const [lastPoint, setLastPoint] = useState(null);
+  const [distance, setDistance] = useState(null);
+  const [selectedPoints, setSelectedPoints] = useState([]);
+  const [shortestDistance, setShortestDistance] = useState(null);
 
   useEffect(() => {
     const savedPolylines = JSON.parse(localStorage.getItem("polylines")) || [];
@@ -40,22 +63,56 @@ const MyMap = () => {
 
     const savedStartPoint = JSON.parse(localStorage.getItem("startPoint"));
     const savedLastPoint = JSON.parse(localStorage.getItem("lastPoint"));
-    
+
     if (savedStartPoint) setStartPoint(savedStartPoint);
     if (savedLastPoint) setLastPoint(savedLastPoint);
   }, []);
 
-  const handleMapClick = useCallback((e) => {
-    const newPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+  const handleMapClick = useCallback(
+    (e) => {
+      const newPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
 
-    setCurrentPolyline((prev) => {
-      if (prev.length === 0 && startPoint === null) {
-        setStartPoint(newPoint);
-        localStorage.setItem("startPoint", JSON.stringify(newPoint));
+      if (selectedPoints.length < 2) {
+        setSelectedPoints((prev) => [...prev, newPoint]);
+      } else {
+        setSelectedPoints([newPoint]);
       }
-      return [...prev, newPoint];
-    });
-  }, [startPoint]);
+
+      setCurrentPolyline((prev) => {
+        if (prev.length === 0 && startPoint === null) {
+          setStartPoint(newPoint);
+          localStorage.setItem("startPoint", JSON.stringify(newPoint));
+        }
+        return [...prev, newPoint];
+      });
+    },
+    [startPoint, selectedPoints]
+  );
+
+  useEffect(() => {
+    if (selectedPoints.length === 2) {
+      setShortestDistance(calculateDistance(selectedPoints[0], selectedPoints[1]));
+    }
+  }, [selectedPoints]);
+
+  useEffect(() => {
+    if (showSavedRoutes && map) {
+      mapPolylines.forEach((polyline) => polyline.setMap(null));
+      const newPolylines = polylines.map((path) => {
+        const polyline = new window.google.maps.Polyline({
+          path,
+          strokeColor: "#0000FF",
+          strokeWeight: 3,
+        });
+        polyline.setMap(map);
+        return polyline;
+      });
+      setMapPolylines(newPolylines);
+    } else {
+      mapPolylines.forEach((polyline) => polyline.setMap(null));
+      setMapPolylines([]);
+    }
+  }, [showSavedRoutes, polylines, map]);
 
   const saveCurrentRoute = () => {
     if (currentPolyline.length > 1) {
@@ -74,37 +131,9 @@ const MyMap = () => {
     }
   };
 
-  const deleteCurrentRoute = () => {
-    setCurrentPolyline([]);
-    alert("Current route cleared!");
-  };
-
   const toggleSavedRoutes = () => {
     setShowSavedRoutes((prev) => !prev);
   };
-
-  useEffect(() => {
-    if (showSavedRoutes && map) {
-      mapPolylines.forEach((polyline) => polyline.setMap(null));
-      const newPolylines = polylines.map((path) => {
-        const polyline = new window.google.maps.Polyline({
-          path,
-          strokeColor: "#0000FF",
-          strokeWeight: 3,
-        });
-        polyline.setMap(map);
-        return polyline;
-      });
-      setMapPolylines(newPolylines);
-
-      const savedLastPoint = JSON.parse(localStorage.getItem("lastPoint"));
-      if (savedLastPoint) setLastPoint(savedLastPoint);
-    } else {
-      mapPolylines.forEach((polyline) => polyline.setMap(null));
-      setMapPolylines([]);
-      setLastPoint(null);
-    }
-  }, [showSavedRoutes, polylines, map]);
 
   if (loadError) return <div>Error loading maps</div>;
   if (!isLoaded) return <div>Loading Maps...</div>;
@@ -112,13 +141,15 @@ const MyMap = () => {
   return (
     <>
       <div>
-        <button onClick={deleteCurrentRoute}>Delete Current Route</button>
+        <button onClick={() => setCurrentPolyline([])}>Delete Current Route</button>
         <button onClick={toggleSavedRoutes}>
           {showSavedRoutes ? "Hide Previous Routes" : "Show Previous Routes"}
         </button>
         <button onClick={saveCurrentRoute}>Save This Route</button>
+        <button onClick={() => setSelectedPoints([])}>Reset Selection</button>
       </div>
-
+      {distance && <p>Last Route Distance: {distance} km</p>}
+      {shortestDistance && <p>Selected Points Distance: {shortestDistance} km</p>}
       <GoogleMap
         mapContainerStyle={containerStyle}
         center={center}
@@ -127,15 +158,23 @@ const MyMap = () => {
         onClick={handleMapClick}
       >
         {districts.map((district) => (
-          <MarkerF key={district.id} position={{ lat: district.lat, lng: district.lng }} title={district.name} />
+          <MarkerF
+            key={district.id}
+            position={{ lat: district.lat, lng: district.lng }}
+            title={district.name}
+          />
         ))}
-
         {currentPolyline.length > 0 && (
-          <Polyline path={currentPolyline} options={{ strokeColor: "#FF0000", strokeWeight: 3 }} />
+          <Polyline
+            path={currentPolyline}
+            options={{ strokeColor: "#FF0000", strokeWeight: 3 }}
+          />
         )}
-
         {startPoint && <MarkerF position={startPoint} title="Start Point" />}
         {lastPoint && <MarkerF position={lastPoint} title="Last Saved Point" />}
+        {selectedPoints.map((point, index) => (
+          <MarkerF key={index} position={point} title={`Point ${index + 1}`} />
+        ))}
       </GoogleMap>
     </>
   );
