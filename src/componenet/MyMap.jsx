@@ -230,7 +230,7 @@ const MyMap = () => {
           ))}
 
         {/* Render user-selected points with the correct icon and remove default labels */}
-        {mapState.selectedPoints.map((point, index) => (
+        {/* {mapState.selectedPoints.map((point, index) => (
           <MarkerF
             key={index}
             position={{ lat: point.lat, lng: point.lng }}
@@ -239,7 +239,7 @@ const MyMap = () => {
               scaledSize: new google.maps.Size(30, 30), // Adjust icon size if needed
             }}
           />
-        ))}
+        ))} */}
 
         {mapState.directions && (
           <DirectionsRenderer
@@ -268,9 +268,10 @@ const MyMap = () => {
               options={{ suppressMarkers: true }}
             />
           ))}
+
       </GoogleMap>
 
-      {mapState.showModal && (
+       {mapState.showModal && (
         <div className="modal">
           <p>Select a type:</p>
           <button onClick={() => handleSelection("BTS")}>Add BTS</button>
@@ -283,6 +284,7 @@ const MyMap = () => {
           <button onClick={() => handleSelection("ONU")}>Add ONU</button>
         </div>
       )}
+      
     </>
   );
 };
