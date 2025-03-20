@@ -152,26 +152,25 @@ const MyMap = () => {
   //   });
   // };
 
-
   const togglePreviousRoutes = () => {
     setMapState((prevState) => {
-        const updatedState = {
-            ...prevState,
-            showSavedRoutes: !prevState.showSavedRoutes,
-        };
+      const updatedState = {
+        ...prevState,
+        showSavedRoutes: !prevState.showSavedRoutes,
+      };
 
-        if (updatedState.showSavedRoutes && updatedState.savedRoutes.length > 0) {
-            // Set selectedPoints from the last added saved route dynamically
-            updatedState.selectedPoints = updatedState.savedRoutes[updatedState.savedRoutes.length - 1].points;
-        } else {
-            // Otherwise, clear the selected points
-            updatedState.selectedPoints = [];
-        }
+      if (updatedState.showSavedRoutes && updatedState.savedRoutes.length > 0) {
+        // Set selectedPoints from the last added saved route dynamically
+        updatedState.selectedPoints =
+          updatedState.savedRoutes[updatedState.savedRoutes.length - 1].points;
+      } else {
+        // Otherwise, clear the selected points
+        updatedState.selectedPoints = [];
+      }
 
-        return updatedState;
+      return updatedState;
     });
-};
-
+  };
 
   const resetMap = () => {
     setMapState({
@@ -220,25 +219,54 @@ const MyMap = () => {
           />
         ))}
 
+        {/* Render district markers ONLY if the user hasn't started selecting a route */}
+        {mapState.selectedPoints.length === 0 &&
+          districts.map((district) => (
+            <MarkerF
+              key={district.id}
+              position={district}
+              title={district.name}
+            />
+          ))}
+
+        {/* Render user-selected points with the correct icon and remove default labels */}
         {mapState.selectedPoints.map((point, index) => (
           <MarkerF
             key={index}
             position={{ lat: point.lat, lng: point.lng }}
-            label={{ text: `${index + 1}`, color: "white", fontWeight: "bold" }}
             icon={{
-              url: iconImages[point.type], // Use the icon based on the type
-              scaledSize: new google.maps.Size(30, 30), // Adjust the icon size
+              url: iconImages[point.type], // Use the selected type’s icon
+              scaledSize: new google.maps.Size(30, 30), // Adjust icon size if needed
             }}
           />
         ))}
 
         {mapState.directions && (
-          <DirectionsRenderer directions={mapState.directions} />
+          <DirectionsRenderer
+            directions={mapState.directions}
+            options={{ suppressMarkers: true }}
+          />
         )}
+
+        {/* Custom Markers for Directions */}
+        {mapState.selectedPoints.map((point, index) => (
+          <MarkerF
+            key={`waypoint-${index}`}
+            position={{ lat: point.lat, lng: point.lng }}
+            icon={{
+              url: iconImages[point.type], // Use selected type’s icon
+              scaledSize: new google.maps.Size(30, 30), // Adjust icon size
+            }}
+          />
+        ))}
 
         {mapState.showSavedRoutes &&
           mapState.savedRoutes.map((route, index) => (
-            <DirectionsRenderer key={index} directions={route.directions} />
+            <DirectionsRenderer
+              key={index}
+              directions={route.directions}
+              options={{ suppressMarkers: true }}
+            />
           ))}
       </GoogleMap>
 
