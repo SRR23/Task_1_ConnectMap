@@ -2,17 +2,12 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   GoogleMap,
   useLoadScript,
-  Polyline,
+  DirectionsRenderer,
   MarkerF,
 } from "@react-google-maps/api";
 
-const containerStyle = {
-  width: "100%",
-  height: "600px",
-};
-
+const containerStyle = { width: "100%", height: "600px" };
 const center = { lat: 23.685, lng: 90.3563 };
-const libraries = [];
 
 const districts = [
   { id: 1, name: "Dhaka", lat: 23.8103, lng: 90.4125 },
@@ -25,116 +20,171 @@ const districts = [
   { id: 8, name: "Mymensingh", lat: 24.7471, lng: 90.4203 },
 ];
 
-const calculateDistance = (point1, point2) => {
-  const toRad = (value) => (value * Math.PI) / 180;
-  const R = 6371; // Earth radius in km
-  const dLat = toRad(point2.lat - point1.lat);
-  const dLng = toRad(point2.lng - point1.lng);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(point1.lat)) *
-      Math.cos(toRad(point2.lat)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return (R * c).toFixed(2); // Distance in km
-};
-
 const MyMap = () => {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-    libraries,
   });
 
-  const [map, setMap] = useState(null);
-  const [polylines, setPolylines] = useState([]);
-  const [currentPolyline, setCurrentPolyline] = useState([]);
-  const [showSavedRoutes, setShowSavedRoutes] = useState(false);
-  const [mapPolylines, setMapPolylines] = useState([]);
-  const [startPoint, setStartPoint] = useState(null);
-  const [lastPoint, setLastPoint] = useState(null);
-  const [distance, setDistance] = useState(null);
-  const [selectedPoints, setSelectedPoints] = useState([]);
-  const [shortestDistance, setShortestDistance] = useState(null);
+  // Define your icons for each type
+  const iconImages = {
+    BTS: "/img/BTS.png", // Replace with actual URL or path to your icon
+    Termination: "/img/Termination.png",
+    Splitter: "/img/Splitter.png",
+    ONU: "/img/ONU.png",
+  };
+
+  const [mapState, setMapState] = useState({
+    selectedPoints: [],
+    directions: null,
+    savedRoutes: [],
+    showSavedRoutes: false,
+    nextNumber: 1,
+    totalDistance: null,
+    selectedType: null,
+    showModal: false,
+    selectedPoint: null,
+  });
 
   useEffect(() => {
-    const savedPolylines = JSON.parse(localStorage.getItem("polylines")) || [];
-    setPolylines(savedPolylines);
-
-    const savedStartPoint = JSON.parse(localStorage.getItem("startPoint"));
-    const savedLastPoint = JSON.parse(localStorage.getItem("lastPoint"));
-
-    if (savedStartPoint) setStartPoint(savedStartPoint);
-    if (savedLastPoint) setLastPoint(savedLastPoint);
+    const storedRoutes = JSON.parse(localStorage.getItem("savedRoutes")) || [];
+    setMapState((prevState) => ({
+      ...prevState,
+      savedRoutes: storedRoutes,
+    }));
   }, []);
 
   const handleMapClick = useCallback(
     (e) => {
-      const newPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-
-      if (selectedPoints.length < 2) {
-        setSelectedPoints((prev) => [...prev, newPoint]);
-      } else {
-        setSelectedPoints([newPoint]);
-      }
-
-      setCurrentPolyline((prev) => {
-        if (prev.length === 0 && startPoint === null) {
-          setStartPoint(newPoint);
-          localStorage.setItem("startPoint", JSON.stringify(newPoint));
-        }
-        return [...prev, newPoint];
-      });
+      const clickedPoint = {
+        lat: e.latLng.lat(),
+        lng: e.latLng.lng(),
+        number: mapState.nextNumber,
+      };
+      setMapState((prevState) => ({
+        ...prevState,
+        selectedPoint: clickedPoint,
+        showModal: true,
+      }));
     },
-    [startPoint, selectedPoints]
+    [mapState.nextNumber]
   );
 
-  useEffect(() => {
-    if (selectedPoints.length === 2) {
-      setShortestDistance(
-        calculateDistance(selectedPoints[0], selectedPoints[1])
+  const handleSelection = (type) => {
+    if (!mapState.selectedPoint) return;
+    setMapState((prevState) => ({
+      ...prevState,
+      showModal: false,
+      selectedType: type,
+    }));
+
+    const newPoint = { ...mapState.selectedPoint, type };
+    const updatedPoints = [...mapState.selectedPoints, newPoint];
+    setMapState((prevState) => ({
+      ...prevState,
+      selectedPoints: updatedPoints,
+      nextNumber: prevState.nextNumber + 1,
+    }));
+    updateDirections(updatedPoints);
+  };
+
+  const updateDirections = (points) => {
+    if (points.length >= 2) {
+      const waypoints = points.slice(1, -1).map((point) => ({
+        location: point,
+        stopover: true,
+      }));
+
+      const directionsService = new google.maps.DirectionsService();
+      directionsService.route(
+        {
+          origin: points[0],
+          destination: points[points.length - 1],
+          waypoints,
+          travelMode: google.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status === "OK") {
+            const totalDistanceMeters = result.routes[0].legs.reduce(
+              (sum, leg) => sum + leg.distance.value,
+              0
+            );
+            setMapState((prevState) => ({
+              ...prevState,
+              directions: result,
+              totalDistance: (totalDistanceMeters / 1000).toFixed(2),
+            }));
+          }
+        }
       );
-    }
-  }, [selectedPoints]);
-
-  useEffect(() => {
-    if (showSavedRoutes && map) {
-      mapPolylines.forEach((polyline) => polyline.setMap(null));
-      const newPolylines = polylines.map((path) => {
-        const polyline = new window.google.maps.Polyline({
-          path,
-          strokeColor: "#0000FF",
-          strokeWeight: 3,
-        });
-        polyline.setMap(map);
-        return polyline;
-      });
-      setMapPolylines(newPolylines);
-    } else {
-      mapPolylines.forEach((polyline) => polyline.setMap(null));
-      setMapPolylines([]);
-    }
-  }, [showSavedRoutes, polylines, map]);
-
-  const saveCurrentRoute = () => {
-    if (currentPolyline.length > 1) {
-      const updatedPolylines = [...polylines, currentPolyline];
-      setPolylines(updatedPolylines);
-      localStorage.setItem("polylines", JSON.stringify(updatedPolylines));
-
-      const lastPoint = currentPolyline[currentPolyline.length - 1];
-      localStorage.setItem("lastPoint", JSON.stringify(lastPoint));
-      setLastPoint(lastPoint);
-
-      setCurrentPolyline([]);
-      alert("Route saved!");
-    } else {
-      alert("You need at least two points to save a route.");
     }
   };
 
-  const toggleSavedRoutes = () => {
-    setShowSavedRoutes((prev) => !prev);
+  const saveRoute = () => {
+    if (mapState.selectedPoints.length >= 2 && mapState.directions) {
+      const newRoute = {
+        points: mapState.selectedPoints,
+        directions: mapState.directions,
+      };
+      const updatedRoutes = [...mapState.savedRoutes, newRoute];
+      setMapState((prevState) => ({
+        ...prevState,
+        savedRoutes: updatedRoutes,
+      }));
+      localStorage.setItem("savedRoutes", JSON.stringify(updatedRoutes));
+      alert("Route saved successfully!");
+    }
+  };
+
+  // const togglePreviousRoutes = () => {
+  //   setMapState((prevState) => {
+  //     const updatedState = {
+  //       ...prevState,
+  //       showSavedRoutes: !prevState.showSavedRoutes,
+  //     };
+  //     if (updatedState.showSavedRoutes && updatedState.savedRoutes.length > 0) {
+  //       // If showing saved routes, set selectedPoints from the first saved route
+  //       updatedState.selectedPoints = updatedState.savedRoutes[0].points;
+  //     } else {
+  //       // Otherwise clear the selected points
+  //       updatedState.selectedPoints = [];
+  //     }
+  //     return updatedState;
+  //   });
+  // };
+
+
+  const togglePreviousRoutes = () => {
+    setMapState((prevState) => {
+        const updatedState = {
+            ...prevState,
+            showSavedRoutes: !prevState.showSavedRoutes,
+        };
+
+        if (updatedState.showSavedRoutes && updatedState.savedRoutes.length > 0) {
+            // Set selectedPoints from the last added saved route dynamically
+            updatedState.selectedPoints = updatedState.savedRoutes[updatedState.savedRoutes.length - 1].points;
+        } else {
+            // Otherwise, clear the selected points
+            updatedState.selectedPoints = [];
+        }
+
+        return updatedState;
+    });
+};
+
+
+  const resetMap = () => {
+    setMapState({
+      selectedPoints: [],
+      directions: null,
+      savedRoutes: mapState.savedRoutes,
+      showSavedRoutes: false,
+      nextNumber: 1,
+      totalDistance: null,
+      selectedType: null,
+      showModal: false,
+      selectedPoint: null,
+    });
   };
 
   if (loadError) return <div>Error loading maps</div>;
@@ -143,56 +193,68 @@ const MyMap = () => {
   return (
     <>
       <div>
-        
-        <button
-          onClick={() => {
-            setCurrentPolyline([]);
-            setSelectedPoints([]);
-            if (!localStorage.getItem("polylines")) {
-              setStartPoint(null);
-              localStorage.removeItem("startPoint");
-            }
-          }}
-        >
-          Delete Current Route
+        <button onClick={resetMap}>Reset Map</button>
+        <button onClick={saveRoute}>Save Route</button>
+        <button onClick={togglePreviousRoutes}>
+          {mapState.showSavedRoutes
+            ? "Hide Previous Routes"
+            : "Show Previous Routes"}
         </button>
-
-        <button onClick={toggleSavedRoutes}>
-          {showSavedRoutes ? "Hide Previous Routes" : "Show Previous Routes"}
-        </button>
-        <button onClick={saveCurrentRoute}>Save This Route</button>
-        <button onClick={() => setSelectedPoints([])}>Reset Selection</button>
       </div>
-      {distance && <p>Last Route Distance: {distance} km</p>}
-      {shortestDistance && (
-        <p>Selected Points Distance: {shortestDistance} km</p>
+
+      {mapState.totalDistance && (
+        <h3>Total Distance: {mapState.totalDistance} km</h3>
       )}
+
       <GoogleMap
         mapContainerStyle={containerStyle}
         center={center}
         zoom={7}
-        onLoad={(map) => setMap(map)}
         onClick={handleMapClick}
       >
         {districts.map((district) => (
           <MarkerF
             key={district.id}
-            position={{ lat: district.lat, lng: district.lng }}
+            position={district}
             title={district.name}
           />
         ))}
-        {currentPolyline.length > 0 && (
-          <Polyline
-            path={currentPolyline}
-            options={{ strokeColor: "#FF0000", strokeWeight: 3 }}
+
+        {mapState.selectedPoints.map((point, index) => (
+          <MarkerF
+            key={index}
+            position={{ lat: point.lat, lng: point.lng }}
+            label={{ text: `${index + 1}`, color: "white", fontWeight: "bold" }}
+            icon={{
+              url: iconImages[point.type], // Use the icon based on the type
+              scaledSize: new google.maps.Size(30, 30), // Adjust the icon size
+            }}
           />
-        )}
-        {startPoint && <MarkerF position={startPoint} title="Start Point" />}
-        {lastPoint && <MarkerF position={lastPoint} title="Last Saved Point" />}
-        {selectedPoints.map((point, index) => (
-          <MarkerF key={index} position={point} title={`Point ${index + 1}`} />
         ))}
+
+        {mapState.directions && (
+          <DirectionsRenderer directions={mapState.directions} />
+        )}
+
+        {mapState.showSavedRoutes &&
+          mapState.savedRoutes.map((route, index) => (
+            <DirectionsRenderer key={index} directions={route.directions} />
+          ))}
       </GoogleMap>
+
+      {mapState.showModal && (
+        <div className="modal">
+          <p>Select a type:</p>
+          <button onClick={() => handleSelection("BTS")}>Add BTS</button>
+          <button onClick={() => handleSelection("Termination")}>
+            Add Termination
+          </button>
+          <button onClick={() => handleSelection("Splitter")}>
+            Add Splitter
+          </button>
+          <button onClick={() => handleSelection("ONU")}>Add ONU</button>
+        </div>
+      )}
     </>
   );
 };
