@@ -13,37 +13,41 @@ const mapStyles = [
   {
     featureType: "administrative",
     elementType: "geometry.stroke",
-    stylers: [{ visibility: "off" }],
+    stylers: [{ visibility: "off" }], // Hides unnecessary borders
   },
   {
     featureType: "administrative.country",
     elementType: "geometry.stroke",
-    stylers: [{ visibility: "on" }, { color: "#2c3e50" }, { weight: 2 }],
+    stylers: [
+      { visibility: "on" }, // Ensures the Bangladesh border is visible
+      { color: "#2c3e50" }, // Red color for clear visibility
+      { weight: 2 }, // Thick border
+    ],
   },
   {
     featureType: "poi",
     elementType: "all",
-    stylers: [{ visibility: "off" }],
+    stylers: [{ visibility: "off" }], // Hides points of interest
   },
   {
     featureType: "transit",
     elementType: "all",
-    stylers: [{ visibility: "off" }],
+    stylers: [{ visibility: "off" }], // Hides transit stops
   },
   {
     featureType: "landscape",
     elementType: "all",
-    stylers: [{ visibility: "simplified" }],
+    stylers: [{ visibility: "simplified" }], // Hides parks, grass, etc.
   },
   {
     featureType: "road",
     elementType: "geometry",
-    stylers: [{ visibility: "simplified" }],
+    stylers: [{ visibility: "simplified" }], // Keeps roads visible
   },
   {
     featureType: "water",
     elementType: "all",
-    stylers: [{ visibility: "simplified" }],
+    stylers: [{ visibility: "simplified" }], // Hides water bodies
   },
 ];
 
@@ -63,8 +67,9 @@ const MyMap = () => {
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
   });
 
+  // Define your icons for each type
   const iconImages = {
-    BTS: "/img/BTS.png",
+    BTS: "/img/BTS.png", // Replace with actual URL or path to your icon
     Termination: "/img/Termination.png",
     Splitter: "/img/Splitter.png",
     ONU: "/img/ONU.png",
@@ -80,29 +85,33 @@ const MyMap = () => {
     selectedType: null,
     showModal: false,
     selectedPoint: null,
-    rightClickMarker: null,
-    selectedRouteIndex: null, // Track the index of the selected route
+    rightClickMarker: null, // Track the right-click marker
   });
 
   useEffect(() => {
     const storedRoutes = JSON.parse(localStorage.getItem("savedRoutes")) || [];
-    const nextNumber = parseInt(localStorage.getItem("nextNumber")) || 1;
     setMapState((prevState) => ({
       ...prevState,
       savedRoutes: storedRoutes,
-      nextNumber: nextNumber,
     }));
   }, []);
 
   const handleMapRightClick = useCallback(
     (e) => {
+      // console.log("Right-click detected at:", e.latLng.lat(), e.latLng.lng());
+      // console.log(
+      //   "Client coordinates:",
+      //   e.domEvent.clientX,
+      //   e.domEvent.clientY
+      // );
+
       e.domEvent.preventDefault(); // Prevent default right-click behavior
 
       const clickedPoint = {
         lat: e.latLng.lat(),
         lng: e.latLng.lng(),
         number: mapState.nextNumber,
-        x: e.domEvent.clientX,
+        x: e.domEvent.clientX, // Ensure these values are correct
         y: e.domEvent.clientY,
       };
 
@@ -110,23 +119,23 @@ const MyMap = () => {
         ...prevState,
         selectedPoint: clickedPoint,
         showModal: true,
-        rightClickMarker: clickedPoint,
+        rightClickMarker: clickedPoint, // Store the marker
       }));
     },
     [mapState.nextNumber]
   );
 
+  // close modal
   const handleClose = () => {
     setMapState((prevState) => ({
       ...prevState,
       showModal: false,
-      rightClickMarker: null,
+      rightClickMarker: null, // Reset right-click marker
     }));
   };
 
   const handleSelection = (type) => {
     if (!mapState.selectedPoint) return;
-
     setMapState((prevState) => ({
       ...prevState,
       showModal: false,
@@ -135,14 +144,11 @@ const MyMap = () => {
 
     const newPoint = { ...mapState.selectedPoint, type };
     const updatedPoints = [...mapState.selectedPoints, newPoint];
-
-    // Update the selected points state
     setMapState((prevState) => ({
       ...prevState,
       selectedPoints: updatedPoints,
+      nextNumber: prevState.nextNumber + 1,
     }));
-
-    // Update the continuous line by recalculating the directions every time a new point is selected
     updateDirections(updatedPoints);
   };
 
@@ -183,52 +189,35 @@ const MyMap = () => {
       const newRoute = {
         points: mapState.selectedPoints,
         directions: mapState.directions,
-        number: mapState.nextNumber, // Save the route with the current number
       };
-
-      let updatedRoutes = [...mapState.savedRoutes];
-
-      if (mapState.selectedRouteIndex !== null) {
-        // Extend the existing route
-        updatedRoutes[mapState.selectedRouteIndex].points = [
-          ...updatedRoutes[mapState.selectedRouteIndex].points,
-          ...mapState.selectedPoints,
-        ];
-        updatedRoutes[mapState.selectedRouteIndex].directions = mapState.directions;
-      } else {
-        // If it's a new route, just add it to saved routes
-        updatedRoutes.push(newRoute);
-      }
-
+      const updatedRoutes = [...mapState.savedRoutes, newRoute];
       setMapState((prevState) => ({
         ...prevState,
         savedRoutes: updatedRoutes,
-        selectedPoints: [],
-        directions: null,
-        selectedRouteIndex: null, // Reset selected route after saving
       }));
-
       localStorage.setItem("savedRoutes", JSON.stringify(updatedRoutes));
-
-      if (mapState.selectedRouteIndex === null) {
-        // Increment the next number only when adding a new route
-        const newNextNumber = mapState.nextNumber + 1;
-        localStorage.setItem("nextNumber", newNextNumber.toString());
-        setMapState((prevState) => ({
-          ...prevState,
-          nextNumber: newNextNumber,
-        }));
-      }
-
       alert("Route saved successfully!");
     }
   };
 
   const togglePreviousRoutes = () => {
-    setMapState((prevState) => ({
-      ...prevState,
-      showSavedRoutes: !prevState.showSavedRoutes,
-    }));
+    setMapState((prevState) => {
+      const updatedState = {
+        ...prevState,
+        showSavedRoutes: !prevState.showSavedRoutes,
+      };
+
+      if (updatedState.showSavedRoutes && updatedState.savedRoutes.length > 0) {
+        // Set selectedPoints from the last added saved route dynamically
+        updatedState.selectedPoints =
+          updatedState.savedRoutes[updatedState.savedRoutes.length - 1].points;
+      } else {
+        // Otherwise, clear the selected points
+        updatedState.selectedPoints = [];
+      }
+
+      return updatedState;
+    });
   };
 
   const resetMap = () => {
@@ -237,25 +226,13 @@ const MyMap = () => {
       directions: null,
       savedRoutes: mapState.savedRoutes,
       showSavedRoutes: false,
-      nextNumber: mapState.nextNumber,
+      nextNumber: 1,
       totalDistance: null,
       selectedType: null,
       showModal: false,
       selectedPoint: null,
-      rightClickMarker: null,
-      selectedRouteIndex: null, // Reset selected route
+      rightClickMarker: null, // Reset right-click marker
     });
-  };
-
-  const handleSelectRoute = (routeIndex) => {
-    const selectedRoute = mapState.savedRoutes[routeIndex];
-
-    setMapState((prevState) => ({
-      ...prevState,
-      selectedPoints: selectedRoute.points, // Keep original points
-      directions: selectedRoute.directions, // Keep original directions
-      selectedRouteIndex: routeIndex, // Set selected route index for extension
-    }));
   };
 
   if (loadError) return <div>Error loading maps</div>;
@@ -281,17 +258,23 @@ const MyMap = () => {
         mapContainerStyle={containerStyle}
         center={center}
         zoom={7}
-        onRightClick={handleMapRightClick}
+        onRightClick={handleMapRightClick} // Now it works on right-click
         options={{
-          styles: mapStyles,
-          disableDefaultUI: false,
+          styles: mapStyles, // Apply the custom style here
+          disableDefaultUI: false, // Keep controls visible
         }}
       >
+        {/* Render district markers ONLY if the user hasn't started selecting a route */}
         {mapState.selectedPoints.length === 0 &&
           districts.map((district) => (
-            <MarkerF key={district.id} position={district} title={district.name} />
+            <MarkerF
+              key={district.id}
+              position={district}
+              title={district.name}
+            />
           ))}
 
+        {/* Add right-click marker */}
         {mapState.rightClickMarker && (
           <MarkerF
             position={{
@@ -299,65 +282,39 @@ const MyMap = () => {
               lng: mapState.rightClickMarker.lng,
             }}
             icon={{
-              url: "/img/location.jpg",
+              url: "/img/location.jpg", // Add an icon for the right-click marker
               scaledSize: new google.maps.Size(20, 20),
             }}
           />
         )}
 
+        {mapState.directions && (
+          <DirectionsRenderer
+            directions={mapState.directions}
+            options={{ suppressMarkers: true }}
+          />
+        )}
+
+        {/* Custom Markers for Directions */}
         {mapState.selectedPoints.map((point, index) => (
           <MarkerF
             key={`waypoint-${index}`}
             position={{ lat: point.lat, lng: point.lng }}
             icon={{
-              url: iconImages[point.type] || "",
-              scaledSize: new google.maps.Size(30, 30),
+              url: iconImages[point.type], // Use selected type’s icon
+              scaledSize: new google.maps.Size(30, 30), // Adjust icon size
             }}
           />
         ))}
 
         {mapState.showSavedRoutes &&
-          mapState.savedRoutes.map((route, routeIndex) => (
-            <React.Fragment key={routeIndex}>
-              <button
-                style={{
-                  position: "absolute",
-                  top: `${route.points[0].y}px`,
-                  left: `${route.points[0].x}px`,
-                  backgroundColor: "white",
-                  padding: "5px",
-                  border: "1px solid black",
-                }}
-                onClick={() => handleSelectRoute(routeIndex)}
-              >
-                Extend Route {route.number}
-              </button>
-
-              {route.points.map((point, pointIndex) => (
-                <MarkerF
-                  key={`saved-waypoint-${routeIndex}-${pointIndex}`}
-                  position={{ lat: point.lat, lng: point.lng }}
-                  icon={{
-                    url: iconImages[point.type],
-                    scaledSize: new google.maps.Size(30, 30),
-                  }}
-                />
-              ))}
-              <DirectionsRenderer
-                directions={route.directions}
-                options={{ suppressMarkers: true }}
-              />
-            </React.Fragment>
+          mapState.savedRoutes.map((route, index) => (
+            <DirectionsRenderer
+              key={index}
+              directions={route.directions}
+              options={{ suppressMarkers: true }}
+            />
           ))}
-
-        {mapState.directions && (
-          <DirectionsRenderer
-            directions={mapState.directions}
-            options={{
-              suppressMarkers: true,
-            }}
-          />
-        )}
       </GoogleMap>
 
       {mapState.showModal && mapState.selectedPoint && (
@@ -374,6 +331,7 @@ const MyMap = () => {
 
           <p className="modal-title">Select a type:</p>
 
+          {/* Wrapping buttons in a div to ensure spacing */}
           <div className="modal-buttons">
             {Object.keys(iconImages).map((type) => (
               <button
@@ -385,6 +343,7 @@ const MyMap = () => {
               </button>
             ))}
           </div>
+          {/* Spike added here */}
           <div className="modal-spike"></div>
         </div>
       )}

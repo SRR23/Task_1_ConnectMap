@@ -1,0 +1,87 @@
+/* Modal container */
+.modal {
+    position: absolute;
+    background-color: white;
+    padding: 4px 8px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    max-width: 400px; /* Adjust width */
+    width: max-content;
+    font-size: 14px;
+    text-align: center;
+    border: 1px solid #ddd;
+    position: absolute; /* Ensure proper positioning */
+}
+
+/* Close button */
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: #666;
+    cursor: pointer;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+}
+
+/* Modal title */
+.modal-title {
+    font-weight: bold;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+/* Container to align buttons in a single row */
+.modal-buttons {
+    display: flex;
+    justify-content: center;
+    padding-top: 5px;
+    gap: 12px; /* Space between buttons */
+    white-space: nowrap; /* Prevent wrapping */
+}
+
+/* Text-style buttons */
+.modal-button {
+    background: none;
+    border: none;
+    color: black;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 6px 12px;
+    text-decoration: none;
+    transition: color 0.2s ease-in-out;
+}
+
+.modal-button:hover {
+    color: #0056b3;
+    text-decoration: underline;
+}
+
+/* Downward-pointing spike */
+.modal-spike {
+    position: absolute;
+    bottom: -10px; /* Move slightly below the modal */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 10px solid white; /* Matches modal background */
+    border-bottom: none;
+}
+
+/* Spike border shadow */
+/* .modal-spike::after {
+    content: "";
+    position: absolute;
+    left: -10px;
+    top: -1px;
+    width: 0;
+    height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 10px solid #ddd;
+} */
