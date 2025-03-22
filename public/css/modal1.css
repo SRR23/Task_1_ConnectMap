@@ -1,10 +1,9 @@
-/* This is for MyMap */
+/* This is for V3 */
 
-/* Modal container */
 .modal {
     position: absolute;
     background-color: white;
-    padding: 4px 8px;
+    padding: 8px 16px; /* Adjusted padding for better spacing */
     border-radius: 6px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     z-index: 1000;
@@ -14,6 +13,7 @@
     text-align: center;
     border: 1px solid #ddd;
     position: absolute; /* Ensure proper positioning */
+    box-sizing: border-box; /* Ensure padding doesn't affect the overall size */
 }
 
 /* Close button */
@@ -24,15 +24,22 @@
     color: #666;
     cursor: pointer;
     position: absolute;
-    top: 4px;
-    right: 4px;
+    top: 8px;
+    right: 8px;
+    padding: 4px;
+    transition: color 0.2s ease-in-out;
+}
+
+.modal-close:hover {
+    color: #e74c3c;
 }
 
 /* Modal title */
 .modal-title {
     font-weight: bold;
-    margin-bottom: 8px;
-    font-size: 14px;
+    margin-bottom: 12px;
+    font-size: 16px; /* Slightly larger font for the title */
+    color: #333;
 }
 
 /* Container to align buttons in a single row */
@@ -42,6 +49,7 @@
     padding-top: 5px;
     gap: 12px; /* Space between buttons */
     white-space: nowrap; /* Prevent wrapping */
+    flex-wrap: wrap; /* Allow wrapping for smaller screens */
 }
 
 /* Text-style buttons */
@@ -54,6 +62,7 @@
     padding: 6px 12px;
     text-decoration: none;
     transition: color 0.2s ease-in-out;
+    border-radius: 4px; /* Rounded button edges */
 }
 
 .modal-button:hover {
@@ -75,15 +84,23 @@
     border-bottom: none;
 }
 
-/* Spike border shadow */
-/* .modal-spike::after {
-    content: "";
-    position: absolute;
-    left: -10px;
-    top: -1px;
-    width: 0;
-    height: 0;
-    border-left: 10px solid transparent;
-    border-right: 10px solid transparent;
-    border-top: 10px solid #ddd;
-} */
+/* Modal responsiveness */
+@media (max-width: 480px) {
+    .modal {
+        width: 90%; /* Ensure modal fits small screens */
+        max-width: 300px; /* Max width for mobile screens */
+    }
+
+    .modal-buttons {
+        flex-direction: column; /* Stack buttons on mobile */
+    }
+
+    .modal-close {
+        top: 6px;
+        right: 6px;
+    }
+
+    .modal-title {
+        font-size: 14px;
+    }
+}
