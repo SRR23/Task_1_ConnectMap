@@ -6,6 +6,8 @@ import {
   PolylineF,
 } from "@react-google-maps/api";
 
+import { Trash2 } from "lucide-react"; // Import delete icon
+
 const containerStyle = { width: "100%", height: "600px" };
 const center = { lat: 23.685, lng: 90.3563 };
 
@@ -72,7 +74,7 @@ const MyMap = () => {
     directions: null,
     totalDistance: null,
     showSavedRoutes: false,
-    intermediatePoints: [], // Store intermediate points here
+    hoveredLineIndex: null, // Track hovered line index
   });
 
   const handleMapRightClick = useCallback(
@@ -114,6 +116,37 @@ const MyMap = () => {
     }));
   };
 
+  const handleRightClickOnIcon = (icon) => {
+    setMapState((prevState) => ({
+      ...prevState,
+      selectedPoint: icon,
+      rightClickMarker: icon,
+      showModal: true,
+    }));
+  };
+
+  const handleRightClickOnLine = (index, e) => {
+    e.domEvent.preventDefault();
+    const clickedPoint = {
+      lat: e.latLng.lat(),
+      lng: e.latLng.lng(),
+      x: e.domEvent.clientX,
+      y: e.domEvent.clientY,
+    };
+
+    setMapState((prevState) => ({
+      ...prevState,
+      selectedLine: index,
+      selectedPoint: clickedPoint,
+      showModal: true,
+    }));
+
+    console.log("Selected Line :", index);
+  };
+
+
+  
+
   const handleMarkerDragEnd = (index, e) => {
     const updatedIcons = [...mapState.imageIcons];
     updatedIcons[index] = {
@@ -122,26 +155,10 @@ const MyMap = () => {
       lng: e.latLng.lng(),
     };
 
-    // Update the intermediate points
-    const updatedIntermediatePoints = [...mapState.intermediatePoints];
-    updatedIntermediatePoints[index] = {
-      lat: e.latLng.lat(),
-      lng: e.latLng.lng(),
-    };
-
+    // After updating the icon position, update the state
     setMapState((prevState) => ({
       ...prevState,
-      imageIcons: updatedIcons, // Update icon positions
-      intermediatePoints: updatedIntermediatePoints, // Update intermediate point positions
-    }));
-  };
-
-  const handleRightClickOnIcon = (icon) => {
-    setMapState((prevState) => ({
-      ...prevState,
-      selectedPoint: icon,
-      rightClickMarker: icon,
-      showModal: true,
+      imageIcons: updatedIcons, // This should immediately update the state
     }));
   };
 
@@ -175,29 +192,21 @@ const MyMap = () => {
   };
 
   const handlePolylineEdit = (index, path) => {
-    const updatedLines = mapState.fiberLines.map((line, i) => {
-      if (i === index) {
-        // Update the fiber line with the new path including intermediate points
-        const newPath = path.getArray(); // Get the path array after editing
-        return {
-          ...line,
-          from: { lat: newPath[0].lat(), lng: newPath[0].lng() }, // Update start point
-          to: {
-            lat: newPath[newPath.length - 1].lat(),
-            lng: newPath[newPath.length - 1].lng(),
-          }, // Update end point
-          path: newPath, // Update the entire path with new intermediate points
-        };
-      }
-      return line;
-    });
-
+    const updatedLines = mapState.fiberLines.map((line, i) =>
+      i === index
+        ? {
+            ...line,
+            from: { lat: path.getAt(0).lat(), lng: path.getAt(0).lng() },
+            to: {
+              lat: path.getAt(path.getLength() - 1).lat(),
+              lng: path.getAt(path.getLength() - 1).lng(),
+            },
+          }
+        : line
+    );
     setMapState((prevState) => ({
       ...prevState,
       fiberLines: updatedLines,
-      intermediatePoints: updatedLines.flatMap((line) =>
-        line.path.slice(1, -1)
-      ), // Extract intermediate points (excluding start and end)
     }));
   };
 
@@ -206,13 +215,8 @@ const MyMap = () => {
     const updatedLines = [...mapState.fiberLines];
     updatedLines[index].from = { lat: e.latLng.lat(), lng: e.latLng.lng() };
 
-    // Save intermediate points
     setMapState((prevState) => ({
       ...prevState,
-      intermediatePoints: [
-        ...prevState.intermediatePoints,
-        { lat: e.latLng.lat(), lng: e.latLng.lng() }, // Store the intermediate point
-      ],
       fiberLines: updatedLines,
     }));
   };
@@ -222,33 +226,20 @@ const MyMap = () => {
     const updatedLines = [...mapState.fiberLines];
     updatedLines[index].to = { lat: e.latLng.lat(), lng: e.latLng.lng() };
 
-    // Save intermediate points
     setMapState((prevState) => ({
       ...prevState,
-      intermediatePoints: [
-        ...prevState.intermediatePoints,
-        { lat: e.latLng.lat(), lng: e.latLng.lng() }, // Store the intermediate point
-      ],
       fiberLines: updatedLines,
     }));
   };
 
+  // Function to save the route after the state has updated
   const saveRoute = () => {
-    const updatedFiberLines = mapState.fiberLines.map((line) => {
-      // Ensure line.path is always an array
-      const path = Array.isArray(line.path) ? line.path : [];
+    // We need to access the current updated state here.
+    const updatedFiberLines = mapState.fiberLines.map((line) => ({
+      from: { ...line.from }, // Ensure a deep copy to prevent mutation issues
+      to: { ...line.to },
+    }));
 
-      // Integrate intermediate points into the polyline path
-      const fullPath = [...path, ...mapState.intermediatePoints];
-
-      return {
-        from: { ...line.from },
-        to: { ...line.to },
-        path: fullPath, // Save full path with intermediate points included
-      };
-    });
-
-    // Saving the fiber lines and image icons, as before
     const updatedImageIcons = mapState.imageIcons.map((icon) => ({
       lat: icon.lat,
       lng: icon.lng,
@@ -259,15 +250,15 @@ const MyMap = () => {
     const newRoute = {
       fiberLines: updatedFiberLines,
       imageIcons: updatedImageIcons,
-      intermediatePoints: [...mapState.intermediatePoints], // Ensure all intermediate points are saved
     };
 
+    // Save the new route into localStorage
     setMapState((prevState) => {
       const updatedRoutes = [...prevState.savedRoutes, newRoute];
-      localStorage.setItem("savedRoutes", JSON.stringify(updatedRoutes)); // Store the saved route in localStorage
+      localStorage.setItem("savedRoutes", JSON.stringify(updatedRoutes));
       return {
         ...prevState,
-        savedRoutes: updatedRoutes, // Update saved routes state
+        savedRoutes: updatedRoutes,
       };
     });
 
@@ -286,26 +277,8 @@ const MyMap = () => {
         imageIcons: showSaved
           ? prevState.savedRoutes.flatMap((route) => route.imageIcons)
           : [],
-        intermediatePoints: showSaved
-          ? prevState.savedRoutes.flatMap((route) => route.intermediatePoints)
-          : [], // Correctly load the intermediate points when showing saved routes
       };
     });
-  };
-
-  const handleIntermediatePointDragEnd = (index, e) => {
-    const updatedIntermediatePoints = [...mapState.intermediatePoints];
-    // Update the position of the dragged intermediate point
-    updatedIntermediatePoints[index] = {
-      lat: e.latLng.lat(),
-      lng: e.latLng.lng(),
-    };
-
-    // Update the state with the new intermediate points
-    setMapState((prevState) => ({
-      ...prevState,
-      intermediatePoints: updatedIntermediatePoints,
-    }));
   };
 
   useEffect(() => {
@@ -314,12 +287,8 @@ const MyMap = () => {
     setMapState((prevState) => ({
       ...prevState,
       savedRoutes: savedRoutes,
-      // Ensure intermediate points are correctly loaded from saved routes
-      intermediatePoints: savedRoutes.flatMap(
-        (route) => route.intermediatePoints
-      ),
     }));
-  }, []);
+  }, []); // Empty dependency array ensures this effect runs only once when the component mounts
 
   useEffect(() => {
     // This effect will run every time mapState changes
@@ -327,12 +296,48 @@ const MyMap = () => {
     console.log("State has been updated", mapState);
   }, [mapState]); // This will run whenever mapState changes
 
-  useEffect(() => {
-    console.log(
-      "Number of intermediate points:",
-      mapState.intermediatePoints.length
+  const removeSelectedLine = () => {
+    if (mapState.selectedLine === null) {
+      console.log("No line selected for deletion.");
+      return;
+    }
+
+    console.log("Deleting Line Index:", mapState.selectedLine);
+
+    // Remove the selected line from the current fiberLines state
+    const updatedFiberLines = mapState.fiberLines.filter(
+      (_, idx) => idx !== mapState.selectedLine
     );
-  }, [mapState.intermediatePoints]); // This effect will run every time intermediatePoints changes
+
+    // Create a copy of the savedRoutes and filter out the selected line
+    const updatedRoutes = mapState.savedRoutes.map((route) => {
+      // Remove the specific fiber line from the route
+      const updatedFiberLinesForRoute = route.fiberLines.filter(
+        (_, idx) => idx !== mapState.selectedLine
+      );
+
+      return {
+        ...route,
+        fiberLines: updatedFiberLinesForRoute,
+      };
+    });
+
+    // Update the savedRoutes state immediately to trigger a re-render
+    setMapState((prevState) => ({
+      ...prevState,
+      fiberLines: updatedFiberLines, // Update the current fiberLines to reflect the deletion
+      savedRoutes: updatedRoutes, // Update the savedRoutes with the deleted line
+      selectedLine: null, // Reset selectedLine to null
+      showModal: false, // Close the modal
+    }));
+
+    // Update the localStorage with the new savedRoutes after the immediate state change
+    localStorage.setItem("savedRoutes", JSON.stringify(updatedRoutes));
+  };
+
+  useEffect(() => {
+    console.log("Selected Line:", mapState.selectedLine);
+  }, [mapState.selectedLine]);
 
   const resetMap = () => {
     setMapState({
@@ -348,7 +353,6 @@ const MyMap = () => {
       rightClickMarker: null,
       fiberLines: [],
       imageIcons: [],
-      intermediatePoints: [],
     });
   };
 
@@ -408,12 +412,13 @@ const MyMap = () => {
               {route.fiberLines.map((line, lineIndex) => (
                 <PolylineF
                   key={`saved-fiber-${routeIndex}-${lineIndex}`} // Unique key
-                  path={[line.from, ...line.path, line.to]} // Include intermediate points in the path
+                  path={[line.from, line.to]}
                   options={{
                     strokeColor: "#0000FF",
                     strokeOpacity: 1.0,
                     strokeWeight: 2,
                   }}
+                  // onRightClick={(e) => handleRightClickOnLine(lineIndex, e)}
                 />
               ))}
               {route.imageIcons.map((icon, iconIndex) => (
@@ -424,20 +429,6 @@ const MyMap = () => {
                     url: iconImages[icon.type],
                     scaledSize: new google.maps.Size(30, 30),
                   }}
-                />
-              ))}
-              {route.intermediatePoints.map((point, pointIndex) => (
-                <MarkerF
-                  key={`saved-intermediate-point-${routeIndex}-${pointIndex}`} // Unique key for intermediate points
-                  position={{ lat: point.lat, lng: point.lng }}
-                  icon={{
-                    url: "/img/location.jpg", // Use your preferred icon
-                    scaledSize: new google.maps.Size(20, 20),
-                  }}
-                  draggable
-                  onDragEnd={(e) =>
-                    handleIntermediatePointDragEnd(pointIndex, e)
-                  } // Allow dragging of intermediate points
                 />
               ))}
             </React.Fragment>
@@ -457,7 +448,12 @@ const MyMap = () => {
                   strokeWeight: 2,
                   editable: true, // Allows dragging the polyline
                 }}
+                onRightClick={(e) => handleRightClickOnLine(index, e)}
+
+                
+
                 onLoad={(polyline) => {
+
                   const path = polyline.getPath();
                   path.addListener("set_at", () =>
                     handlePolylineEdit(index, path)
@@ -503,7 +499,7 @@ const MyMap = () => {
           className="modal"
           style={{
             top: `${mapState.selectedPoint.y - 110}px`,
-            left: `${mapState.selectedPoint.x - 209}px`,
+            left: `${mapState.selectedPoint.x - 238}px`,
           }}
         >
           <button
@@ -534,6 +530,11 @@ const MyMap = () => {
 
             <button className="modal-button" onClick={addFiberLine}>
               Add Fiber
+            </button>
+
+            {/* New Remove Button */}
+            <button className="modal-button" onClick={removeSelectedLine}>
+              <Trash2 size={20} />
             </button>
           </div>
 
