@@ -49,7 +49,7 @@ const mapStyles = [
   },
 ];
 
-const MyMap = () => {
+const MyMapV6 = () => {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
   });
@@ -62,7 +62,7 @@ const MyMap = () => {
   };
 
   const [mapState, setMapState] = useState({
-    // selectedPoints: [],
+    selectedPoints: [],
     savedRoutes: [],
     nextNumber: 1,
     selectedType: null,
@@ -71,13 +71,10 @@ const MyMap = () => {
     rightClickMarker: null,
     fiberLines: [],
     imageIcons: [],
-    // directions: null,
-    // totalDistance: null,
+    directions: null,
+    totalDistance: null,
     showSavedRoutes: false,
-    // hoveredLineIndex: null, 
-    savedPolylines: [], // New field to store individually saved polylines
-    selectedLine: null, // Added to track the selected line
-    selectedLineId: null, // Added to track the selected line's unique ID
+    hoveredLineIndex: null, // Track hovered line index
   });
 
   const handleMapRightClick = useCallback(
@@ -128,8 +125,7 @@ const MyMap = () => {
     }));
   };
 
-  // Modified handleRightClickOnLine to work with both current and saved polylines
-  const handleRightClickOnLine = (line, index, isSavedLine = false, e) => {
+  const handleRightClickOnLine = (index, e) => {
     e.domEvent.preventDefault();
     const clickedPoint = {
       lat: e.latLng.lat(),
@@ -141,13 +137,15 @@ const MyMap = () => {
     setMapState((prevState) => ({
       ...prevState,
       selectedLine: index,
-      selectedLineId: line.id, // Store the unique ID of the selected line
       selectedPoint: clickedPoint,
       showModal: true,
     }));
 
-    console.log("Selected Line:", line, "Index:", index);
+    console.log("Selected Line :", index);
   };
+
+
+  
 
   const handleMarkerDragEnd = (index, e) => {
     const updatedIcons = [...mapState.imageIcons];
@@ -234,88 +232,39 @@ const MyMap = () => {
     }));
   };
 
-  // Modified saveRoute function
+  // Function to save the route after the state has updated
   const saveRoute = () => {
-    // Save polylines
-    if (mapState.fiberLines.length > 0) {
-      const polylinesToSave = mapState.fiberLines.map((line, index) => ({
-        id: `polyline-${Date.now()}-${index}`,
-        from: { ...line.from }, 
-        to: { ...line.to },
-        createdAt: new Date().toISOString(),
-        strokeColor: "#0000FF", // Ensure blue color when saving
-      }));
+    // We need to access the current updated state here.
+    const updatedFiberLines = mapState.fiberLines.map((line) => ({
+      from: { ...line.from }, // Ensure a deep copy to prevent mutation issues
+      to: { ...line.to },
+    }));
 
-      const savedPolylines = JSON.parse(localStorage.getItem("savedPolylines")) || [];
-      const updatedSavedPolylines = [...savedPolylines, ...polylinesToSave];
-      localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
+    const updatedImageIcons = mapState.imageIcons.map((icon) => ({
+      lat: icon.lat,
+      lng: icon.lng,
+      type: icon.type,
+      id: icon.id,
+    }));
 
-      setMapState((prevState) => ({
+    const newRoute = {
+      fiberLines: updatedFiberLines,
+      imageIcons: updatedImageIcons,
+    };
+
+    // Save the new route into localStorage
+    setMapState((prevState) => {
+      const updatedRoutes = [...prevState.savedRoutes, newRoute];
+      localStorage.setItem("savedRoutes", JSON.stringify(updatedRoutes));
+      return {
         ...prevState,
-        savedPolylines: updatedSavedPolylines,
-        // Automatically show saved routes and update the state
-        showSavedRoutes: true,
-        fiberLines: updatedSavedPolylines.map(polyline => ({
-          from: polyline.from,
-          to: polyline.to,
-          id: polyline.id,
-          strokeColor: "#0000FF", // Ensure blue color
-        })),
-      }));
-    }
+        savedRoutes: updatedRoutes,
+      };
+    });
 
-    // Save icons
-    if (mapState.imageIcons.length > 0) {
-      const iconsToSave = mapState.imageIcons.map((icon, index) => ({
-        id: `icon-${Date.now()}-${index}`,
-        lat: icon.lat,
-        lng: icon.lng,
-        type: icon.type,
-        createdAt: new Date().toISOString(),
-      }));
-
-      const savedIcons = JSON.parse(localStorage.getItem("savedIcons")) || [];
-      const updatedSavedIcons = [...savedIcons, ...iconsToSave];
-      localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
-
-      setMapState((prevState) => ({
-        ...prevState,
-        savedIcons: updatedSavedIcons,
-        // Automatically show saved icons
-        imageIcons: updatedSavedIcons.map(icon => ({
-          lat: icon.lat,
-          lng: icon.lng,
-          type: icon.type,
-          id: icon.id
-        })),
-      }));
-    }
-
-    // Alert only if something was saved
-    if (mapState.fiberLines.length > 0 || mapState.imageIcons.length > 0) {
-      alert("Polylines and Icons saved successfully!");
-    } else {
-      alert("No routes or icons to save!");
-    }
+    alert("Route saved successfully!");
   };
 
-
-  // Modify useEffect to load both saved polylines and icons
-  useEffect(() => {
-    // Load saved polylines from localStorage
-    const savedPolylines = JSON.parse(localStorage.getItem("savedPolylines")) || [];
-    
-    // Load saved icons from localStorage
-    const savedIcons = JSON.parse(localStorage.getItem("savedIcons")) || [];
-
-    setMapState((prevState) => ({
-      ...prevState,
-      savedPolylines: savedPolylines,
-      savedIcons: savedIcons,
-    }));
-  }, []);
-
-  // Update togglePreviousRoutes to handle both polylines and icons
   const togglePreviousRoutes = () => {
     setMapState((prevState) => {
       const showSaved = !prevState.showSavedRoutes;
@@ -323,26 +272,23 @@ const MyMap = () => {
         ...prevState,
         showSavedRoutes: showSaved,
         fiberLines: showSaved
-          ? prevState.savedPolylines.map(polyline => ({
-              from: polyline.from,
-              to: polyline.to,
-              id: polyline.id,
-              strokeColor: "#0000FF" // Add blue color for saved polylines
-            }))
+          ? prevState.savedRoutes.flatMap((route) => route.fiberLines)
           : [],
         imageIcons: showSaved
-          ? prevState.savedIcons.map(icon => ({
-              lat: icon.lat,
-              lng: icon.lng,
-              type: icon.type,
-              id: icon.id
-            }))
+          ? prevState.savedRoutes.flatMap((route) => route.imageIcons)
           : [],
       };
     });
   };
 
-
+  useEffect(() => {
+    // Load the saved routes from localStorage when the component is mounted
+    const savedRoutes = JSON.parse(localStorage.getItem("savedRoutes")) || [];
+    setMapState((prevState) => ({
+      ...prevState,
+      savedRoutes: savedRoutes,
+    }));
+  }, []); // Empty dependency array ensures this effect runs only once when the component mounts
 
   useEffect(() => {
     // This effect will run every time mapState changes
@@ -350,37 +296,43 @@ const MyMap = () => {
     console.log("State has been updated", mapState);
   }, [mapState]); // This will run whenever mapState changes
 
-
-  // Updated removeSelectedLine to handle both current and saved polylines
   const removeSelectedLine = () => {
-    if (mapState.selectedLineId === null) {
+    if (mapState.selectedLine === null) {
       console.log("No line selected for deletion.");
       return;
     }
 
-    // Remove from current fiberLines
+    console.log("Deleting Line Index:", mapState.selectedLine);
+
+    // Remove the selected line from the current fiberLines state
     const updatedFiberLines = mapState.fiberLines.filter(
-      (line) => line.id !== mapState.selectedLineId
+      (_, idx) => idx !== mapState.selectedLine
     );
 
-    // Remove from savedPolylines in localStorage
-    const savedPolylines = JSON.parse(localStorage.getItem("savedPolylines")) || [];
-    const updatedSavedPolylines = savedPolylines.filter(
-      (polyline) => polyline.id !== mapState.selectedLineId
-    );
-    
-    // Update localStorage
-    localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
+    // Create a copy of the savedRoutes and filter out the selected line
+    const updatedRoutes = mapState.savedRoutes.map((route) => {
+      // Remove the specific fiber line from the route
+      const updatedFiberLinesForRoute = route.fiberLines.filter(
+        (_, idx) => idx !== mapState.selectedLine
+      );
 
-    // Update state
+      return {
+        ...route,
+        fiberLines: updatedFiberLinesForRoute,
+      };
+    });
+
+    // Update the savedRoutes state immediately to trigger a re-render
     setMapState((prevState) => ({
       ...prevState,
-      fiberLines: updatedFiberLines,
-      savedPolylines: updatedSavedPolylines,
-      selectedLine: null,
-      selectedLineId: null,
-      showModal: false,
+      fiberLines: updatedFiberLines, // Update the current fiberLines to reflect the deletion
+      savedRoutes: updatedRoutes, // Update the savedRoutes with the deleted line
+      selectedLine: null, // Reset selectedLine to null
+      showModal: false, // Close the modal
     }));
+
+    // Update the localStorage with the new savedRoutes after the immediate state change
+    localStorage.setItem("savedRoutes", JSON.stringify(updatedRoutes));
   };
 
   useEffect(() => {
@@ -389,12 +341,12 @@ const MyMap = () => {
 
   const resetMap = () => {
     setMapState({
-      // selectedPoints: [],
-      // directions: null,
+      selectedPoints: [],
+      directions: null,
       savedRoutes: mapState.savedRoutes,
       showSavedRoutes: false,
       nextNumber: 1,
-      // totalDistance: null,
+      totalDistance: null,
       selectedType: null,
       showModal: false,
       selectedPoint: null,
@@ -454,82 +406,92 @@ const MyMap = () => {
           />
         )}
 
-        {/* Render saved icons */}
         {mapState.showSavedRoutes &&
-          mapState.savedIcons.map((icon, index) => (
-            <MarkerF
-              key={icon.id || `saved-icon-${index}`}
-              position={{ lat: icon.lat, lng: icon.lng }}
-              icon={{
-                url: iconImages[icon.type],
-                scaledSize: new google.maps.Size(30, 30),
-              }}
-            />
+          mapState.savedRoutes.map((route, routeIndex) => (
+            <React.Fragment key={`saved-route-${routeIndex}`}>
+              {route.fiberLines.map((line, lineIndex) => (
+                <PolylineF
+                  key={`saved-fiber-${routeIndex}-${lineIndex}`} // Unique key
+                  path={[line.from, line.to]}
+                  options={{
+                    strokeColor: "#0000FF",
+                    strokeOpacity: 1.0,
+                    strokeWeight: 2,
+                  }}
+                  // onRightClick={(e) => handleRightClickOnLine(lineIndex, e)}
+                />
+              ))}
+              {route.imageIcons.map((icon, iconIndex) => (
+                <MarkerF
+                  key={`saved-icon-${routeIndex}-${iconIndex}`} // Unique key
+                  position={{ lat: icon.lat, lng: icon.lng }}
+                  icon={{
+                    url: iconImages[icon.type],
+                    scaledSize: new google.maps.Size(30, 30),
+                  }}
+                />
+              ))}
+            </React.Fragment>
           ))}
 
-        {/* Saved Polylines */}
-        {mapState.showSavedRoutes &&
-          mapState.savedPolylines.map((polyline, index) => (
-            <PolylineF
-              key={polyline.id || `saved-polyline-${index}`}
-              path={[polyline.from, polyline.to]}
-              options={{
-                strokeColor: "#0000FF",
-                strokeOpacity: 1.0,
-                strokeWeight: 2,
-              }}
-              onRightClick={(e) => handleRightClickOnLine(polyline, index, true, e)}
-            />
-          ))}
+        {mapState.fiberLines.map((line, index) => {
+          // Check if line.id exists, else fallback to index
+          const lineId = line.id || `fiber-line-${index}`; // Use index if id is undefined
 
-        {/* Current Fiber Lines */}
-        {mapState.fiberLines.map((line, index) => (
-          <React.Fragment key={line.id || `fiber-line-${index}`}>
-            <PolylineF
-              path={[line.from, line.to]}
-              options={{
-                strokeColor: line.strokeColor || "#FF0000", // Use line color or default to red
-                strokeOpacity: 1.0,
-                strokeWeight: 2,
-                editable: true,
-              }}
-              onRightClick={(e) => handleRightClickOnLine(line, index, false, e)}
-              onLoad={(polyline) => {
-                const path = polyline.getPath();
-                path.addListener("set_at", () =>
-                  handlePolylineEdit(index, path)
-                );
-                path.addListener("insert_at", () =>
-                  handlePolylineEdit(index, path)
-                );
-              }}
-              onUnmount={(polyline) => {
-                const path = polyline.getPath();
-                google.maps.event.clearInstanceListeners(path);
-              }}
-            />
+          return (
+            <React.Fragment key={lineId}>
+              <PolylineF
+                path={[line.from, line.to]}
+                options={{
+                  strokeColor: "#FF0000",
+                  strokeOpacity: 1.0,
+                  strokeWeight: 2,
+                  editable: true, // Allows dragging the polyline
+                }}
+                onRightClick={(e) => handleRightClickOnLine(index, e)}
 
-            {/* Start and End Markers */}
-            <MarkerF
-              position={line.from}
-              draggable
-              onDragEnd={(e) => handleStartMarkerDragEnd(index, e)}
-              icon={{
-                url: "/img/location.jpg",
-                scaledSize: new google.maps.Size(20, 20),
-              }}
-            />
-            <MarkerF
-              position={line.to}
-              draggable
-              onDragEnd={(e) => handleEndMarkerDragEnd(index, e)}
-              icon={{
-                url: "/img/location.jpg",
-                scaledSize: new google.maps.Size(20, 20),
-              }}
-            />
-          </React.Fragment>
-        ))}
+                
+
+                onLoad={(polyline) => {
+
+                  const path = polyline.getPath();
+                  path.addListener("set_at", () =>
+                    handlePolylineEdit(index, path)
+                  );
+                  path.addListener("insert_at", () =>
+                    handlePolylineEdit(index, path)
+                  );
+                }}
+                onUnmount={(polyline) => {
+                  const path = polyline.getPath();
+                  google.maps.event.clearInstanceListeners(path);
+                }}
+              />
+
+              {/* Start Marker (line.from) */}
+              <MarkerF
+                position={line.from}
+                draggable
+                onDragEnd={(e) => handleStartMarkerDragEnd(index, e)}
+                icon={{
+                  url: "/img/location.jpg", // Replace with your custom icon URL
+                  scaledSize: new google.maps.Size(20, 20), // Size of the icon (adjust as needed)
+                }}
+              />
+
+              {/* End Marker (line.to) */}
+              <MarkerF
+                position={line.to}
+                draggable
+                onDragEnd={(e) => handleEndMarkerDragEnd(index, e)}
+                icon={{
+                  url: "/img/location.jpg", // Replace with your custom icon URL
+                  scaledSize: new google.maps.Size(20, 20), // Size of the icon (adjust as needed)
+                }}
+              />
+            </React.Fragment>
+          );
+        })}
       </GoogleMap>
 
       {mapState.showModal && mapState.selectedPoint && (
@@ -583,4 +545,4 @@ const MyMap = () => {
   );
 };
 
-export default MyMap;
+export default MyMapV6;
