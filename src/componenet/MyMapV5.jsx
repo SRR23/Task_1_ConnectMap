@@ -47,7 +47,7 @@ const mapStyles = [
   },
 ];
 
-const MyMap = () => {
+const MyMapV5 = () => {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
   });
@@ -72,7 +72,6 @@ const MyMap = () => {
     directions: null,
     totalDistance: null,
     showSavedRoutes: false,
-    intermediatePoints: [], // Store intermediate points here
   });
 
   const handleMapRightClick = useCallback(
@@ -122,17 +121,10 @@ const MyMap = () => {
       lng: e.latLng.lng(),
     };
 
-    // Update the intermediate points
-    const updatedIntermediatePoints = [...mapState.intermediatePoints];
-    updatedIntermediatePoints[index] = {
-      lat: e.latLng.lat(),
-      lng: e.latLng.lng(),
-    };
-
+    // After updating the icon position, update the state
     setMapState((prevState) => ({
       ...prevState,
-      imageIcons: updatedIcons, // Update icon positions
-      intermediatePoints: updatedIntermediatePoints, // Update intermediate point positions
+      imageIcons: updatedIcons, // This should immediately update the state
     }));
   };
 
@@ -175,29 +167,21 @@ const MyMap = () => {
   };
 
   const handlePolylineEdit = (index, path) => {
-    const updatedLines = mapState.fiberLines.map((line, i) => {
-      if (i === index) {
-        // Update the fiber line with the new path including intermediate points
-        const newPath = path.getArray(); // Get the path array after editing
-        return {
-          ...line,
-          from: { lat: newPath[0].lat(), lng: newPath[0].lng() }, // Update start point
-          to: {
-            lat: newPath[newPath.length - 1].lat(),
-            lng: newPath[newPath.length - 1].lng(),
-          }, // Update end point
-          path: newPath, // Update the entire path with new intermediate points
-        };
-      }
-      return line;
-    });
-
+    const updatedLines = mapState.fiberLines.map((line, i) =>
+      i === index
+        ? {
+            ...line,
+            from: { lat: path.getAt(0).lat(), lng: path.getAt(0).lng() },
+            to: {
+              lat: path.getAt(path.getLength() - 1).lat(),
+              lng: path.getAt(path.getLength() - 1).lng(),
+            },
+          }
+        : line
+    );
     setMapState((prevState) => ({
       ...prevState,
       fiberLines: updatedLines,
-      intermediatePoints: updatedLines.flatMap((line) =>
-        line.path.slice(1, -1)
-      ), // Extract intermediate points (excluding start and end)
     }));
   };
 
@@ -206,13 +190,8 @@ const MyMap = () => {
     const updatedLines = [...mapState.fiberLines];
     updatedLines[index].from = { lat: e.latLng.lat(), lng: e.latLng.lng() };
 
-    // Save intermediate points
     setMapState((prevState) => ({
       ...prevState,
-      intermediatePoints: [
-        ...prevState.intermediatePoints,
-        { lat: e.latLng.lat(), lng: e.latLng.lng() }, // Store the intermediate point
-      ],
       fiberLines: updatedLines,
     }));
   };
@@ -222,33 +201,20 @@ const MyMap = () => {
     const updatedLines = [...mapState.fiberLines];
     updatedLines[index].to = { lat: e.latLng.lat(), lng: e.latLng.lng() };
 
-    // Save intermediate points
     setMapState((prevState) => ({
       ...prevState,
-      intermediatePoints: [
-        ...prevState.intermediatePoints,
-        { lat: e.latLng.lat(), lng: e.latLng.lng() }, // Store the intermediate point
-      ],
       fiberLines: updatedLines,
     }));
   };
 
+  // Function to save the route after the state has updated
   const saveRoute = () => {
-    const updatedFiberLines = mapState.fiberLines.map((line) => {
-      // Ensure line.path is always an array
-      const path = Array.isArray(line.path) ? line.path : [];
+    // We need to access the current updated state here.
+    const updatedFiberLines = mapState.fiberLines.map((line) => ({
+      from: { ...line.from }, // Ensure a deep copy to prevent mutation issues
+      to: { ...line.to },
+    }));
 
-      // Integrate intermediate points into the polyline path
-      const fullPath = [...path, ...mapState.intermediatePoints];
-
-      return {
-        from: { ...line.from },
-        to: { ...line.to },
-        path: fullPath, // Save full path with intermediate points included
-      };
-    });
-
-    // Saving the fiber lines and image icons, as before
     const updatedImageIcons = mapState.imageIcons.map((icon) => ({
       lat: icon.lat,
       lng: icon.lng,
@@ -259,15 +225,15 @@ const MyMap = () => {
     const newRoute = {
       fiberLines: updatedFiberLines,
       imageIcons: updatedImageIcons,
-      intermediatePoints: [...mapState.intermediatePoints], // Ensure all intermediate points are saved
     };
 
+    // Save the new route into localStorage
     setMapState((prevState) => {
       const updatedRoutes = [...prevState.savedRoutes, newRoute];
-      localStorage.setItem("savedRoutes", JSON.stringify(updatedRoutes)); // Store the saved route in localStorage
+      localStorage.setItem("savedRoutes", JSON.stringify(updatedRoutes));
       return {
         ...prevState,
-        savedRoutes: updatedRoutes, // Update saved routes state
+        savedRoutes: updatedRoutes,
       };
     });
 
@@ -286,26 +252,8 @@ const MyMap = () => {
         imageIcons: showSaved
           ? prevState.savedRoutes.flatMap((route) => route.imageIcons)
           : [],
-        intermediatePoints: showSaved
-          ? prevState.savedRoutes.flatMap((route) => route.intermediatePoints)
-          : [], // Correctly load the intermediate points when showing saved routes
       };
     });
-  };
-
-  const handleIntermediatePointDragEnd = (index, e) => {
-    const updatedIntermediatePoints = [...mapState.intermediatePoints];
-    // Update the position of the dragged intermediate point
-    updatedIntermediatePoints[index] = {
-      lat: e.latLng.lat(),
-      lng: e.latLng.lng(),
-    };
-
-    // Update the state with the new intermediate points
-    setMapState((prevState) => ({
-      ...prevState,
-      intermediatePoints: updatedIntermediatePoints,
-    }));
   };
 
   useEffect(() => {
@@ -314,25 +262,15 @@ const MyMap = () => {
     setMapState((prevState) => ({
       ...prevState,
       savedRoutes: savedRoutes,
-      // Ensure intermediate points are correctly loaded from saved routes
-      intermediatePoints: savedRoutes.flatMap(
-        (route) => route.intermediatePoints
-      ),
     }));
-  }, []);
+  }, []); // Empty dependency array ensures this effect runs only once when the component mounts
+  
 
   useEffect(() => {
     // This effect will run every time mapState changes
     // You can check if changes occurred in the fiberLines or imageIcons
     console.log("State has been updated", mapState);
   }, [mapState]); // This will run whenever mapState changes
-
-  useEffect(() => {
-    console.log(
-      "Number of intermediate points:",
-      mapState.intermediatePoints.length
-    );
-  }, [mapState.intermediatePoints]); // This effect will run every time intermediatePoints changes
 
   const resetMap = () => {
     setMapState({
@@ -348,7 +286,6 @@ const MyMap = () => {
       rightClickMarker: null,
       fiberLines: [],
       imageIcons: [],
-      intermediatePoints: [],
     });
   };
 
@@ -408,7 +345,7 @@ const MyMap = () => {
               {route.fiberLines.map((line, lineIndex) => (
                 <PolylineF
                   key={`saved-fiber-${routeIndex}-${lineIndex}`} // Unique key
-                  path={[line.from, ...line.path, line.to]} // Include intermediate points in the path
+                  path={[line.from, line.to]}
                   options={{
                     strokeColor: "#0000FF",
                     strokeOpacity: 1.0,
@@ -424,20 +361,6 @@ const MyMap = () => {
                     url: iconImages[icon.type],
                     scaledSize: new google.maps.Size(30, 30),
                   }}
-                />
-              ))}
-              {route.intermediatePoints.map((point, pointIndex) => (
-                <MarkerF
-                  key={`saved-intermediate-point-${routeIndex}-${pointIndex}`} // Unique key for intermediate points
-                  position={{ lat: point.lat, lng: point.lng }}
-                  icon={{
-                    url: "/img/location.jpg", // Use your preferred icon
-                    scaledSize: new google.maps.Size(20, 20),
-                  }}
-                  draggable
-                  onDragEnd={(e) =>
-                    handleIntermediatePointDragEnd(pointIndex, e)
-                  } // Allow dragging of intermediate points
                 />
               ))}
             </React.Fragment>
@@ -544,4 +467,4 @@ const MyMap = () => {
   );
 };
 
-export default MyMap;
+export default MyMapV5;
