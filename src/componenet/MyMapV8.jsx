@@ -49,7 +49,7 @@ const mapStyles = [
   },
 ];
 
-const MyMap = () => {
+const MyMapV8 = () => {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
   });
@@ -62,6 +62,7 @@ const MyMap = () => {
   };
 
   const [mapState, setMapState] = useState({
+    // selectedPoints: [],
     savedRoutes: [],
     nextNumber: 1,
     selectedType: null,
@@ -70,11 +71,13 @@ const MyMap = () => {
     rightClickMarker: null,
     fiberLines: [],
     imageIcons: [],
+    // directions: null,
+    // totalDistance: null,
     showSavedRoutes: false,
+    // hoveredLineIndex: null,
     savedPolylines: [], // New field to store individually saved polylines
     selectedLine: null, // Added to track the selected line
     selectedLineId: null, // Added to track the selected line's unique ID
-    isSavedRoutesEditable: false, // New state to control editability of saved routes
   });
 
   const handleMapRightClick = useCallback(
@@ -357,34 +360,33 @@ const MyMap = () => {
     }));
   }, []);
 
- // Modify the togglePreviousRoutes to reset editability
- const togglePreviousRoutes = () => {
-  setMapState((prevState) => {
-    const showSaved = !prevState.showSavedRoutes;
-    return {
-      ...prevState,
-      showSavedRoutes: showSaved,
-      isSavedRoutesEditable: false,
-      fiberLines: showSaved
-        ? prevState.savedPolylines.map((polyline) => ({
-            from: polyline.from,
-            to: polyline.to,
-            id: polyline.id,
-            waypoints: polyline.waypoints || [],
-            strokeColor: "#0000FF",
-          }))
-        : [],
-      imageIcons: showSaved
-        ? prevState.savedIcons.map((icon) => ({
-            lat: icon.lat,
-            lng: icon.lng,
-            type: icon.type,
-            id: icon.id,
-          }))
-        : [],
-    };
-  });
-};
+  // Update togglePreviousRoutes to handle both polylines and icons
+  const togglePreviousRoutes = () => {
+    setMapState((prevState) => {
+      const showSaved = !prevState.showSavedRoutes;
+      return {
+        ...prevState,
+        showSavedRoutes: showSaved,
+        fiberLines: showSaved
+          ? prevState.savedPolylines.map((polyline) => ({
+              from: polyline.from,
+              to: polyline.to,
+              id: polyline.id,
+              waypoints: polyline.waypoints || [],
+              strokeColor: "#0000FF", // Add blue color for saved polylines
+            }))
+          : [],
+        imageIcons: showSaved
+          ? prevState.savedIcons.map((icon) => ({
+              lat: icon.lat,
+              lng: icon.lng,
+              type: icon.type,
+              id: icon.id,
+            }))
+          : [],
+      };
+    });
+  };
 
   useEffect(() => {
     // This effect will run every time mapState changes
@@ -434,9 +436,12 @@ const MyMap = () => {
 
   const resetMap = () => {
     setMapState({
+      // selectedPoints: [],
+      // directions: null,
       savedRoutes: mapState.savedRoutes,
       showSavedRoutes: false,
       nextNumber: 1,
+      // totalDistance: null,
       selectedType: null,
       showModal: false,
       selectedPoint: null,
@@ -444,126 +449,6 @@ const MyMap = () => {
       fiberLines: [],
       imageIcons: [],
     });
-  };
-
-  // Updated function to handle dragging saved icons
-  const handleSavedIconDragEnd = (iconId, e) => {
-    setMapState((prevState) => {
-      // Find and update the specific icon by its ID
-      const updatedSavedIcons = prevState.savedIcons.map(icon => 
-        icon.id === iconId 
-          ? { 
-              ...icon, 
-              lat: e.latLng.lat(), 
-              lng: e.latLng.lng() 
-            } 
-          : icon
-      );
-
-      // Update localStorage with the entire updated array
-      localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
-
-      return {
-        ...prevState,
-        savedIcons: updatedSavedIcons,
-        // Update imageIcons if saved routes are showing
-        imageIcons: prevState.showSavedRoutes 
-          ? updatedSavedIcons.map(icon => ({
-              lat: icon.lat,
-              lng: icon.lng,
-              type: icon.type,
-              id: icon.id
-            }))
-          : prevState.imageIcons,
-      };
-    });
-  };
-
-
-  // Updated function to handle dragging saved polyline points
-  const handleSavedPolylinePointDragEnd = (polylineId, pointType, e) => {
-    setMapState((prevState) => {
-      // Find and update the specific polyline by its ID
-      const updatedSavedPolylines = prevState.savedPolylines.map(polyline => 
-        polyline.id === polylineId 
-          ? { 
-              ...polyline, 
-              [pointType]: { 
-                lat: e.latLng.lat(), 
-                lng: e.latLng.lng() 
-              } 
-            } 
-          : polyline
-      );
-
-      // Update localStorage with the entire updated array
-      localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
-
-      return {
-        ...prevState,
-        savedPolylines: updatedSavedPolylines,
-        // Update fiberLines if saved routes are currently displayed
-        fiberLines: prevState.showSavedRoutes 
-          ? updatedSavedPolylines.map((polyline) => ({
-              from: polyline.from,
-              to: polyline.to,
-              id: polyline.id,
-              waypoints: polyline.waypoints || [],
-              strokeColor: "#0000FF",
-            }))
-          : prevState.fiberLines,
-      };
-    });
-  };
-
-
-  // Updated function to handle dragging saved polyline waypoints
-  const handleSavedPolylineWaypointDragEnd = (polylineId, waypointIndex, e) => {
-    setMapState((prevState) => {
-      // Find and update the specific polyline by its ID
-      const updatedSavedPolylines = prevState.savedPolylines.map(polyline => {
-        if (polyline.id === polylineId) {
-          // Create a new waypoints array with the updated waypoint
-          const updatedWaypoints = [...polyline.waypoints];
-          updatedWaypoints[waypointIndex] = {
-            lat: e.latLng.lat(),
-            lng: e.latLng.lng(),
-          };
-
-          return {
-            ...polyline,
-            waypoints: updatedWaypoints,
-          };
-        }
-        return polyline;
-      });
-
-      // Update localStorage with the entire updated array
-      localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
-
-      return {
-        ...prevState,
-        savedPolylines: updatedSavedPolylines,
-        // Update fiberLines if saved routes are currently displayed
-        fiberLines: prevState.showSavedRoutes 
-          ? updatedSavedPolylines.map((polyline) => ({
-              from: polyline.from,
-              to: polyline.to,
-              id: polyline.id,
-              waypoints: polyline.waypoints || [],
-              strokeColor: "#0000FF",
-            }))
-          : prevState.fiberLines,
-      };
-    });
-  };
-
-  // New function to toggle editability of saved routes
-  const toggleSavedRoutesEditability = () => {
-    setMapState((prevState) => ({
-      ...prevState,
-      isSavedRoutesEditable: !prevState.isSavedRoutesEditable,
-    }));
   };
 
   if (loadError) return <div>Error loading maps</div>;
@@ -579,13 +464,6 @@ const MyMap = () => {
             ? "Hide Previous Routes"
             : "Show Previous Routes"}
         </button>
-        {mapState.showSavedRoutes && (
-          <button onClick={toggleSavedRoutesEditability}>
-            {mapState.isSavedRoutesEditable
-              ? "Disable Editing Saved Routes"
-              : "Enable Editing Saved Routes"}
-          </button>
-        )}
       </div>
 
       <GoogleMap
@@ -776,10 +654,12 @@ const MyMap = () => {
                     selectedPoint: removeMarkerPosition,
                   }));
                 }}
+
                 onRightClick={(e) => {
                   // Reuse the existing handleRightClickOnLine method
                   handleRightClickOnLine(line, index, false, e);
                 }}
+
               />
             </React.Fragment>
           );
@@ -813,112 +693,6 @@ const MyMap = () => {
                   <MarkerF
                     key={`saved-waypoint-${index}-${waypointIndex}`}
                     position={waypoint}
-                    icon={{
-                      url: "/img/location.jpg",
-                      scaledSize: new google.maps.Size(15, 15),
-                    }}
-                  />
-                ))}
-              </React.Fragment>
-            );
-          })}
-
-        {/* Saved Icons with Drag Functionality */}
-        {mapState.showSavedRoutes &&
-          mapState.savedIcons.map((icon) => (
-            <MarkerF
-              key={icon.id || `saved-icon-${index}`}
-              position={{ lat: icon.lat, lng: icon.lng }}
-              icon={{
-                url: iconImages[icon.type],
-                scaledSize: new google.maps.Size(30, 30),
-              }}
-              draggable={mapState.isSavedRoutesEditable}
-              onDragEnd={
-                mapState.isSavedRoutesEditable
-                  ? (e) => handleSavedIconDragEnd(icon.id, e)
-                  : undefined
-              }
-            />
-          ))}
-
-        {/* Saved Polylines with Editable Waypoints */}
-        {mapState.showSavedRoutes &&
-          mapState.savedPolylines.map((polyline, polylineIndex) => {
-            const fullPath = [
-              polyline.from,
-              ...(polyline.waypoints || []),
-              polyline.to,
-            ];
-
-            return (
-              <React.Fragment
-                key={polyline.id || `saved-polyline-${polylineIndex}`}
-              >
-                <PolylineF
-                  path={fullPath}
-                  options={{
-                    strokeColor: "#0000FF",
-                    strokeOpacity: 1.0,
-                    strokeWeight: 2,
-                  }}
-                />
-
-                {/* Start and End Markers */}
-                <MarkerF
-                  position={polyline.from}
-                  draggable={mapState.isSavedRoutesEditable}
-                  onDragEnd={
-                    mapState.isSavedRoutesEditable
-                      ? (e) =>
-                          handleSavedPolylinePointDragEnd(
-                            polyline.id,
-                            "from",
-                            e
-                          )
-                      : undefined
-                  }
-                  icon={{
-                    url: "/img/location.jpg",
-                    scaledSize: new google.maps.Size(20, 20),
-                  }}
-                />
-
-                <MarkerF
-                  position={polyline.to}
-                  draggable={mapState.isSavedRoutesEditable}
-                  onDragEnd={
-                    mapState.isSavedRoutesEditable
-                      ? (e) =>
-                          handleSavedPolylinePointDragEnd(
-                            polyline.id,
-                            "to",
-                            e
-                          )
-                      : undefined
-                  }
-                  icon={{
-                    url: "/img/location.jpg",
-                    scaledSize: new google.maps.Size(20, 20),
-                  }}
-                />
-
-                {/* Waypoint Markers */}
-                {(polyline.waypoints || []).map((waypoint, waypointIndex) => (
-                  <MarkerF
-                    key={`saved-waypoint-${polylineIndex}-${waypointIndex}`}
-                    position={waypoint}
-                    draggable={mapState.isSavedRoutesEditable}
-                    onDragEnd={
-                      mapState.isSavedRoutesEditable
-                        ? (e) =>
-                            handleSavedPolylineWaypointDragEnd(
-                              polyline.id,
-                              waypointIndex,
-                              e
-                            )
-                        : undefined
-                    }
                     icon={{
                       url: "/img/location.jpg",
                       scaledSize: new google.maps.Size(15, 15),
@@ -981,4 +755,4 @@ const MyMap = () => {
   );
 };
 
-export default MyMap;
+export default MyMapV8;
