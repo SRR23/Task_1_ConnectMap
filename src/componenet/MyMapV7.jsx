@@ -6,7 +6,7 @@ import {
   PolylineF,
 } from "@react-google-maps/api";
 
-import { Trash2, Plus } from "lucide-react"; // Import delete icon
+import { Trash2 } from "lucide-react"; // Import delete icon
 
 const containerStyle = { width: "100%", height: "600px" };
 const center = { lat: 23.685, lng: 90.3563 };
@@ -49,7 +49,7 @@ const mapStyles = [
   },
 ];
 
-const MyMap = () => {
+const MyMapV7 = () => {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
   });
@@ -74,7 +74,7 @@ const MyMap = () => {
     // directions: null,
     // totalDistance: null,
     showSavedRoutes: false,
-    // hoveredLineIndex: null,
+    // hoveredLineIndex: null, 
     savedPolylines: [], // New field to store individually saved polylines
     selectedLine: null, // Added to track the selected line
     selectedLineId: null, // Added to track the selected line's unique ID
@@ -178,17 +178,17 @@ const MyMap = () => {
       lng: rightClickMarker.lng + 0.001,
     };
 
-    // Initial waypoint between start and end
-    // const initialWaypoint = {
-    //   lat: (fiberLineStart.lat + fiberLineEnd.lat) / 2,
-    //   lng: (fiberLineStart.lng + fiberLineEnd.lng) / 2,
-    // };
+    // Calculate an intermediate waypoint
+    const waypoint = {
+      lat: (fiberLineStart.lat + fiberLineEnd.lat) / 2,
+      lng: (fiberLineStart.lng + fiberLineEnd.lng) / 2,
+    };
 
     const newFiberLine = {
       id: mapState.fiberLines.length,
       from: fiberLineStart,
       to: fiberLineEnd,
-      waypoints: [], // Add initial waypoint
+      waypoints: [waypoint], // Add initial waypoint
     };
 
     setMapState((prevState) => ({
@@ -200,35 +200,23 @@ const MyMap = () => {
     }));
   };
 
-  // New function to add a waypoint to a specific line
-  const addWaypoint = (lineIndex) => {
-    setMapState((prevState) => {
-      const updatedLines = prevState.fiberLines.map((line, index) => {
-        if (index === lineIndex) {
-          // Calculate the midpoint of the last waypoint (or start/end if no waypoints)
-          const lastPoint =
-            line.waypoints.length > 0
-              ? line.waypoints[line.waypoints.length - 1]
-              : line.to;
-
-          const midpoint = {
-            lat: (line.from.lat + lastPoint.lat) / 2,
-            lng: (line.from.lng + lastPoint.lng) / 2,
-          };
-
-          return {
+  const handlePolylineEdit = (index, path) => {
+    const updatedLines = mapState.fiberLines.map((line, i) =>
+      i === index
+        ? {
             ...line,
-            waypoints: [...line.waypoints, midpoint],
-          };
-        }
-        return line;
-      });
-
-      return {
-        ...prevState,
-        fiberLines: updatedLines,
-      };
-    });
+            from: { lat: path.getAt(0).lat(), lng: path.getAt(0).lng() },
+            to: {
+              lat: path.getAt(path.getLength() - 1).lat(),
+              lng: path.getAt(path.getLength() - 1).lng(),
+            },
+          }
+        : line
+    );
+    setMapState((prevState) => ({
+      ...prevState,
+      fiberLines: updatedLines,
+    }));
   };
 
   // Handle dragging of the start marker (line.from)
@@ -253,7 +241,8 @@ const MyMap = () => {
     }));
   };
 
-  // Modify handleWaypointDragEnd to be more flexible
+
+  // New function to handle waypoint addition and movement
   const handleWaypointDragEnd = (lineIndex, waypointIndex, e) => {
     setMapState((prevState) => {
       const updatedLines = prevState.fiberLines.map((line, index) => {
@@ -284,28 +273,23 @@ const MyMap = () => {
     if (mapState.fiberLines.length > 0) {
       const polylinesToSave = mapState.fiberLines.map((line, index) => ({
         id: `polyline-${Date.now()}-${index}`,
-        from: { ...line.from },
+        from: { ...line.from }, 
         to: { ...line.to },
-        // waypoints: line.waypoints || [],
-        waypoints: line.waypoints ? [...line.waypoints] : [], // Ensure waypoints are copied
+        waypoints: line.waypoints || [], // Save waypoints
         createdAt: new Date().toISOString(),
         strokeColor: "#0000FF", // Ensure blue color when saving
       }));
 
-      const savedPolylines =
-        JSON.parse(localStorage.getItem("savedPolylines")) || [];
+      const savedPolylines = JSON.parse(localStorage.getItem("savedPolylines")) || [];
       const updatedSavedPolylines = [...savedPolylines, ...polylinesToSave];
-      localStorage.setItem(
-        "savedPolylines",
-        JSON.stringify(updatedSavedPolylines)
-      );
+      localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
 
       setMapState((prevState) => ({
         ...prevState,
         savedPolylines: updatedSavedPolylines,
         // Automatically show saved routes and update the state
         showSavedRoutes: true,
-        fiberLines: updatedSavedPolylines.map((polyline) => ({
+        fiberLines: updatedSavedPolylines.map(polyline => ({
           from: polyline.from,
           to: polyline.to,
           id: polyline.id,
@@ -333,11 +317,11 @@ const MyMap = () => {
         ...prevState,
         savedIcons: updatedSavedIcons,
         // Automatically show saved icons
-        imageIcons: updatedSavedIcons.map((icon) => ({
+        imageIcons: updatedSavedIcons.map(icon => ({
           lat: icon.lat,
           lng: icon.lng,
           type: icon.type,
-          id: icon.id,
+          id: icon.id
         })),
       }));
     }
@@ -350,12 +334,12 @@ const MyMap = () => {
     }
   };
 
+
   // Modify useEffect to load both saved polylines and icons
   useEffect(() => {
     // Load saved polylines from localStorage
-    const savedPolylines =
-      JSON.parse(localStorage.getItem("savedPolylines")) || [];
-
+    const savedPolylines = JSON.parse(localStorage.getItem("savedPolylines")) || [];
+    
     // Load saved icons from localStorage
     const savedIcons = JSON.parse(localStorage.getItem("savedIcons")) || [];
 
@@ -374,31 +358,34 @@ const MyMap = () => {
         ...prevState,
         showSavedRoutes: showSaved,
         fiberLines: showSaved
-          ? prevState.savedPolylines.map((polyline) => ({
+          ? prevState.savedPolylines.map(polyline => ({
               from: polyline.from,
               to: polyline.to,
               id: polyline.id,
               waypoints: polyline.waypoints || [],
-              strokeColor: "#0000FF", // Add blue color for saved polylines
+              strokeColor: "#0000FF" // Add blue color for saved polylines
             }))
           : [],
         imageIcons: showSaved
-          ? prevState.savedIcons.map((icon) => ({
+          ? prevState.savedIcons.map(icon => ({
               lat: icon.lat,
               lng: icon.lng,
               type: icon.type,
-              id: icon.id,
+              id: icon.id
             }))
           : [],
       };
     });
   };
 
+
+
   useEffect(() => {
     // This effect will run every time mapState changes
     // You can check if changes occurred in the fiberLines or imageIcons
     console.log("State has been updated", mapState);
   }, [mapState]); // This will run whenever mapState changes
+
 
   // Updated removeSelectedLine to handle both current and saved polylines
   const removeSelectedLine = () => {
@@ -413,17 +400,13 @@ const MyMap = () => {
     );
 
     // Remove from savedPolylines in localStorage
-    const savedPolylines =
-      JSON.parse(localStorage.getItem("savedPolylines")) || [];
+    const savedPolylines = JSON.parse(localStorage.getItem("savedPolylines")) || [];
     const updatedSavedPolylines = savedPolylines.filter(
       (polyline) => polyline.id !== mapState.selectedLineId
     );
-
+    
     // Update localStorage
-    localStorage.setItem(
-      "savedPolylines",
-      JSON.stringify(updatedSavedPolylines)
-    );
+    localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
 
     // Update state
     setMapState((prevState) => ({
@@ -520,9 +503,28 @@ const MyMap = () => {
             />
           ))}
 
+        {/* Saved Polylines */}
+        {/* {mapState.showSavedRoutes &&
+          mapState.savedPolylines.map((polyline, index) => (
+            <PolylineF
+              key={polyline.id || `saved-polyline-${index}`}
+              path={[polyline.from, polyline.to]}
+              options={{
+                strokeColor: "#0000FF",
+                strokeOpacity: 1.0,
+                strokeWeight: 2,
+              }}
+              onRightClick={(e) => handleRightClickOnLine(polyline, index, true, e)}
+            />
+          ))} */}
+
         {/* Current Fiber Lines with Waypoints */}
         {mapState.fiberLines.map((line, index) => {
-          const fullPath = [line.from, ...(line.waypoints || []), line.to];
+          const fullPath = [
+            line.from, 
+            ...(line.waypoints || []), 
+            line.to
+          ];
 
           return (
             <React.Fragment key={line.id || `fiber-line-${index}`}>
@@ -532,74 +534,23 @@ const MyMap = () => {
                   strokeColor: line.strokeColor || "#FF0000",
                   strokeOpacity: 1.0,
                   strokeWeight: 2,
-                  editable: false,
+                  editable: true,
                 }}
-                onRightClick={(e) =>
-                  handleRightClickOnLine(line, index, false, e)
-                }
-              />
-
-              {/* Single Plus Icon for Adding Waypoint */}
-              {/* {line.waypoints && line.waypoints.length > 0 && (
-                <MarkerF
-                  position={{
-                    lat: (line.from.lat + line.to.lat) / 2,
-                    lng: (line.from.lng + line.to.lng) / 2,
-                  }}
-                  icon={{
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 7,
-                    fillColor: "#4285F4",
-                    fillOpacity: 1,
-                    strokeWeight: 2,
-                    strokeColor: "white",
-                  }}
-                  label={{
-                    text: "+",
-                    color: "white",
-                    fontWeight: "bold",
-                  }}
-                  onClick={() => addWaypoint(index)}
-                />
-              )} */}
-
-              {/* Single Plus Icon for Adding Waypoint */}
-              <MarkerF
-                position={{
-                  lat: (line.from.lat + line.to.lat) / 2,
-                  lng: (line.from.lng + line.to.lng) / 2,
-                }}
-                icon={{
-                  path: google.maps.SymbolPath.CIRCLE,
-                  scale: 7,
-                  fillColor: "#4285F4",
-                  fillOpacity: 1,
-                  strokeWeight: 2,
-                  strokeColor: "white",
-                }}
-                label={{
-                  text: "+",
-                  color: "white",
-                  fontWeight: "bold",
-                }}
-                onClick={() => addWaypoint(index)}
+                onRightClick={(e) => handleRightClickOnLine(line, index, false, e)}
               />
 
               {/* Waypoint Markers with Drag Functionality */}
               {(line.waypoints || []).map((waypoint, waypointIndex) => (
-                <React.Fragment key={`waypoint-${index}-${waypointIndex}`}>
-                  <MarkerF
-                    position={waypoint}
-                    draggable
-                    onDragEnd={(e) =>
-                      handleWaypointDragEnd(index, waypointIndex, e)
-                    }
-                    icon={{
-                      url: "/img/location.jpg",
-                      scaledSize: new google.maps.Size(15, 15),
-                    }}
-                  />
-                </React.Fragment>
+                <MarkerF
+                  key={`waypoint-${index}-${waypointIndex}`}
+                  position={waypoint}
+                  draggable
+                  onDragEnd={(e) => handleWaypointDragEnd(index, waypointIndex, e)}
+                  icon={{
+                    url: "/img/location.jpg",
+                    scaledSize: new google.maps.Size(15, 15),
+                  }}
+                />
               ))}
 
               {/* Start and End Markers */}
@@ -612,7 +563,6 @@ const MyMap = () => {
                   scaledSize: new google.maps.Size(20, 20),
                 }}
               />
-
               <MarkerF
                 position={line.to}
                 draggable
@@ -626,13 +576,14 @@ const MyMap = () => {
           );
         })}
 
+
         {/* Saved Polylines with Waypoints */}
         {mapState.showSavedRoutes &&
           mapState.savedPolylines.map((polyline, index) => {
             const fullPath = [
               polyline.from,
               ...(polyline.waypoints || []),
-              polyline.to,
+              polyline.to
             ];
 
             return (
@@ -644,9 +595,7 @@ const MyMap = () => {
                     strokeOpacity: 1.0,
                     strokeWeight: 2,
                   }}
-                  onRightClick={(e) =>
-                    handleRightClickOnLine(polyline, index, true, e)
-                  }
+                  onRightClick={(e) => handleRightClickOnLine(polyline, index, true, e)}
                 />
 
                 {/* Waypoint Markers for Saved Polylines */}
@@ -663,6 +612,7 @@ const MyMap = () => {
               </React.Fragment>
             );
           })}
+
       </GoogleMap>
 
       {mapState.showModal && mapState.selectedPoint && (
@@ -716,4 +666,4 @@ const MyMap = () => {
   );
 };
 
-export default MyMap;
+export default MyMapV7;
