@@ -49,7 +49,7 @@ const mapStyles = [
   },
 ];
 
-const MyMap = () => {
+const MyMap9 = () => {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
   });
@@ -310,22 +310,21 @@ const MyMap = () => {
         JSON.stringify(updatedSavedPolylines)
       );
 
-       setMapState((prevState) => ({
-        ...prevState,
-        savedPolylines: updatedSavedPolylines,
-        showSavedRoutes: true,
-        fiberLines: updatedSavedPolylines.map((polyline) => ({
-          ...polyline,
-          strokeColor: "#0000FF",
-        })),
-      }));
-
       // setMapState((prevState) => ({
       //   ...prevState,
       //   savedPolylines: updatedSavedPolylines,
       //   showSavedRoutes: true,
-      //   fiberLines: [],
+      //   fiberLines: updatedSavedPolylines.map((polyline) => ({
+      //     ...polyline,
+      //     strokeColor: "#0000FF",
+      //   })),
       // }));
+      setMapState((prevState) => ({
+        ...prevState,
+        savedPolylines: updatedSavedPolylines,
+        showSavedRoutes: true,
+        fiberLines: [], // Clear current lines after saving
+      }));
     }
 
     // Save icons (existing logic remains the same)
@@ -535,6 +534,60 @@ const MyMap = () => {
       };
     });
   };
+
+  // const handleSavedPolylineWaypointDragEnd = (polylineId, waypointIndex, e) => {
+  //   setMapState((prevState) => {
+  //     // Find the specific polyline
+  //     const polylineToUpdate = prevState.savedPolylines.find(
+  //       polyline => polyline.id === polylineId
+  //     );
+
+  //     if (!polylineToUpdate) return prevState;
+
+  //     // Get the original waypoint
+  //     const originalWaypoint = polylineToUpdate.waypoints[waypointIndex];
+  //     const newWaypoint = {
+  //       lat: e.latLng.lat(),
+  //       lng: e.latLng.lng()
+  //     };
+
+  //     // Update the polylines
+  //     const updatedSavedPolylines = prevState.savedPolylines.map(polyline => {
+  //       if (polyline.id === polylineId) {
+  //         // Create a new waypoints array
+  //         const updatedWaypoints = [...(polyline.waypoints || [])];
+
+  //         // Update the specific waypoint
+  //         updatedWaypoints[waypointIndex] = newWaypoint;
+
+  //         return {
+  //           ...polyline,
+  //           waypoints: updatedWaypoints,
+  //         };
+  //       }
+  //       return polyline;
+  //     });
+
+  //     // Update localStorage with the entire updated array
+  //     localStorage.setItem(
+  //       "savedPolylines",
+  //       JSON.stringify(updatedSavedPolylines)
+  //     );
+
+  //     return {
+  //       ...prevState,
+  //       savedPolylines: updatedSavedPolylines,
+  //       // Directly use the updated polylines when saved routes are showing
+  //       // Explicitly remove any potential shadow lines
+  //       fiberLines: prevState.showSavedRoutes
+  //         ? updatedSavedPolylines.map((polyline) => ({
+  //             ...polyline,
+  //             strokeColor: "#0000FF",
+  //           }))
+  //         : prevState.fiberLines,
+  //     };
+  //   });
+  // };
 
   const handleSavedPolylineWaypointDragEnd = (polylineId, waypointIndex, e) => {
     setMapState((prevState) => {
@@ -999,4 +1052,4 @@ const MyMap = () => {
   );
 };
 
-export default MyMap;
+export default MyMap9;
