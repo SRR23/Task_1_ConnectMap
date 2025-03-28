@@ -75,6 +75,9 @@ const MyMap = () => {
     selectedLine: null, // Added to track the selected line
     selectedLineId: null, // Added to track the selected line's unique ID
     isSavedRoutesEditable: false, // New state to control editability of saved route
+    selectedLineForActions: null, // New state to track the line for floating actions
+    lineActionPosition: null, // New state to track the position of line action window
+    exactClickPosition: null, // New state to store exact click position
   });
 
   const handleMapRightClick = useCallback(
@@ -125,25 +128,142 @@ const MyMap = () => {
     }));
   };
 
-  // Modified handleRightClickOnLine to work with both current and saved polylines
-  const handleRightClickOnLine = (line, index, isSavedLine = false, e) => {
-    e.domEvent.preventDefault();
-    const clickedPoint = {
-      lat: e.latLng.lat(),
-      lng: e.latLng.lng(),
-      x: e.domEvent.clientX,
-      y: e.domEvent.clientY,
-    };
 
-    setMapState((prevState) => ({
-      ...prevState,
-      selectedLine: index,
-      selectedLineId: line.id, // Store the unique ID of the selected line
-      selectedPoint: clickedPoint,
-      showModal: true,
-    }));
+  const handleLineClick = (line, index, isSavedLine = false, e) => {
+    // Prevent default context menu
+    if (e.domEvent) {
+      e.domEvent.preventDefault();
+    }
 
-    console.log("Selected Line:", line, "Index:", index);
+    // Only proceed if:
+    // 1. It's a saved line AND saved routes are being shown
+    // 2. Saved routes are editable OR this is a current (non-saved) line
+    if (
+      (!isSavedLine || 
+        (mapState.showSavedRoutes && 
+         (mapState.isSavedRoutesEditable || !isSavedLine)))
+    ) {
+      // Get the exact latitude and longitude of the click
+      const clickedLatLng = e.latLng;
+
+      // Use clientX and clientY from the DOM event for screen positioning
+      const x = e.domEvent.clientX;
+      const y = e.domEvent.clientY;
+
+      setMapState((prevState) => ({
+        ...prevState,
+        selectedLineForActions: {
+          line,
+          index,
+          isSavedLine,
+        },
+        lineActionPosition: {
+          lat: clickedLatLng.lat(),
+          lng: clickedLatLng.lng(),
+          x: x,
+          y: y,
+        },
+        exactClickPosition: {
+          lat: clickedLatLng.lat(),
+          lng: clickedLatLng.lng(),
+          x: x,
+          y: y,
+        },
+      }));
+    }
+  };
+
+  // Modify existing methods to work with the new line action system
+  const addWaypoint = () => {
+    if (!mapState.selectedLineForActions) return;
+
+    const { line, index, isSavedLine } = mapState.selectedLineForActions;
+
+    setMapState((prevState) => {
+      const updatedLines = isSavedLine
+        ? prevState.savedPolylines
+        : prevState.fiberLines;
+
+      const updatedLinesWithWaypoint = updatedLines.map(
+        (currentLine, currentIndex) => {
+          if (currentIndex === index) {
+            // Calculate midpoint logic remains the same
+            const lastPoint =
+              currentLine.waypoints && currentLine.waypoints.length > 0
+                ? currentLine.waypoints[currentLine.waypoints.length - 1]
+                : currentLine.to;
+
+            const midpoint = {
+              lat: (currentLine.from.lat + lastPoint.lat) / 2,
+              lng: (currentLine.from.lng + lastPoint.lng) / 2,
+            };
+
+            const updatedWaypoints = currentLine.waypoints
+              ? [...currentLine.waypoints, midpoint]
+              : [midpoint];
+
+            return {
+              ...currentLine,
+              waypoints: updatedWaypoints,
+            };
+          }
+          return currentLine;
+        }
+      );
+
+      // Update the correct state based on whether it's a saved or current line
+      return {
+        ...prevState,
+        ...(isSavedLine
+          ? { savedPolylines: updatedLinesWithWaypoint }
+          : { fiberLines: updatedLinesWithWaypoint }),
+        selectedLineForActions: null,
+        lineActionPosition: null,
+      };
+    });
+  };
+
+  const removeSelectedLine = () => {
+    if (!mapState.selectedLineForActions) return;
+
+    const { line, index, isSavedLine } = mapState.selectedLineForActions;
+
+    if (isSavedLine) {
+      // Remove from savedPolylines in localStorage
+      const savedPolylines =
+        JSON.parse(localStorage.getItem("savedPolylines")) || [];
+      const updatedSavedPolylines = savedPolylines.filter(
+        (polyline) => polyline.id !== line.id
+      );
+
+      // Update localStorage
+      localStorage.setItem(
+        "savedPolylines",
+        JSON.stringify(updatedSavedPolylines)
+      );
+
+      setMapState((prevState) => ({
+        ...prevState,
+        savedPolylines: updatedSavedPolylines,
+        selectedLineForActions: null,
+        lineActionPosition: null,
+        fiberLines: prevState.showSavedRoutes
+          ? updatedSavedPolylines
+          : prevState.fiberLines,
+      }));
+    } else {
+      // Remove from current fiberLines
+      const updatedFiberLines = mapState.fiberLines.filter(
+        (currentLine) => currentLine.id !== line.id
+      );
+
+      setMapState((prevState) => ({
+        ...prevState,
+        fiberLines: updatedFiberLines,
+        selectedLineForActions: null,
+        lineActionPosition: null,
+      }));
+    }
   };
 
   const handleMarkerDragEnd = (index, e) => {
@@ -193,41 +313,6 @@ const MyMap = () => {
       selectedPoint: null,
       rightClickMarker: null,
     }));
-  };
-
-  const addWaypoint = (lineIndex) => {
-    setMapState((prevState) => {
-      const updatedLines = prevState.fiberLines.map((line, index) => {
-        if (index === lineIndex) {
-          // Calculate the midpoint of the last waypoint (or start/end if no waypoints)
-          const lastPoint =
-            line.waypoints && line.waypoints.length > 0
-              ? line.waypoints[line.waypoints.length - 1]
-              : line.to;
-
-          const midpoint = {
-            lat: (line.from.lat + lastPoint.lat) / 2,
-            lng: (line.from.lng + lastPoint.lng) / 2,
-          };
-
-          // Create a new array of waypoints, preserving the existing ones
-          const updatedWaypoints = line.waypoints
-            ? [...line.waypoints, midpoint]
-            : [midpoint];
-
-          return {
-            ...line,
-            waypoints: updatedWaypoints,
-          };
-        }
-        return line;
-      });
-
-      return {
-        ...prevState,
-        fiberLines: updatedLines,
-      };
-    });
   };
 
   // Handle dragging of the start marker (line.from)
@@ -310,7 +395,7 @@ const MyMap = () => {
         JSON.stringify(updatedSavedPolylines)
       );
 
-       setMapState((prevState) => ({
+      setMapState((prevState) => ({
         ...prevState,
         savedPolylines: updatedSavedPolylines,
         showSavedRoutes: true,
@@ -319,13 +404,6 @@ const MyMap = () => {
           strokeColor: "#0000FF",
         })),
       }));
-
-      // setMapState((prevState) => ({
-      //   ...prevState,
-      //   savedPolylines: updatedSavedPolylines,
-      //   showSavedRoutes: true,
-      //   fiberLines: [],
-      // }));
     }
 
     // Save icons (existing logic remains the same)
@@ -410,42 +488,6 @@ const MyMap = () => {
     console.log("State has been updated", mapState);
   }, [mapState]); // This will run whenever mapState changes
 
-  // Updated removeSelectedLine to handle both current and saved polylines
-  const removeSelectedLine = () => {
-    if (mapState.selectedLineId === null) {
-      console.log("No line selected for deletion.");
-      return;
-    }
-  
-    // Remove from current fiberLines
-    const updatedFiberLines = mapState.fiberLines.filter(
-      (line) => line.id !== mapState.selectedLineId
-    );
-  
-    // Remove from savedPolylines in localStorage
-    const savedPolylines =
-      JSON.parse(localStorage.getItem("savedPolylines")) || [];
-    const updatedSavedPolylines = savedPolylines.filter(
-      (polyline) => polyline.id !== mapState.selectedLineId
-    );
-  
-    // Update localStorage
-    localStorage.setItem(
-      "savedPolylines", 
-      JSON.stringify(updatedSavedPolylines)
-    );
-  
-    // Update state
-    setMapState((prevState) => ({
-      ...prevState,
-      fiberLines: updatedFiberLines,
-      savedPolylines: updatedSavedPolylines,
-      selectedLine: null,
-      selectedLineId: null,
-      showModal: false,
-    }));
-  };
-
   useEffect(() => {
     console.log("Selected Line:", mapState.selectedLine);
   }, [mapState.selectedLine]);
@@ -477,10 +519,10 @@ const MyMap = () => {
             }
           : icon
       );
-  
+
       // Update localStorage with the entire updated array
       localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
-  
+
       return {
         ...prevState,
         savedIcons: updatedSavedIcons,
@@ -660,45 +702,6 @@ const MyMap = () => {
         {mapState.fiberLines.map((line, index) => {
           const fullPath = [line.from, ...(line.waypoints || []), line.to];
 
-          // Calculate a point that's 1/3 of the way along the line
-          const calculateIntermediatePoint = (start, end) => ({
-            lat: start.lat + (end.lat - start.lat) * 0.33,
-            lng: start.lng + (end.lng - start.lng) * 0.33,
-          });
-
-          // For lines with waypoints, place the plus icon before the first waypoint
-          // For lines without waypoints, place it 1/3 of the way along the line
-          const plusIconPosition =
-            line.waypoints && line.waypoints.length > 0
-              ? calculateIntermediatePoint(line.from, line.waypoints[0])
-              : calculateIntermediatePoint(line.from, line.to);
-
-          // Calculate remove marker position dynamically considering waypoints
-          const calculateRemoveMarkerPosition = () => {
-            // If there are waypoints, use second to last point as reference
-            if (line.waypoints && line.waypoints.length > 0) {
-              const secondToLastPoint =
-                line.waypoints[line.waypoints.length - 1];
-              return {
-                lat:
-                  secondToLastPoint.lat +
-                  (line.to.lat - secondToLastPoint.lat) * 0.8,
-                lng:
-                  secondToLastPoint.lng +
-                  (line.to.lng - secondToLastPoint.lng) * 0.8,
-              };
-            }
-
-            // If no waypoints, calculate between from and to
-            return {
-              lat: line.from.lat + (line.to.lat - line.from.lat) * 0.8,
-              lng: line.from.lng + (line.to.lng - line.from.lng) * 0.8,
-            };
-          };
-
-          // Calculate remove marker position
-          const removeMarkerPosition = calculateRemoveMarkerPosition();
-
           return (
             <React.Fragment key={line.id || `fiber-line-${index}`}>
               <PolylineF
@@ -709,29 +712,51 @@ const MyMap = () => {
                   strokeWeight: 2,
                   editable: false,
                 }}
-                onRightClick={(e) =>
-                  handleRightClickOnLine(line, index, false, e)
-                }
+                onClick={(e) => handleLineClick(line, index, false, e)}
               />
 
-              {/* Single Plus Icon for Adding Waypoint */}
-              <MarkerF
-                position={plusIconPosition}
-                icon={{
-                  path: google.maps.SymbolPath.CIRCLE,
-                  scale: 7,
-                  fillColor: "#4285F4",
-                  fillOpacity: 1,
-                  strokeWeight: 2,
-                  strokeColor: "white",
-                }}
-                label={{
-                  text: "+",
-                  color: "white",
-                  fontWeight: "bold",
-                }}
-                onClick={() => addWaypoint(index)}
-              />
+              {/* This is the existing floating modal in your code, slightly refined */}
+              {mapState.selectedLineForActions &&
+                mapState.exactClickPosition && (
+                  <div
+                    className="line-action-modal"
+                    style={{
+                      top: `${mapState.exactClickPosition.y - 95}px`,
+                      left: `${mapState.exactClickPosition.x}px`,
+                      transform: "translateX(-50%)",
+                    }}
+                  >
+                    <div className="line-action-item" onClick={addWaypoint}>
+                      <Plus size={20} className="text-gray-600" />
+                      <span className="line-action-tooltip">Add Waypoint</span>
+                    </div>
+
+                    <div
+                      className="line-action-item"
+                      onClick={removeSelectedLine}
+                    >
+                      <Trash2 size={20} className="text-red-500" />
+                      <span className="line-action-tooltip">Delete Line</span>
+                    </div>
+
+                    <div
+                      className="line-action-item"
+                      onClick={() =>
+                        setMapState((prev) => ({
+                          ...prev,
+                          selectedLineForActions: null,
+                          lineActionPosition: null,
+                          exactClickPosition: null,
+                        }))
+                      }
+                    >
+                      <span className="line-action-close">&times;</span>
+                      <span className="line-action-tooltip">Close</span>
+                    </div>
+
+                    <div className="modal-spike"></div>
+                  </div>
+                )}
 
               {/* Waypoint Markers with Drag Functionality */}
               {(line.waypoints || []).map((waypoint, waypointIndex) => (
@@ -770,37 +795,6 @@ const MyMap = () => {
                   scaledSize: new google.maps.Size(20, 20),
                 }}
               />
-
-              {/* Remove Line Marker */}
-              <MarkerF
-                position={removeMarkerPosition}
-                icon={{
-                  path: google.maps.SymbolPath.CIRCLE,
-                  scale: 10,
-                  fillColor: "#FF0000",
-                  fillOpacity: 0.7,
-                  strokeWeight: 2,
-                  strokeColor: "white",
-                }}
-                label={{
-                  text: "🗑️",
-                  color: "white",
-                  fontSize: "12px",
-                }}
-                onClick={() => {
-                  // Set the selected line for removal
-                  setMapState((prevState) => ({
-                    ...prevState,
-                    selectedLineId: line.id,
-                    showModal: true,
-                    selectedPoint: removeMarkerPosition,
-                  }));
-                }}
-                onRightClick={(e) => {
-                  // Reuse the existing handleRightClickOnLine method
-                  handleRightClickOnLine(line, index, false, e);
-                }}
-              />
             </React.Fragment>
           );
         })}
@@ -825,9 +819,7 @@ const MyMap = () => {
                     strokeOpacity: 1.0,
                     strokeWeight: 2,
                   }}
-                  onRightClick={(e) =>
-                    handleRightClickOnLine(polyline, index, true, e)
-                  }
+                  onClick={(e) => handleLineClick(polyline, index, true, e)}
                 />
 
                 {/* Waypoint Markers for Saved Polylines */}
@@ -884,6 +876,7 @@ const MyMap = () => {
                     strokeOpacity: 1.0,
                     strokeWeight: 2,
                   }}
+                  onClick={(e) => handleLineClick(polyline, polylineIndex, true, e)}
                 />
 
                 {/* Start and End Markers */}
@@ -953,7 +946,7 @@ const MyMap = () => {
           className="modal"
           style={{
             top: `${mapState.selectedPoint.y - 110}px`,
-            left: `${mapState.selectedPoint.x - 238}px`,
+            left: `${mapState.selectedPoint.x - 210}px`,
           }}
         >
           <button
@@ -987,9 +980,9 @@ const MyMap = () => {
             </button>
 
             {/* New Remove Button */}
-            <button className="modal-button" onClick={removeSelectedLine}>
+            {/* <button className="modal-button" onClick={removeSelectedLine}>
               <Trash2 size={20} />
-            </button>
+            </button> */}
           </div>
 
           <div className="modal-spike"></div>
