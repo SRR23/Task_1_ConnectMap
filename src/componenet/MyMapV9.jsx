@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   GoogleMap,
   useLoadScript,
@@ -54,6 +54,8 @@ const MyMapV9 = () => {
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
   });
 
+  const fileInputRef = useRef(null);
+
   const iconImages = {
     BTS: "/img/BTS.png",
     Termination: "/img/Termination.png",
@@ -78,6 +80,9 @@ const MyMapV9 = () => {
     selectedLineForActions: null, // New state to track the line for floating actions
     lineActionPosition: null, // New state to track the position of line action window
     exactClickPosition: null, // New state to store exact click position
+    selectedWaypoint: null,
+    waypointActionPosition: null,
+    selectedWaypointInfo: null, // To store line index, waypoint index, and whether it's a saved line
   });
 
   const handleMapRightClick = useCallback(
@@ -96,6 +101,10 @@ const MyMapV9 = () => {
         selectedPoint: clickedPoint,
         rightClickMarker: clickedPoint,
         showModal: true,
+        // Clear any selected waypoint when right-clicking on the map
+        selectedWaypoint: null,
+        waypointActionPosition: null,
+        selectedWaypointInfo: null,
       }));
     },
     [mapState.nextNumber]
@@ -128,7 +137,6 @@ const MyMapV9 = () => {
     }));
   };
 
-
   const handleLineClick = (line, index, isSavedLine = false, e) => {
     // Prevent default context menu
     if (e.domEvent) {
@@ -139,9 +147,9 @@ const MyMapV9 = () => {
     // 1. It's a saved line AND saved routes are being shown
     // 2. Saved routes are editable OR this is a current (non-saved) line
     if (
-      (!isSavedLine || 
-        (mapState.showSavedRoutes && 
-         (mapState.isSavedRoutesEditable || !isSavedLine)))
+      !isSavedLine ||
+      (mapState.showSavedRoutes &&
+        (mapState.isSavedRoutesEditable || !isSavedLine))
     ) {
       // Get the exact latitude and longitude of the click
       const clickedLatLng = e.latLng;
@@ -169,6 +177,10 @@ const MyMapV9 = () => {
           x: x,
           y: y,
         },
+        // Clear any waypoint selection when clicking on a line
+        selectedWaypoint: null,
+        waypointActionPosition: null,
+        selectedWaypointInfo: null,
       }));
     }
   };
@@ -222,6 +234,181 @@ const MyMapV9 = () => {
       };
     });
   };
+
+  // Modified handleWaypointClick function to fix the modal display issue
+  const handleWaypointClick = (
+    lineIndex,
+    waypointIndex,
+    isSavedLine = false,
+    waypoint,
+    e
+  ) => {
+    // First, prevent the default behavior and stop propagation
+    if (e && e.domEvent) {
+      e.domEvent.preventDefault();
+      e.domEvent.stopPropagation(); // Add this to stop event bubbling
+    }
+
+    console.log("Waypoint clicked:", { lineIndex, waypointIndex, waypoint });
+
+    // Only allow actions on waypoints if:
+    // 1. It's a regular line OR
+    // 2. It's a saved line AND saved routes are being shown AND are editable
+    if (
+      !isSavedLine ||
+      (mapState.showSavedRoutes && mapState.isSavedRoutesEditable)
+    ) {
+      // Get screen coordinates
+      const x = e && e.domEvent ? e.domEvent.clientX : 0;
+      const y = e && e.domEvent ? e.domEvent.clientY : 0;
+
+      // Update state with the selected waypoint information in a single update
+      setMapState((prevState) => ({
+        ...prevState,
+        // Clear any other action windows first
+        selectedLineForActions: null,
+        lineActionPosition: null,
+        exactClickPosition: null,
+        showModal: false,
+        // Then set waypoint selection info
+        selectedWaypoint: waypoint,
+        waypointActionPosition: {
+          x: x,
+          y: y,
+        },
+        selectedWaypointInfo: {
+          lineIndex,
+          waypointIndex,
+          isSavedLine,
+        },
+      }));
+
+      // This is no longer needed since we're doing a complete state update above
+      // setTimeout(() => {
+      //   console.log("Updated state after timeout:", mapState.selectedWaypoint);
+      // }, 100);
+    }
+  };
+
+  // Function to remove the selected waypoint
+  const removeSelectedWaypoint = () => {
+    if (!mapState.selectedWaypointInfo) return;
+
+    const { lineIndex, waypointIndex, isSavedLine } =
+      mapState.selectedWaypointInfo;
+
+    setMapState((prevState) => {
+      // Determine which array to update (savedPolylines or fiberLines)
+      const targetArray = isSavedLine
+        ? prevState.savedPolylines
+        : prevState.fiberLines;
+
+      if (!targetArray[lineIndex] || !targetArray[lineIndex].waypoints) {
+        return prevState;
+      }
+
+      // Create a new array with the selected waypoint removed
+      const updatedLines = targetArray.map((line, idx) => {
+        if (idx === lineIndex) {
+          // Filter out the selected waypoint
+          const updatedWaypoints = line.waypoints.filter(
+            (_, wIdx) => wIdx !== waypointIndex
+          );
+          return {
+            ...line,
+            waypoints: updatedWaypoints,
+          };
+        }
+        return line;
+      });
+
+      // If it's a saved line, update localStorage
+      if (isSavedLine) {
+        localStorage.setItem("savedPolylines", JSON.stringify(updatedLines));
+      }
+
+      // Update the appropriate state
+      return {
+        ...prevState,
+        ...(isSavedLine
+          ? {
+              savedPolylines: updatedLines,
+              fiberLines: prevState.showSavedRoutes
+                ? updatedLines
+                : prevState.fiberLines,
+            }
+          : { fiberLines: updatedLines }),
+        // Clear the waypoint selection
+        selectedWaypoint: null,
+        waypointActionPosition: null,
+        selectedWaypointInfo: null,
+      };
+    });
+  };
+
+  // Function to open device icon selection
+  const openDeviceIconSelection = () => {
+    // Trigger the hidden file input
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  // In the handleFileSelection function, modify how you're handling custom icons
+const handleFileSelection = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  if (!mapState.selectedWaypointInfo) {
+    alert("No waypoint selected!");
+    return;
+  }
+
+  // Create a new icon at the waypoint's position
+  const { lineIndex, waypointIndex, isSavedLine } = mapState.selectedWaypointInfo;
+  const targetArray = isSavedLine ? mapState.savedPolylines : mapState.fiberLines;
+
+  if (!targetArray[lineIndex] || !targetArray[lineIndex].waypoints) {
+    alert("Could not find the selected waypoint");
+    return;
+  }
+
+  const waypoint = targetArray[lineIndex].waypoints[waypointIndex];
+
+  // Create a URL for the selected file
+  const imageUrl = URL.createObjectURL(file);
+
+  // Create a new icon
+  const newIcon = {
+    lat: waypoint.lat,
+    lng: waypoint.lng,
+    type: "Custom", // Use a designated type for custom icons
+    id: `custom-icon-${Date.now()}`,
+    imageUrl: imageUrl, // Store the custom image URL
+  };
+
+  // Add the new icon to imageIcons
+  setMapState((prevState) => {
+    const updatedImageIcons = [...prevState.imageIcons, newIcon];
+
+    // Also update savedIcons if appropriate
+    let updatedSavedIcons = prevState.savedIcons || [];
+    if (isSavedLine) {
+      updatedSavedIcons = [...updatedSavedIcons, newIcon];
+      localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
+    }
+
+    return {
+      ...prevState,
+      imageIcons: updatedImageIcons,
+      savedIcons: updatedSavedIcons,
+      // Clear the waypoint selection
+      selectedWaypoint: null,
+      waypointActionPosition: null,
+      selectedWaypointInfo: null,
+    };
+  });
+};
 
   const removeSelectedLine = () => {
     if (!mapState.selectedLineForActions) return;
@@ -413,6 +600,7 @@ const MyMapV9 = () => {
         lat: icon.lat,
         lng: icon.lng,
         type: icon.type,
+        imageUrl: icon.imageUrl, // Save custom image URL if present
         createdAt: new Date().toISOString(),
       }));
 
@@ -427,6 +615,7 @@ const MyMapV9 = () => {
           lat: icon.lat,
           lng: icon.lng,
           type: icon.type,
+          imageUrl: icon.imageUrl,
           id: icon.id,
         })),
       }));
@@ -475,22 +664,28 @@ const MyMapV9 = () => {
               lat: icon.lat,
               lng: icon.lng,
               type: icon.type,
+              imageUrl: icon.imageUrl, // Include custom image URL if present
               id: icon.id,
             }))
           : [],
+
+        // Clear any selection when toggling routes
+        selectedWaypoint: null,
+        waypointActionPosition: null,
+        selectedWaypointInfo: null,
       };
     });
   };
 
-  useEffect(() => {
-    // This effect will run every time mapState changes
-    // You can check if changes occurred in the fiberLines or imageIcons
-    console.log("State has been updated", mapState);
-  }, [mapState]); // This will run whenever mapState changes
+  // useEffect(() => {
+  //   // This effect will run every time mapState changes
+  //   // You can check if changes occurred in the fiberLines or imageIcons
+  //   console.log("State has been updated", mapState);
+  // }, [mapState]); // This will run whenever mapState changes
 
-  useEffect(() => {
-    console.log("Selected Line:", mapState.selectedLine);
-  }, [mapState.selectedLine]);
+  // useEffect(() => {
+  //   console.log("Selected Line:", mapState.selectedLine);
+  // }, [mapState.selectedLine]);
 
   const resetMap = () => {
     setMapState({
@@ -503,6 +698,9 @@ const MyMapV9 = () => {
       rightClickMarker: null,
       fiberLines: [],
       imageIcons: [],
+      selectedWaypoint: null,
+      waypointActionPosition: null,
+      selectedWaypointInfo: null,
     });
   };
 
@@ -532,6 +730,7 @@ const MyMapV9 = () => {
               lat: icon.lat,
               lng: icon.lng,
               type: icon.type,
+              imageUrl: icon.imageUrl,
               id: icon.id,
             }))
           : prevState.imageIcons,
@@ -627,6 +826,16 @@ const MyMapV9 = () => {
     }));
   };
 
+  // Function to close the waypoint action window
+  const closeWaypointActions = () => {
+    setMapState((prevState) => ({
+      ...prevState,
+      selectedWaypoint: null,
+      waypointActionPosition: null,
+      selectedWaypointInfo: null,
+    }));
+  };
+
   if (loadError) return <div>Error loading maps</div>;
   if (!isLoaded) return <div>Loading Maps...</div>;
 
@@ -649,6 +858,15 @@ const MyMapV9 = () => {
         )}
       </div>
 
+      {/* Hidden file input for device icon upload */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        style={{ display: "none" }}
+        accept="image/*"
+        onChange={handleFileSelection}
+      />
+
       <GoogleMap
         mapContainerStyle={containerStyle}
         center={center}
@@ -665,7 +883,7 @@ const MyMapV9 = () => {
             position={{ lat: icon.lat, lng: icon.lng }}
             draggable={true}
             icon={{
-              url: iconImages[icon.type],
+              url: icon.imageUrl || iconImages[icon.type],
               scaledSize: new google.maps.Size(30, 30),
             }}
             onDragEnd={(e) => handleMarkerDragEnd(index, e)}
@@ -692,7 +910,7 @@ const MyMapV9 = () => {
               key={`saved-icon-${icon.id || index}`} // Use icon.id or index to ensure uniqueness
               position={{ lat: icon.lat, lng: icon.lng }}
               icon={{
-                url: iconImages[icon.type],
+                url: icon.imageUrl || iconImages[icon.type],
                 scaledSize: new google.maps.Size(30, 30),
               }}
             />
@@ -712,9 +930,12 @@ const MyMapV9 = () => {
                   strokeWeight: 2,
                   editable: false,
                 }}
-                onClick={(e) => handleLineClick(line, index, false, e)}
+                onClick={(e) => {
+                  // Add this to prevent conflicts with waypoint clicks
+                  e.domEvent.stopPropagation();
+                  handleLineClick(line, index, false, e);
+                }}
               />
-
               {/* This is the existing floating modal in your code, slightly refined */}
               {mapState.selectedLineForActions &&
                 mapState.exactClickPosition && (
@@ -757,7 +978,6 @@ const MyMapV9 = () => {
                     <div className="modal-spike"></div>
                   </div>
                 )}
-
               {/* Waypoint Markers with Drag Functionality */}
               {(line.waypoints || []).map((waypoint, waypointIndex) => (
                 <React.Fragment key={`waypoint-${index}-${waypointIndex}`}>
@@ -771,9 +991,65 @@ const MyMapV9 = () => {
                       url: "/img/location.jpg",
                       scaledSize: new google.maps.Size(15, 15),
                     }}
+                    onClick={(e) => {
+                      console.log("Marker clicked:", waypoint);
+                      // Stop propagation to prevent other click handlers from firing
+                      if (e.domEvent) e.domEvent.stopPropagation();
+                      handleWaypointClick(
+                        index,
+                        waypointIndex,
+                        false,
+                        waypoint,
+                        e
+                      );
+                    }}
                   />
                 </React.Fragment>
               ))}
+
+              {/* Way points modal */}
+
+              {mapState.selectedWaypoint && mapState.waypointActionPosition && (
+                <div
+                  className="line-action-modal"
+                  style={{
+                    
+                    top: `${mapState.waypointActionPosition.y - 100}px`,
+                    left: `${mapState.waypointActionPosition.x - 74}px`,
+                    
+        
+                  }}
+                >
+                  {/* Remove Waypoint Button */}
+                  <div
+                    className="line-action-item"
+                    onClick={removeSelectedWaypoint}
+                  >
+                    <Trash2 size={20} color="red" />
+                    <span className="line-action-tooltip">Remove</span>
+                  </div>
+
+                  {/* Add Device Icon Button */}
+                  <div
+                    className="line-action-item"
+                    onClick={openDeviceIconSelection}
+                  >
+                    <Plus size={20} color="blue" />
+                    <span className="line-action-tooltip">Device</span>
+                  </div>
+
+                  {/* Close Button */}
+                  <div
+                    className="line-action-item"
+                    onClick={closeWaypointActions}
+                  >
+                    <span className="close-icon">&times;</span>
+                    <span className="line-action-tooltip">Close</span>
+                  </div>
+
+                  <div className="modal-spike"></div>
+                </div>
+              )}
 
               {/* Start and End Markers */}
               <MarkerF
@@ -785,7 +1061,6 @@ const MyMapV9 = () => {
                   scaledSize: new google.maps.Size(20, 20),
                 }}
               />
-
               <MarkerF
                 position={line.to}
                 draggable
@@ -831,6 +1106,15 @@ const MyMapV9 = () => {
                       url: "/img/location.jpg",
                       scaledSize: new google.maps.Size(15, 15),
                     }}
+                    onClick={(e) =>
+                      handleWaypointClick(
+                        index,
+                        waypointIndex,
+                        true,
+                        waypoint,
+                        e
+                      )
+                    }
                   />
                 ))}
               </React.Fragment>
@@ -844,7 +1128,7 @@ const MyMapV9 = () => {
               key={icon.id || `saved-icon-${index}`}
               position={{ lat: icon.lat, lng: icon.lng }}
               icon={{
-                url: iconImages[icon.type],
+                url: icon.imageUrl || iconImages[icon.type],
                 scaledSize: new google.maps.Size(30, 30),
               }}
               draggable={mapState.isSavedRoutesEditable}
@@ -876,7 +1160,9 @@ const MyMapV9 = () => {
                     strokeOpacity: 1.0,
                     strokeWeight: 2,
                   }}
-                  onClick={(e) => handleLineClick(polyline, polylineIndex, true, e)}
+                  onClick={(e) =>
+                    handleLineClick(polyline, polylineIndex, true, e)
+                  }
                 />
 
                 {/* Start and End Markers */}
@@ -934,6 +1220,15 @@ const MyMapV9 = () => {
                       url: "/img/location.jpg",
                       scaledSize: new google.maps.Size(15, 15),
                     }}
+                    onClick={(e) =>
+                      handleWaypointClick(
+                        polylineIndex,
+                        waypointIndex,
+                        true,
+                        waypoint,
+                        e
+                      )
+                    }
                   />
                 ))}
               </React.Fragment>
