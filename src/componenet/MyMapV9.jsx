@@ -101,7 +101,6 @@ const MyMapV9 = () => {
         selectedPoint: clickedPoint,
         rightClickMarker: clickedPoint,
         showModal: true,
-        // Clear any selected waypoint when right-clicking on the map
         selectedWaypoint: null,
         waypointActionPosition: null,
         selectedWaypointInfo: null,
@@ -143,9 +142,6 @@ const MyMapV9 = () => {
       e.domEvent.preventDefault();
     }
 
-    // Only proceed if:
-    // 1. It's a saved line AND saved routes are being shown
-    // 2. Saved routes are editable OR this is a current (non-saved) line
     if (
       !isSavedLine ||
       (mapState.showSavedRoutes &&
@@ -250,10 +246,6 @@ const MyMapV9 = () => {
     }
 
     console.log("Waypoint clicked:", { lineIndex, waypointIndex, waypoint });
-
-    // Only allow actions on waypoints if:
-    // 1. It's a regular line OR
-    // 2. It's a saved line AND saved routes are being shown AND are editable
     if (
       !isSavedLine ||
       (mapState.showSavedRoutes && mapState.isSavedRoutesEditable)
@@ -282,19 +274,14 @@ const MyMapV9 = () => {
           isSavedLine,
         },
       }));
-
-      // This is no longer needed since we're doing a complete state update above
-      // setTimeout(() => {
-      //   console.log("Updated state after timeout:", mapState.selectedWaypoint);
-      // }, 100);
     }
   };
 
-  // Function to remove the selected waypoint
+  // Modify the removeSelectedWaypoint function to also remove associated icons
   const removeSelectedWaypoint = () => {
     if (!mapState.selectedWaypointInfo) return;
 
-    const { lineIndex, waypointIndex, isSavedLine } =
+    const { lineIndex, waypointIndex, isSavedLine, isIcon, iconId } =
       mapState.selectedWaypointInfo;
 
     setMapState((prevState) => {
@@ -306,6 +293,10 @@ const MyMapV9 = () => {
       if (!targetArray[lineIndex] || !targetArray[lineIndex].waypoints) {
         return prevState;
       }
+
+      // Get the waypoint that might have an associated icon
+      const waypoint = targetArray[lineIndex].waypoints[waypointIndex];
+      const iconToRemoveId = isIcon ? iconId : waypoint.iconId || null;
 
       // Create a new array with the selected waypoint removed
       const updatedLines = targetArray.map((line, idx) => {
@@ -322,9 +313,22 @@ const MyMapV9 = () => {
         return line;
       });
 
+      // Also remove any associated icon
+      const updatedImageIcons = prevState.imageIcons.filter(
+        (icon) => icon.id !== iconToRemoveId
+      );
+
+      // Update savedIcons if necessary
+      const updatedSavedIcons = prevState.savedIcons
+        ? prevState.savedIcons.filter((icon) => icon.id !== iconToRemoveId)
+        : prevState.savedIcons;
+
       // If it's a saved line, update localStorage
       if (isSavedLine) {
         localStorage.setItem("savedPolylines", JSON.stringify(updatedLines));
+        if (iconToRemoveId) {
+          localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
+        }
       }
 
       // Update the appropriate state
@@ -336,8 +340,10 @@ const MyMapV9 = () => {
               fiberLines: prevState.showSavedRoutes
                 ? updatedLines
                 : prevState.fiberLines,
+              savedIcons: updatedSavedIcons,
             }
           : { fiberLines: updatedLines }),
+        imageIcons: updatedImageIcons,
         // Clear the waypoint selection
         selectedWaypoint: null,
         waypointActionPosition: null,
@@ -354,60 +360,140 @@ const MyMapV9 = () => {
     }
   };
 
-  // In the handleFileSelection function, modify how you're handling custom icons
-const handleFileSelection = (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+  // First, modify the handleFileSelection function to link the icon to the waypoint
+  const handleFileSelection = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  if (!mapState.selectedWaypointInfo) {
-    alert("No waypoint selected!");
-    return;
-  }
-
-  // Create a new icon at the waypoint's position
-  const { lineIndex, waypointIndex, isSavedLine } = mapState.selectedWaypointInfo;
-  const targetArray = isSavedLine ? mapState.savedPolylines : mapState.fiberLines;
-
-  if (!targetArray[lineIndex] || !targetArray[lineIndex].waypoints) {
-    alert("Could not find the selected waypoint");
-    return;
-  }
-
-  const waypoint = targetArray[lineIndex].waypoints[waypointIndex];
-
-  // Create a URL for the selected file
-  const imageUrl = URL.createObjectURL(file);
-
-  // Create a new icon
-  const newIcon = {
-    lat: waypoint.lat,
-    lng: waypoint.lng,
-    type: "Custom", // Use a designated type for custom icons
-    id: `custom-icon-${Date.now()}`,
-    imageUrl: imageUrl, // Store the custom image URL
-  };
-
-  // Add the new icon to imageIcons
-  setMapState((prevState) => {
-    const updatedImageIcons = [...prevState.imageIcons, newIcon];
-
-    // Also update savedIcons if appropriate
-    let updatedSavedIcons = prevState.savedIcons || [];
-    if (isSavedLine) {
-      updatedSavedIcons = [...updatedSavedIcons, newIcon];
-      localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
+    if (!mapState.selectedWaypointInfo) {
+      alert("No waypoint selected!");
+      return;
     }
 
-    return {
-      ...prevState,
-      imageIcons: updatedImageIcons,
-      savedIcons: updatedSavedIcons,
-      // Clear the waypoint selection
-      selectedWaypoint: null,
-      waypointActionPosition: null,
-      selectedWaypointInfo: null,
+    // Create a new icon at the waypoint's position
+    const { lineIndex, waypointIndex, isSavedLine } =
+      mapState.selectedWaypointInfo;
+    const targetArray = isSavedLine
+      ? mapState.savedPolylines
+      : mapState.fiberLines;
+
+    if (!targetArray[lineIndex] || !targetArray[lineIndex].waypoints) {
+      alert("Could not find the selected waypoint");
+      return;
+    }
+
+    const waypoint = targetArray[lineIndex].waypoints[waypointIndex];
+
+    // Create a URL for the selected file
+    const imageUrl = URL.createObjectURL(file);
+
+    // Create a new icon with a reference to the waypoint
+    const newIcon = {
+      lat: waypoint.lat,
+      lng: waypoint.lng,
+      type: "Custom", // Use a designated type for custom icons
+      id: `custom-icon-${Date.now()}`,
+      imageUrl: imageUrl, // Store the custom image URL
+      // Store references to the line and waypoint
+      linkedTo: {
+        lineIndex,
+        waypointIndex,
+        isSavedLine,
+        waypointId: `waypoint-${lineIndex}-${waypointIndex}`, // Create a unique ID for the waypoint
+      },
     };
-  });
+
+    // Add the new icon to imageIcons
+    setMapState((prevState) => {
+      const updatedImageIcons = [...prevState.imageIcons, newIcon];
+
+      // Also update savedIcons if appropriate
+      let updatedSavedIcons = prevState.savedIcons || [];
+      if (isSavedLine) {
+        updatedSavedIcons = [...updatedSavedIcons, newIcon];
+        localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
+      }
+
+      // Update the waypoint to reference this icon
+      const updatedLines = isSavedLine
+        ? prevState.savedPolylines.map((line, idx) => {
+            if (idx === lineIndex && line.waypoints) {
+              const updatedWaypoints = [...line.waypoints];
+              // Add a reference to the icon ID in the waypoint
+              updatedWaypoints[waypointIndex] = {
+                ...updatedWaypoints[waypointIndex],
+                iconId: newIcon.id,
+              };
+              return { ...line, waypoints: updatedWaypoints };
+            }
+            return line;
+          })
+        : prevState.fiberLines.map((line, idx) => {
+            if (idx === lineIndex && line.waypoints) {
+              const updatedWaypoints = [...line.waypoints];
+              updatedWaypoints[waypointIndex] = {
+                ...updatedWaypoints[waypointIndex],
+                iconId: newIcon.id,
+              };
+              return { ...line, waypoints: updatedWaypoints };
+            }
+            return line;
+          });
+
+      // Update the appropriate state based on whether it's a saved or current line
+      return {
+        ...prevState,
+        imageIcons: updatedImageIcons,
+        savedIcons: updatedSavedIcons,
+        ...(isSavedLine
+          ? { savedPolylines: updatedLines }
+          : { fiberLines: updatedLines }),
+        // Clear the waypoint selection
+        selectedWaypoint: null,
+        waypointActionPosition: null,
+        selectedWaypointInfo: null,
+      };
+    });
+  };
+
+  // Add a handler for icon click events
+const handleIconClick = (icon, e) => {
+  if (e && e.domEvent) {
+    e.domEvent.preventDefault();
+    e.domEvent.stopPropagation();
+  }
+
+  // Check if this icon is linked to a waypoint
+  if (icon.linkedTo) {
+    const { lineIndex, waypointIndex, isSavedLine } = icon.linkedTo;
+    
+    const x = e && e.domEvent ? e.domEvent.clientX : 0;
+    const y = e && e.domEvent ? e.domEvent.clientY : 0;
+    
+    setMapState((prevState) => ({
+      ...prevState,
+      selectedWaypoint: icon,
+      waypointActionPosition: {
+        x: x,
+        y: y,
+      },
+      selectedWaypointInfo: {
+        lineIndex,
+        waypointIndex,
+        isSavedLine,
+        isIcon: true, // Add flag to indicate this is an icon
+        iconId: icon.id
+      },
+      // Clear other selections
+      selectedLineForActions: null,
+      lineActionPosition: null,
+      exactClickPosition: null,
+      showModal: false,
+    }));
+  } else {
+    // Handle normal icon right-click
+    handleRightClickOnIcon(icon);
+  }
 };
 
   const removeSelectedLine = () => {
@@ -677,16 +763,6 @@ const handleFileSelection = (e) => {
     });
   };
 
-  // useEffect(() => {
-  //   // This effect will run every time mapState changes
-  //   // You can check if changes occurred in the fiberLines or imageIcons
-  //   console.log("State has been updated", mapState);
-  // }, [mapState]); // This will run whenever mapState changes
-
-  // useEffect(() => {
-  //   console.log("Selected Line:", mapState.selectedLine);
-  // }, [mapState.selectedLine]);
-
   const resetMap = () => {
     setMapState({
       savedRoutes: mapState.savedRoutes,
@@ -887,6 +963,7 @@ const handleFileSelection = (e) => {
               scaledSize: new google.maps.Size(30, 30),
             }}
             onDragEnd={(e) => handleMarkerDragEnd(index, e)}
+            onClick={(e) => icon.linkedTo ? handleIconClick(icon, e) : null}
             onRightClick={() => handleRightClickOnIcon(icon)}
           />
         ))}
@@ -1013,11 +1090,8 @@ const handleFileSelection = (e) => {
                 <div
                   className="line-action-modal"
                   style={{
-                    
                     top: `${mapState.waypointActionPosition.y - 100}px`,
                     left: `${mapState.waypointActionPosition.x - 74}px`,
-                    
-        
                   }}
                 >
                   {/* Remove Waypoint Button */}
@@ -1132,6 +1206,7 @@ const handleFileSelection = (e) => {
                 scaledSize: new google.maps.Size(30, 30),
               }}
               draggable={mapState.isSavedRoutesEditable}
+              onClick={(e) => icon.linkedTo ? handleIconClick(icon, e) : null}
               onDragEnd={
                 mapState.isSavedRoutesEditable
                   ? (e) => handleSavedIconDragEnd(icon.id, e)
@@ -1273,13 +1348,7 @@ const handleFileSelection = (e) => {
             <button className="modal-button" onClick={addFiberLine}>
               Add Fiber
             </button>
-
-            {/* New Remove Button */}
-            {/* <button className="modal-button" onClick={removeSelectedLine}>
-              <Trash2 size={20} />
-            </button> */}
           </div>
-
           <div className="modal-spike"></div>
         </div>
       )}

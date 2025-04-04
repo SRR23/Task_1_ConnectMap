@@ -101,7 +101,6 @@ const MyMap = () => {
         selectedPoint: clickedPoint,
         rightClickMarker: clickedPoint,
         showModal: true,
-        // Clear any selected waypoint when right-clicking on the map
         selectedWaypoint: null,
         waypointActionPosition: null,
         selectedWaypointInfo: null,
@@ -143,9 +142,6 @@ const MyMap = () => {
       e.domEvent.preventDefault();
     }
 
-    // Only proceed if:
-    // 1. It's a saved line AND saved routes are being shown
-    // 2. Saved routes are editable OR this is a current (non-saved) line
     if (
       !isSavedLine ||
       (mapState.showSavedRoutes &&
@@ -250,10 +246,6 @@ const MyMap = () => {
     }
 
     console.log("Waypoint clicked:", { lineIndex, waypointIndex, waypoint });
-
-    // Only allow actions on waypoints if:
-    // 1. It's a regular line OR
-    // 2. It's a saved line AND saved routes are being shown AND are editable
     if (
       !isSavedLine ||
       (mapState.showSavedRoutes && mapState.isSavedRoutesEditable)
@@ -282,11 +274,6 @@ const MyMap = () => {
           isSavedLine,
         },
       }));
-
-      // This is no longer needed since we're doing a complete state update above
-      // setTimeout(() => {
-      //   console.log("Updated state after timeout:", mapState.selectedWaypoint);
-      // }, 100);
     }
   };
 
@@ -775,16 +762,6 @@ const handleIconClick = (icon, e) => {
       };
     });
   };
-
-  // useEffect(() => {
-  //   // This effect will run every time mapState changes
-  //   // You can check if changes occurred in the fiberLines or imageIcons
-  //   console.log("State has been updated", mapState);
-  // }, [mapState]); // This will run whenever mapState changes
-
-  // useEffect(() => {
-  //   console.log("Selected Line:", mapState.selectedLine);
-  // }, [mapState.selectedLine]);
 
   const resetMap = () => {
     setMapState({
@@ -1371,13 +1348,7 @@ const handleIconClick = (icon, e) => {
             <button className="modal-button" onClick={addFiberLine}>
               Add Fiber
             </button>
-
-            {/* New Remove Button */}
-            {/* <button className="modal-button" onClick={removeSelectedLine}>
-              <Trash2 size={20} />
-            </button> */}
           </div>
-
           <div className="modal-spike"></div>
         </div>
       )}
