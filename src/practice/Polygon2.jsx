@@ -300,8 +300,8 @@ const Polygon2 = () => {
   return (
     <div style={{ position: 'relative', height: '100vh' }}>
       <Sidebar />
-      <LoadScript 
-        googleMapsApiKey="AIzaSyA3Hj_gqJAkZMor_CHDJKx1bowYF1TOIJA" 
+      <LoadScript
+        googleMapsApiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
         libraries={libraries}
       >
         <GoogleMap
