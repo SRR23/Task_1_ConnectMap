@@ -25,6 +25,7 @@ const Polygon2 = () => {
   const [previewIndex, setPreviewIndex] = useState(null);
   const [mapCenter, setMapCenter] = useState({ lat: 51.505, lng: -0.09 });
   const [editingIndex, setEditingIndex] = useState(null);
+  const [intermediatePoints, setIntermediatePoints] = useState([]);
   const mapRef = useRef(null);
 
   useEffect(() => {
@@ -37,7 +38,46 @@ const Polygon2 = () => {
     console.log("Points:", points);
     console.log("Polygon closed:", isPolygonClosed);
     console.log("IsDragging:", isDragging);
-  }, [drawing, points, isPolygonClosed, isDragging]);
+    console.log("Intermediate Points:", intermediatePoints);
+  }, [drawing, points, isPolygonClosed, isDragging, intermediatePoints]);
+
+  const updateIntermediatePoints = useCallback(() => {
+    if (points.length > 1) {
+      const newIntermediatePoints = [];
+      for (let i = 0; i < points.length - 1; i++) {
+        newIntermediatePoints.push({
+          position: calculateMidpoint(points[i], points[i + 1]),
+          segmentStart: i,
+          segmentEnd: i + 1,
+          isDragged: false
+        });
+      }
+      if (isPolygonClosed && points.length > 2) {
+        newIntermediatePoints.push({
+          position: calculateMidpoint(points[points.length - 1], points[0]),
+          segmentStart: points.length - 1,
+          segmentEnd: 0,
+          isDragged: false
+        });
+      }
+      setIntermediatePoints(prev => {
+        const updatedPoints = newIntermediatePoints.map(newPoint => {
+          const existing = prev.find(p => 
+            p.segmentStart === newPoint.segmentStart && 
+            p.segmentEnd === newPoint.segmentEnd
+          );
+          return existing && existing.isDragged ? { ...existing } : newPoint;
+        });
+        return updatedPoints;
+      });
+    } else {
+      setIntermediatePoints([]);
+    }
+  }, [points, isPolygonClosed]);
+
+  useEffect(() => {
+    updateIntermediatePoints();
+  }, [points, isPolygonClosed, updateIntermediatePoints]);
 
   const mapContainerStyle = {
     width: 'calc(100% - 200px)',
@@ -47,7 +87,7 @@ const Polygon2 = () => {
 
   const mapOptions = {
     zoom: 13,
-    clickableIcons: false, // Prevent map icons from intercepting clicks
+    clickableIcons: false,
   };
 
   const calculateDistance = (point1, point2) => {
@@ -64,6 +104,13 @@ const Polygon2 = () => {
       Math.sin(dLng/2) * Math.sin(dLng/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c * 1000;
+  };
+
+  const calculateMidpoint = (point1, point2) => {
+    return {
+      lat: (point1.lat + point2.lat) / 2,
+      lng: (point1.lng + point2.lng) / 2
+    };
   };
 
   const isNearStartingPoint = (point) => {
@@ -97,7 +144,6 @@ const Polygon2 = () => {
   }, [drawing, points.length]);
 
   const handleMapClick = useCallback((e) => {
-    console.log('Map clicked at:', e.latLng.lat(), e.latLng.lng(), 'Drawing:', drawing, 'IsDragging:', isDragging);
     if (!drawing || isDragging) return;
 
     const newPoint = {
@@ -106,26 +152,20 @@ const Polygon2 = () => {
     };
 
     if (points.length >= 2 && isNearStartingPoint(newPoint)) {
-      console.log('Closing polygon near starting point');
       setIsPolygonClosed(true);
       return;
     }
 
-    setPoints(prevPoints => {
-      const updatedPoints = [...prevPoints, newPoint];
-      console.log('New point added:', newPoint, 'Total points:', updatedPoints.length);
-      return updatedPoints;
-    });
+    setPoints(prevPoints => [...prevPoints, newPoint]);
     setIsPolygonClosed(false);
   }, [drawing, isDragging, points]);
 
   const handleMouseMove = useCallback((e) => {
     if (drawing && !isDragging && !isPolygonClosed) {
-      const currentPos = {
+      setCurrentMousePosition({
         lat: e.latLng.lat(),
         lng: e.latLng.lng(),
-      };
-      setCurrentMousePosition(currentPos);
+      });
     }
   }, [drawing, isDragging, isPolygonClosed]);
 
@@ -152,6 +192,7 @@ const Polygon2 = () => {
     setPreviewIndex(null);
     setPolygonName('');
     setEditingIndex(null);
+    setIntermediatePoints([]);
   };
 
   const handleSavePolygon = () => {
@@ -159,16 +200,17 @@ const Polygon2 = () => {
       const newPolygon = {
         name: polygonName,
         coordinates: [...points],
+        intermediateCoordinates: intermediatePoints.map(ip => ({
+          position: { ...ip.position },
+          segmentStart: ip.segmentStart,
+          segmentEnd: ip.segmentEnd,
+          isDragged: ip.isDragged || false
+        })),
       };
       setPolygons(prev => {
-        let updatedPolygons;
-        if (editingIndex !== null) {
-          updatedPolygons = prev.map((poly, i) => 
-            i === editingIndex ? newPolygon : poly
-          );
-        } else {
-          updatedPolygons = [...prev, newPolygon];
-        }
+        const updatedPolygons = editingIndex !== null
+          ? prev.map((poly, i) => (i === editingIndex ? newPolygon : poly))
+          : [...prev, newPolygon];
         localStorage.setItem('polygons', JSON.stringify(updatedPolygons));
         return updatedPolygons;
       });
@@ -179,7 +221,8 @@ const Polygon2 = () => {
       setIsPolygonClosed(false);
       setPreviewIndex(null);
       setEditingIndex(null);
-      console.log('Polygon saved and UI cleared');
+      setIntermediatePoints([]);
+      console.log('Saved Polygon:', newPolygon);
     } else if (!isPolygonClosed) {
       alert('Please close the polygon by clicking near the starting point.');
     } else if (!polygonName) {
@@ -193,6 +236,7 @@ const Polygon2 = () => {
     const polygonToEdit = polygons[index];
     setPoints(polygonToEdit.coordinates);
     setPolygonName(polygonToEdit.name);
+    setIntermediatePoints(polygonToEdit.intermediateCoordinates || []);
     setDrawing(true);
     setIsPolygonClosed(true);
     setPreviewIndex(null);
@@ -207,6 +251,7 @@ const Polygon2 = () => {
     setIsPolygonClosed(false);
     setPreviewIndex(null);
     setEditingIndex(null);
+    setIntermediatePoints([]);
   };
 
   const handleDeletePolygon = (index) => {
@@ -232,6 +277,17 @@ const Polygon2 = () => {
     }
   };
 
+  const getPreviewPath = (polygon) => {
+    const { coordinates, intermediateCoordinates } = polygon;
+    const adjustedPath = [];
+    coordinates.forEach((point, index) => {
+      adjustedPath.push(point);
+      const segmentIntermediates = intermediateCoordinates.filter(ip => ip.segmentStart === index);
+      segmentIntermediates.forEach(ip => adjustedPath.push(ip.position));
+    });
+    return adjustedPath;
+  };
+
   const getRubberBandPath = () => {
     if (drawing && points.length > 0 && currentMousePosition && !isPolygonClosed) {
       return [points[points.length - 1], currentMousePosition];
@@ -250,6 +306,35 @@ const Polygon2 = () => {
       return newPoints;
     });
   }, []);
+
+  const handleIntermediateDrag = useCallback((index, event) => {
+    const newPosition = {
+      lat: event.latLng.lat(),
+      lng: event.latLng.lng(),
+    };
+
+    setIntermediatePoints(prevPoints => {
+      const newIntermediatePoints = [...prevPoints];
+      newIntermediatePoints[index] = {
+        ...newIntermediatePoints[index],
+        position: newPosition,
+        isDragged: true
+      };
+      return newIntermediatePoints;
+    });
+  }, []);
+
+  const getAdjustedPath = () => {
+    if (!drawing || points.length < 1) return points;
+
+    const adjustedPath = [];
+    points.forEach((point, index) => {
+      adjustedPath.push(point);
+      const segmentIntermediates = intermediatePoints.filter(ip => ip.segmentStart === index);
+      segmentIntermediates.forEach(ip => adjustedPath.push(ip.position));
+    });
+    return adjustedPath;
+  };
 
   const handlePointDragStart = useCallback((index) => {
     setSelectedPointIndex(index);
@@ -332,7 +417,7 @@ const Polygon2 = () => {
           {!drawing && previewIndex !== null && (
             <GooglePolygon
               key={`polygon-${previewIndex}`}
-              paths={polygons[previewIndex].coordinates}
+              paths={getPreviewPath(polygons[previewIndex])}
               options={{
                 fillColor: '#FF0000',
                 fillOpacity: 0.35,
@@ -347,7 +432,7 @@ const Polygon2 = () => {
             <>
               {isPolygonClosed ? (
                 <GooglePolygon
-                  paths={points}
+                  paths={getAdjustedPath()}
                   options={{
                     fillColor: '#0000FF',
                     fillOpacity: 0.35,
@@ -358,7 +443,7 @@ const Polygon2 = () => {
                 />
               ) : (
                 <PolylineF
-                  path={points}
+                  path={getAdjustedPath()}
                   options={{
                     strokeColor: '#0000FF',
                     strokeOpacity: 0.8,
@@ -378,7 +463,7 @@ const Polygon2 = () => {
               onDragStart={handlePointDragStart.bind(null, index)}
               onDragEnd={handlePointDragEnd}
               onClick={index === 0 ? handleStartMarkerClick : undefined}
-              clickable={index === 0} // Only the first marker is clickable
+              clickable={index === 0}
               icon={{
                 path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
                 fillColor: index === 0 ? '#FF0000' : '#0000FF',
@@ -390,6 +475,28 @@ const Polygon2 = () => {
               }}
               zIndex={1000 + index}
               title={index === 0 ? "Click to close polygon" : `Point ${index + 1}`}
+            />
+          ))}
+
+          {drawing && intermediatePoints.length > 0 && intermediatePoints.map((point, index) => (
+            <MarkerF
+              key={`intermediate-${index}`}
+              position={point.position}
+              draggable={true}
+              onDrag={handleIntermediateDrag.bind(null, index)}
+              onDragStart={() => setIsDragging(true)}
+              onDragEnd={() => setIsDragging(false)}
+              icon={{
+                path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
+                fillColor: '#00FF00',
+                fillOpacity: 1,
+                strokeColor: '#00FF00',
+                strokeOpacity: 1,
+                strokeWeight: 2,
+                scale: 5,
+              }}
+              zIndex={900 + index}
+              title={`Control Point ${index + 1}`}
             />
           ))}
 

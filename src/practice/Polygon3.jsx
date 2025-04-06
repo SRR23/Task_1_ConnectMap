@@ -7,6 +7,8 @@ import {
   MarkerF,
 } from '@react-google-maps/api';
 
+import { Edit, Trash, Eye, MoreVertical } from 'lucide-react';
+
 const libraries = ['drawing'];
 
 const Polygon3 = () => {
@@ -20,7 +22,6 @@ const Polygon3 = () => {
   const [currentMousePosition, setCurrentMousePosition] = useState(null);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [isPolygonClosed, setIsPolygonClosed] = useState(false);
-  const [selectedPointIndex, setSelectedPointIndex] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(null);
   const [mapCenter, setMapCenter] = useState({ lat: 51.505, lng: -0.09 });
@@ -30,16 +31,7 @@ const Polygon3 = () => {
 
   useEffect(() => {
     localStorage.setItem('polygons', JSON.stringify(polygons));
-    console.log('Polygons saved to localStorage:', polygons);
   }, [polygons]);
-
-  useEffect(() => {
-    console.log("Drawing state:", drawing);
-    console.log("Points:", points);
-    console.log("Polygon closed:", isPolygonClosed);
-    console.log("IsDragging:", isDragging);
-    console.log("Intermediate Points:", intermediatePoints);
-  }, [drawing, points, isPolygonClosed, isDragging, intermediatePoints]);
 
   const updateIntermediatePoints = useCallback(() => {
     if (points.length > 1) {
@@ -49,7 +41,6 @@ const Polygon3 = () => {
           position: calculateMidpoint(points[i], points[i + 1]),
           segmentStart: i,
           segmentEnd: i + 1,
-          isDragged: false
         });
       }
       if (isPolygonClosed && points.length > 2) {
@@ -57,19 +48,9 @@ const Polygon3 = () => {
           position: calculateMidpoint(points[points.length - 1], points[0]),
           segmentStart: points.length - 1,
           segmentEnd: 0,
-          isDragged: false
         });
       }
-      setIntermediatePoints(prev => {
-        const updatedPoints = newIntermediatePoints.map(newPoint => {
-          const existing = prev.find(p => 
-            p.segmentStart === newPoint.segmentStart && 
-            p.segmentEnd === newPoint.segmentEnd
-          );
-          return existing && existing.isDragged ? { ...existing } : newPoint;
-        });
-        return updatedPoints;
-      });
+      setIntermediatePoints(newIntermediatePoints);
     } else {
       setIntermediatePoints([]);
     }
@@ -98,18 +79,18 @@ const Polygon3 = () => {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLng/2) * Math.sin(dLng/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c * 1000;
   };
 
   const calculateMidpoint = (point1, point2) => {
     return {
       lat: (point1.lat + point2.lat) / 2,
-      lng: (point1.lng + point2.lng) / 2
+      lng: (point1.lng + point2.lng) / 2,
     };
   };
 
@@ -138,7 +119,6 @@ const Polygon3 = () => {
 
   const handleStartMarkerClick = useCallback(() => {
     if (drawing && points.length >= 3) {
-      console.log('Start marker clicked, closing polygon');
       setIsPolygonClosed(true);
     }
   }, [drawing, points.length]);
@@ -200,12 +180,6 @@ const Polygon3 = () => {
       const newPolygon = {
         name: polygonName,
         coordinates: [...points],
-        intermediateCoordinates: intermediatePoints.map(ip => ({
-          position: { ...ip.position },
-          segmentStart: ip.segmentStart,
-          segmentEnd: ip.segmentEnd,
-          isDragged: ip.isDragged || false
-        })),
       };
       setPolygons(prev => {
         const updatedPolygons = editingIndex !== null
@@ -222,7 +196,6 @@ const Polygon3 = () => {
       setPreviewIndex(null);
       setEditingIndex(null);
       setIntermediatePoints([]);
-      console.log('Saved Polygon:', newPolygon);
     } else if (!isPolygonClosed) {
       alert('Please close the polygon by clicking near the starting point.');
     } else if (!polygonName) {
@@ -236,7 +209,6 @@ const Polygon3 = () => {
     const polygonToEdit = polygons[index];
     setPoints(polygonToEdit.coordinates);
     setPolygonName(polygonToEdit.name);
-    setIntermediatePoints(polygonToEdit.intermediateCoordinates || []);
     setDrawing(true);
     setIsPolygonClosed(true);
     setPreviewIndex(null);
@@ -277,17 +249,6 @@ const Polygon3 = () => {
     }
   };
 
-  const getPreviewPath = (polygon) => {
-    const { coordinates, intermediateCoordinates } = polygon;
-    const adjustedPath = [];
-    coordinates.forEach((point, index) => {
-      adjustedPath.push(point);
-      const segmentIntermediates = intermediateCoordinates.filter(ip => ip.segmentStart === index);
-      segmentIntermediates.forEach(ip => adjustedPath.push(ip.position));
-    });
-    return adjustedPath;
-  };
-
   const getRubberBandPath = () => {
     if (drawing && points.length > 0 && currentMousePosition && !isPolygonClosed) {
       return [points[points.length - 1], currentMousePosition];
@@ -307,6 +268,22 @@ const Polygon3 = () => {
     });
   }, []);
 
+  const handleIntermediateDragEnd = useCallback((index) => {
+    setIsDragging(false);
+    const draggedPoint = intermediatePoints[index];
+    const { segmentStart, segmentEnd } = draggedPoint;
+
+    // Insert the dragged intermediate point into the points array
+    setPoints(prevPoints => {
+      const newPoints = [...prevPoints];
+      newPoints.splice(segmentStart + 1, 0, draggedPoint.position);
+      return newPoints;
+    });
+
+    // Recalculate intermediate points after insertion
+    updateIntermediatePoints();
+  }, [intermediatePoints, updateIntermediatePoints]);
+
   const handleIntermediateDrag = useCallback((index, event) => {
     const newPosition = {
       lat: event.latLng.lat(),
@@ -318,69 +295,192 @@ const Polygon3 = () => {
       newIntermediatePoints[index] = {
         ...newIntermediatePoints[index],
         position: newPosition,
-        isDragged: true
       };
       return newIntermediatePoints;
     });
   }, []);
 
-  const getAdjustedPath = () => {
-    if (!drawing || points.length < 1) return points;
-
-    const adjustedPath = [];
-    points.forEach((point, index) => {
-      adjustedPath.push(point);
-      const segmentIntermediates = intermediatePoints.filter(ip => ip.segmentStart === index);
-      segmentIntermediates.forEach(ip => adjustedPath.push(ip.position));
-    });
-    return adjustedPath;
-  };
-
-  const handlePointDragStart = useCallback((index) => {
-    setSelectedPointIndex(index);
+  const handlePointDragStart = useCallback(() => {
     setIsDragging(true);
     setCurrentMousePosition(null);
   }, []);
 
   const handlePointDragEnd = useCallback(() => {
-    setSelectedPointIndex(null);
     setIsDragging(false);
     if (points.length >= 3 && editingIndex === null) {
       setIsPolygonClosed(true);
     }
   }, [points.length, editingIndex]);
+  
 
-  const Sidebar = () => (
-    <div style={{ width: '200px', position: 'absolute', left: 0, top: 0, bottom: 0, background: '#fff', padding: '10px', overflowY: 'auto' }}>
-      <h3>Saved Polygons</h3>
-      {polygons.length === 0 ? (
-        <p>No polygons saved yet</p>
-      ) : (
-        <ul style={{ listStyleType: 'none', padding: '0' }}>
-          {polygons.map((poly, index) => (
-            <li key={index} style={{ marginBottom: '10px', padding: '5px', border: '1px solid #ddd', borderRadius: '4px' }}>
-              <strong>{poly.name}</strong>
-              <div style={{ marginTop: '5px' }}>
-                <button onClick={() => handleEditPolygon(index)}>Edit</button>
-                <button 
-                  onClick={() => handleDeletePolygon(index)}
-                  style={{ marginLeft: '5px' }}
-                >
-                  Delete
-                </button>
-                <button 
-                  onClick={() => handlePreviewToggle(index)}
-                  style={{ marginLeft: '5px' }}
-                >
-                  {previewIndex === index ? 'Hide' : 'Preview'}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+  // const Sidebar = () => (
+  //   <div style={{ width: '200px', position: 'absolute', left: 0, top: 0, bottom: 0, background: '#fff', padding: '10px', overflowY: 'auto' }}>
+  //     <h3>Saved Polygons</h3>
+  //     {polygons.length === 0 ? (
+  //       <p>No polygons saved yet</p>
+  //     ) : (
+  //       <ul style={{ listStyleType: 'none', padding: '0' }}>
+  //         {polygons.map((poly, index) => (
+  //           <li key={index} style={{ marginBottom: '10px', padding: '5px', border: '1px solid #ddd', borderRadius: '4px' }}>
+  //             <strong>{poly.name}</strong>
+  //             <div style={{ marginTop: '5px' }}>
+  //               <button onClick={() => handleEditPolygon(index)}>Edit</button>
+  //               <button onClick={() => handleDeletePolygon(index)} style={{ marginLeft: '5px' }}>Delete</button>
+  //               <button onClick={() => handlePreviewToggle(index)} style={{ marginLeft: '5px' }}>
+  //                 {previewIndex === index ? 'Hide' : 'Preview'}
+  //               </button>
+  //             </div>
+  //           </li>
+  //         ))}
+  //       </ul>
+  //     )}
+  //   </div>
+  // );
+
+  const Sidebar = () => {
+    const [openMenuIndex, setOpenMenuIndex] = useState(null);
+  
+    const toggleMenu = (index) => {
+      console.log('Toggling menu for index:', index); // Debug log
+      setOpenMenuIndex(openMenuIndex === index ? null : index);
+    };
+  
+    return (
+      <div style={{
+        width: '250px',
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        background: '#f8f9fa',
+        padding: '20px',
+        overflowY: 'auto',
+        boxShadow: '2px 0 5px rgba(0,0,0,0.1)',
+        fontFamily: 'Arial, sans-serif',
+      }}>
+        <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#333' }}>
+          Saved Polygons
+        </h3>
+        {polygons.length === 0 ? (
+          <p style={{ color: '#666', fontSize: '14px' }}>No polygons saved yet</p>
+        ) : (
+          <ul style={{ listStyleType: 'none', padding: 0 }}>
+            {polygons.map((poly, index) => (
+              <li
+                key={index}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px',
+                  marginBottom: '10px',
+                  background: '#fff',
+                  borderRadius: '8px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                  position: 'relative',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <button
+                    onClick={() => toggleMenu(index)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '5px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      color: '#666',
+                    }}
+                    title="More options"
+                  >
+                    <MoreVertical size={20} />
+                  </button>
+                  <span style={{ fontSize: '15px', color: '#333', fontWeight: '500', marginLeft: '10px' }}>
+                    {poly.name}
+                  </span>
+                </div>
+                {openMenuIndex === index && (
+                  <div style={{
+                    position: 'absolute',
+                    right: '10px',
+                    top: '40px',
+                    background: '#fff',
+                    borderRadius: '6px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                    zIndex: 1000,
+                    minWidth: '120px',
+                  }}>
+                    <button
+                      onClick={() => {
+                        handleEditPolygon(index);
+                        setOpenMenuIndex(null);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        color: '#333',
+                      }}
+                    >
+                      <Edit size={16} style={{ marginRight: '8px' }} />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleDeletePolygon(index);
+                        setOpenMenuIndex(null);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        color: '#333',
+                      }}
+                    >
+                      <Trash size={16} style={{ marginRight: '8px' }} />
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => {
+                        handlePreviewToggle(index);
+                        setOpenMenuIndex(null);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        color: '#333',
+                      }}
+                    >
+                      <Eye size={16} style={{ marginRight: '8px' }} />
+                      {previewIndex === index ? 'Hide' : 'Preview'}
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  };
+
 
   return (
     <div style={{ position: 'relative', height: '100vh' }}>
@@ -417,7 +517,7 @@ const Polygon3 = () => {
           {!drawing && previewIndex !== null && (
             <GooglePolygon
               key={`polygon-${previewIndex}`}
-              paths={getPreviewPath(polygons[previewIndex])}
+              paths={polygons[previewIndex].coordinates}
               options={{
                 fillColor: '#FF0000',
                 fillOpacity: 0.35,
@@ -432,7 +532,7 @@ const Polygon3 = () => {
             <>
               {isPolygonClosed ? (
                 <GooglePolygon
-                  paths={getAdjustedPath()}
+                  paths={points}
                   options={{
                     fillColor: '#0000FF',
                     fillOpacity: 0.35,
@@ -443,7 +543,7 @@ const Polygon3 = () => {
                 />
               ) : (
                 <PolylineF
-                  path={getAdjustedPath()}
+                  path={points}
                   options={{
                     strokeColor: '#0000FF',
                     strokeOpacity: 0.8,
@@ -460,7 +560,7 @@ const Polygon3 = () => {
               position={point}
               draggable={true}
               onDrag={handleMarkerDrag.bind(null, index)}
-              onDragStart={handlePointDragStart.bind(null, index)}
+              onDragStart={handlePointDragStart}
               onDragEnd={handlePointDragEnd}
               onClick={index === 0 ? handleStartMarkerClick : undefined}
               clickable={index === 0}
@@ -484,8 +584,8 @@ const Polygon3 = () => {
               position={point.position}
               draggable={true}
               onDrag={handleIntermediateDrag.bind(null, index)}
+              onDragEnd={handleIntermediateDragEnd.bind(null, index)}
               onDragStart={() => setIsDragging(true)}
-              onDragEnd={() => setIsDragging(false)}
               icon={{
                 path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
                 fillColor: '#00FF00',
