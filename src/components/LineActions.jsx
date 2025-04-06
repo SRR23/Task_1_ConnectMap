@@ -14,7 +14,7 @@ const LineActions = ({
       className="line-action-modal"
       style={{
         top: `${position.y - 75}px`,
-        left: `${position.x - 205}px`,
+        left: `${position.x - 158}px`,
         transform: "translateX(-50%)",
         position: "absolute",
         zIndex: 1000,

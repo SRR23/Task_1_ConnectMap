@@ -14,7 +14,7 @@ const WaypointActions = ({
       className="line-action-modal"
       style={{
         top: `${position.y - 75}px`,
-        left: `${position.x - 272}px`,
+        left: `${position.x - 222}px`,
         position: "absolute",
         zIndex: 1000,
       }}

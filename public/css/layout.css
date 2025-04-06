@@ -1,14 +1,26 @@
 .layout {
-    display: flex;
-    height: 100vh;
-    width: 100vw;
-  }
-  
-  .sidebar {
-    width: 150px;
-    flex-shrink: 0;
-    overflow-y: auto;
-  }
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+.sidebar {
+  width: 150px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  background-color: #f0f0f0;
+  position: relative; /* Added for icon positioning */
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* Center items horizontally */
+}
+
+/* Add this new class for the icon */
+.sidebar-icon {
+  width: 90px;
+  height: 90px;
+  margin: 20px 0; /* Space from top and bottom */
+}
   
   .content {
     flex-grow: 1;

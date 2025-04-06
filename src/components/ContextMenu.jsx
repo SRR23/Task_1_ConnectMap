@@ -5,7 +5,7 @@ const ContextMenu = ({ show, position, onClose, onSelect, options }) =>
   position && (
     <div
       className="modal"
-      style={{ top: position.y - 116, left: position.x - 418 }}
+      style={{ top: position.y - 116, left: position.x - 367 }}
     >
       <button className="modal-close" onClick={onClose}>
         ×
