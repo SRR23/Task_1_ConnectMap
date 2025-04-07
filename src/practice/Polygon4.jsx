@@ -6,12 +6,11 @@ import {
   PolylineF,
   MarkerF,
 } from '@react-google-maps/api';
-
 import { Edit, Trash, Eye, MoreVertical } from 'lucide-react';
 
 const libraries = ['drawing'];
 
-const Polygon3 = () => {
+const Polygon4 = () => {
   const [drawing, setDrawing] = useState(false);
   const [points, setPoints] = useState([]);
   const [polygons, setPolygons] = useState(() => {
@@ -59,12 +58,6 @@ const Polygon3 = () => {
   useEffect(() => {
     updateIntermediatePoints();
   }, [points, isPolygonClosed, updateIntermediatePoints]);
-
-  const mapContainerStyle = {
-    width: 'calc(100% - 200px)',
-    height: '100vh',
-    marginLeft: '200px',
-  };
 
   const mapOptions = {
     zoom: 13,
@@ -273,14 +266,12 @@ const Polygon3 = () => {
     const draggedPoint = intermediatePoints[index];
     const { segmentStart, segmentEnd } = draggedPoint;
 
-    // Insert the dragged intermediate point into the points array
     setPoints(prevPoints => {
       const newPoints = [...prevPoints];
       newPoints.splice(segmentStart + 1, 0, draggedPoint.position);
       return newPoints;
     });
 
-    // Recalculate intermediate points after insertion
     updateIntermediatePoints();
   }, [intermediatePoints, updateIntermediatePoints]);
 
@@ -311,165 +302,43 @@ const Polygon3 = () => {
       setIsPolygonClosed(true);
     }
   }, [points.length, editingIndex]);
-  
-
-  // const Sidebar = () => (
-  //   <div style={{ width: '200px', position: 'absolute', left: 0, top: 0, bottom: 0, background: '#fff', padding: '10px', overflowY: 'auto' }}>
-  //     <h3>Saved Polygons</h3>
-  //     {polygons.length === 0 ? (
-  //       <p>No polygons saved yet</p>
-  //     ) : (
-  //       <ul style={{ listStyleType: 'none', padding: '0' }}>
-  //         {polygons.map((poly, index) => (
-  //           <li key={index} style={{ marginBottom: '10px', padding: '5px', border: '1px solid #ddd', borderRadius: '4px' }}>
-  //             <strong>{poly.name}</strong>
-  //             <div style={{ marginTop: '5px' }}>
-  //               <button onClick={() => handleEditPolygon(index)}>Edit</button>
-  //               <button onClick={() => handleDeletePolygon(index)} style={{ marginLeft: '5px' }}>Delete</button>
-  //               <button onClick={() => handlePreviewToggle(index)} style={{ marginLeft: '5px' }}>
-  //                 {previewIndex === index ? 'Hide' : 'Preview'}
-  //               </button>
-  //             </div>
-  //           </li>
-  //         ))}
-  //       </ul>
-  //     )}
-  //   </div>
-  // );
 
   const Sidebar = () => {
     const [openMenuIndex, setOpenMenuIndex] = useState(null);
-  
+
     const toggleMenu = (index) => {
-      console.log('Toggling menu for index:', index); // Debug log
       setOpenMenuIndex(openMenuIndex === index ? null : index);
     };
-  
+
     return (
-      <div style={{
-        width: '250px',
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        bottom: 0,
-        background: '#f8f9fa',
-        padding: '20px',
-        overflowY: 'auto',
-        boxShadow: '2px 0 5px rgba(0,0,0,0.1)',
-        fontFamily: 'Arial, sans-serif',
-      }}>
-        <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#333' }}>
-          Saved Polygons
-        </h3>
+      <div className="sidebar">
+        <h3>Saved Polygons</h3>
         {polygons.length === 0 ? (
-          <p style={{ color: '#666', fontSize: '14px' }}>No polygons saved yet</p>
+          <p>No polygons saved yet</p>
         ) : (
-          <ul style={{ listStyleType: 'none', padding: 0 }}>
+          <ul>
             {polygons.map((poly, index) => (
-              <li
-                key={index}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px',
-                  marginBottom: '10px',
-                  background: '#fff',
-                  borderRadius: '8px',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                  position: 'relative',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center' }}>
+              <li key={index} className="polygon-item">
+                <div className="polygon-item-content">
                   <button
                     onClick={() => toggleMenu(index)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: '5px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      color: '#666',
-                    }}
+                    className="menu-toggle"
                     title="More options"
                   >
                     <MoreVertical size={20} />
                   </button>
-                  <span style={{ fontSize: '15px', color: '#333', fontWeight: '500', marginLeft: '10px' }}>
-                    {poly.name}
-                  </span>
+                  <span>{poly.name}</span>
                 </div>
                 {openMenuIndex === index && (
-                  <div style={{
-                    position: 'absolute',
-                    right: '10px',
-                    top: '40px',
-                    background: '#fff',
-                    borderRadius: '6px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                    zIndex: 1000,
-                    minWidth: '120px',
-                  }}>
-                    <button
-                      onClick={() => {
-                        handleEditPolygon(index);
-                        setOpenMenuIndex(null);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        width: '100%',
-                        padding: '8px 12px',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        color: '#333',
-                      }}
-                    >
-                      <Edit size={16} style={{ marginRight: '8px' }} />
-                      Edit
+                  <div className="dropdown-menu">
+                    <button onClick={() => { handleEditPolygon(index); setOpenMenuIndex(null); }}>
+                      <Edit size={16} /> Edit
                     </button>
-                    <button
-                      onClick={() => {
-                        handleDeletePolygon(index);
-                        setOpenMenuIndex(null);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        width: '100%',
-                        padding: '8px 12px',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        color: '#333',
-                      }}
-                    >
-                      <Trash size={16} style={{ marginRight: '8px' }} />
-                      Delete
+                    <button onClick={() => { handleDeletePolygon(index); setOpenMenuIndex(null); }}>
+                      <Trash size={16} /> Delete
                     </button>
-                    <button
-                      onClick={() => {
-                        handlePreviewToggle(index);
-                        setOpenMenuIndex(null);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        width: '100%',
-                        padding: '8px 12px',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        color: '#333',
-                      }}
-                    >
-                      <Eye size={16} style={{ marginRight: '8px' }} />
-                      {previewIndex === index ? 'Hide' : 'Preview'}
+                    <button onClick={() => { handlePreviewToggle(index); setOpenMenuIndex(null); }}>
+                      <Eye size={16} /> {previewIndex === index ? 'Hide' : 'Preview'}
                     </button>
                   </div>
                 )}
@@ -481,19 +350,15 @@ const Polygon3 = () => {
     );
   };
 
-
-
-
-
   return (
-    <div style={{ position: 'relative', height: '100vh' }}>
+    <div className="container">
       <Sidebar />
       <LoadScript
         googleMapsApiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
         libraries={libraries}
       >
         <GoogleMap
-          mapContainerStyle={mapContainerStyle}
+          mapContainerClassName="map-container"
           center={mapCenter}
           zoom={mapOptions.zoom}
           options={mapOptions}
@@ -503,17 +368,9 @@ const Polygon3 = () => {
           onDragEnd={handleMapDrag}
         >
           {drawing && (
-            <div style={{
-              position: 'absolute',
-              top: '10px',
-              left: '220px',
-              background: 'rgba(255,255,255,0.8)',
-              padding: '5px',
-              zIndex: 1000,
-              borderRadius: '4px'
-            }}>
+            <div className="drawing-status">
               {isPolygonClosed ? 'Polygon Closed - Ready to Save' : 'Drawing Mode Active - Click to add points'}
-              {drawing && points.length > 0 && <div style={{ fontSize: '12px', marginTop: '2px' }}>Drag circles to adjust points</div>}
+              {drawing && points.length > 0 && <div className="drawing-tip">Drag circles to adjust points</div>}
             </div>
           )}
 
@@ -617,88 +474,56 @@ const Polygon3 = () => {
         </GoogleMap>
       </LoadScript>
 
-      <div style={{
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        zIndex: 1000,
-        background: 'white',
-        padding: '10px',
-        borderRadius: '4px',
-        boxShadow: '0 2px 6px rgba(0,0,0,0.3)'
-      }}>
+      <div className="controls">
         {!drawing ? (
           <button
             onClick={handlePolygonIconClick}
-            style={{
-              padding: '5px 10px',
-              backgroundColor: '#4285F4',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
+            className="start-drawing-btn"
           >
             Start Drawing Polygon
           </button>
         ) : (
-          <div>
-            <div style={{ marginBottom: '10px', fontWeight: 'bold', color: isPolygonClosed ? '#0F9D58' : '#4285F4' }}>
+          <div className="drawing-controls">
+            <div className={`status-text ${isPolygonClosed ? 'closed' : 'active'}`}>
               {isPolygonClosed ? 'Polygon Closed - Ready to Save' : 'Drawing Mode Active'}
             </div>
-            <div style={{ marginBottom: '10px' }}>
-              <label htmlFor="polygonName" style={{ display: 'block', marginBottom: '5px' }}>
-                Polygon Name:
-              </label>
+            <div className="input-container">
+              <label htmlFor="polygonName">Polygon Name:</label>
               <input
                 id="polygonName"
                 type="text"
                 value={polygonName}
                 onChange={(e) => setPolygonName(e.target.value)}
                 placeholder="Enter polygon name"
-                style={{ width: '100%', padding: '5px' }}
               />
             </div>
             
-            <div>
+            <div className="button-group">
               <button
                 onClick={handleSavePolygon}
                 disabled={!(points.length > 2 && isPolygonClosed && polygonName)}
-                style={{
-                  padding: '5px 10px',
-                  backgroundColor: (points.length > 2 && isPolygonClosed && polygonName) ? '#0F9D58' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  marginRight: '5px',
-                }}
+                className="save-btn"
               >
                 Save Polygon
               </button>
               <button
                 onClick={handleCancelDrawing}
-                style={{
-                  padding: '5px 10px',
-                  backgroundColor: '#DB4437',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                }}
+                className="cancel-btn"
               >
                 Cancel
               </button>
             </div>
             
-            <div style={{ marginTop: '10px', fontSize: '14px' }}>
+            <div className="info">
               <div>Points: {points.length}</div>
-              {points.length < 3 && <div style={{ color: 'orange' }}>Need at least 3 points</div>}
+              {points.length < 3 && <div className="warning">Need at least 3 points</div>}
               {points.length >= 3 && !isPolygonClosed && (
-                <div style={{ color: '#4285F4' }}>
+                <div className="instruction">
                   Click on first point (red marker) to close polygon
                 </div>
               )}
               {isPolygonClosed && !polygonName && (
-                <div style={{ color: 'orange' }}>
+                <div className="warning">
                   Enter a name to save
                 </div>
               )}
@@ -710,4 +535,4 @@ const Polygon3 = () => {
   );
 };
 
-export default Polygon3;
+export default Polygon4;

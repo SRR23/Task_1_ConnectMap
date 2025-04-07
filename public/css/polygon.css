@@ -1,0 +1,208 @@
+/* .container {
+    position: relative;
+    height: 100vh;
+  }
+  
+  .map-container {
+    width: calc(100% - 200px);
+    height: 100vh;
+    margin-left: 200px;
+  }
+  
+  .sidebar {
+    width: 150px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background: #f8f9fa;
+    padding: 20px;
+    overflow-y: auto;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    font-family: Arial, sans-serif;
+  }
+  
+  .sidebar h3 {
+    margin: 0 0 20px 0;
+    font-size: 18px;
+    color: #333;
+  }
+  
+  .sidebar p {
+    color: #666;
+    font-size: 14px;
+  }
+  
+  .sidebar ul {
+    list-style-type: none;
+    padding: 0;
+  }
+  
+  .polygon-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    position: relative;
+  }
+  
+  .polygon-item-content {
+    display: flex;
+    align-items: center;
+  }
+  
+  .menu-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px;
+    display: flex;
+    align-items: center;
+    color: #666;
+  }
+  
+  .polygon-item span {
+    font-size: 15px;
+    color: #333;
+    font-weight: 500;
+    margin-left: 10px;
+  }
+  
+  .dropdown-menu {
+    position: absolute;
+    right: 10px;
+    top: 40px;
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 1000;
+    min-width: 120px;
+  }
+  
+  .dropdown-menu button {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+  }
+  
+  .dropdown-menu button svg {
+    margin-right: 8px;
+  }
+  
+  .drawing-status {
+    position: absolute;
+    top: 10px;
+    left: 270px;
+    background: rgba(255,255,255,0.8);
+    padding: 5px;
+    z-index: 1000;
+    border-radius: 4px;
+  }
+  
+  .drawing-tip {
+    font-size: 12px;
+    margin-top: 2px;
+  }
+  
+  .controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    background: white;
+    padding: 10px;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+  
+  .start-drawing-btn {
+    padding: 5px 10px;
+    background-color: #4285F4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .drawing-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .status-text {
+    font-weight: bold;
+  }
+  
+  .status-text.closed {
+    color: #0F9D58;
+  }
+  
+  .status-text.active {
+    color: #4285F4;
+  }
+  
+  .input-container {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .input-container label {
+    display: block;
+    margin-bottom: 5px;
+  }
+  
+  .input-container input {
+    width: 100%;
+    padding: 5px;
+  }
+  
+  .button-group {
+    display: flex;
+    gap: 5px;
+  }
+  
+  .save-btn {
+    padding: 5px 10px;
+    color: white;
+    border: none;
+    border-radius: 4px;
+  }
+  
+  .save-btn:disabled {
+    background-color: #ccc;
+  }
+  
+  .save-btn:not(:disabled) {
+    background-color: #0F9D58;
+  }
+  
+  .cancel-btn {
+    padding: 5px 10px;
+    background-color: #DB4437;
+    color: white;
+    border: none;
+    border-radius: 4px;
+  }
+  
+  .info {
+    font-size: 14px;
+  }
+  
+  .warning {
+    color: orange;
+  }
+  
+  .instruction {
+    color: #4285F4;
+  } */
