@@ -1,4 +1,4 @@
-/* .container {
+.container {
     position: relative;
     height: 100vh;
   }
@@ -53,7 +53,10 @@
   .polygon-item-content {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    width: 100%;
   }
+  
   
   .menu-toggle {
     background: none;
@@ -92,6 +95,18 @@
     border: none;
     cursor: pointer;
     font-size: 14px;
+    color: #333;
+  }
+
+  .lock-toggle-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px;
+    color: #666;
+  }
+  
+  .lock-toggle-btn:hover {
     color: #333;
   }
   
@@ -205,4 +220,4 @@
   
   .instruction {
     color: #4285F4;
-  } */
+  }
