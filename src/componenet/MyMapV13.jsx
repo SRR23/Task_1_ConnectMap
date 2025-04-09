@@ -86,7 +86,10 @@ const MyMapV13 = () => {
   });
 
   const isInteractionAllowed = (isSavedLine) => {
-    return !isSavedLine || (mapState.showSavedRoutes && mapState.isSavedRoutesEditable);
+    return (
+      !isSavedLine ||
+      (mapState.showSavedRoutes && mapState.isSavedRoutesEditable)
+    );
   };
 
   const findNearestIcon = (lat, lng) => {
@@ -104,7 +107,7 @@ const MyMapV13 = () => {
 
   const getRatioNumber = (ratio) => {
     if (!ratio || ratio === "") return 0; // Handle empty/placeholder case
-    const [_, num] = ratio.split(':').map(Number);
+    const [_, num] = ratio.split(":").map(Number);
     return num;
   };
 
@@ -114,9 +117,11 @@ const MyMapV13 = () => {
       (line) =>
         line.createdAt > splitter.ratioSetTimestamp &&
         ((line.from.lat === splitter.lat && line.from.lng === splitter.lng) ||
-         (line.to.lat === splitter.lat && line.to.lng === splitter.lng) ||
-         (line.waypoints &&
-          line.waypoints.some((wp) => wp.lat === splitter.lat && wp.lng === splitter.lng)))
+          (line.to.lat === splitter.lat && line.to.lng === splitter.lng) ||
+          (line.waypoints &&
+            line.waypoints.some(
+              (wp) => wp.lat === splitter.lat && wp.lng === splitter.lng
+            )))
     ).length;
   };
 
@@ -143,7 +148,11 @@ const MyMapV13 = () => {
         selectedWaypointInfo: null,
       }));
     },
-    [mapState.nextNumber, mapState.showSavedRoutes, mapState.isSavedRoutesEditable]
+    [
+      mapState.nextNumber,
+      mapState.showSavedRoutes,
+      mapState.isSavedRoutesEditable,
+    ]
   );
 
   const handleSelection = (type) => {
@@ -154,11 +163,12 @@ const MyMapV13 = () => {
       showModal: false,
       imageIcons: [
         ...prevState.imageIcons,
-        { 
-          ...selectedPoint, 
-          type, 
-          id: `icon-${nextNumber}`, 
+        {
+          ...selectedPoint,
+          type,
+          id: `icon-${nextNumber}`,
           splitterRatio: type === "Splitter" ? "" : null, // Default to empty string for Splitter
+          name: type === "Splitter" ? "" : null, // Add name field for splitters
         },
       ],
       nextNumber: nextNumber + 1,
@@ -191,8 +201,18 @@ const MyMapV13 = () => {
       setMapState((prevState) => ({
         ...prevState,
         selectedLineForActions: { line, index, isSavedLine },
-        lineActionPosition: { lat: clickedLatLng.lat(), lng: clickedLatLng.lng(), x, y },
-        exactClickPosition: { lat: clickedLatLng.lat(), lng: clickedLatLng.lng(), x, y },
+        lineActionPosition: {
+          lat: clickedLatLng.lat(),
+          lng: clickedLatLng.lng(),
+          x,
+          y,
+        },
+        exactClickPosition: {
+          lat: clickedLatLng.lat(),
+          lng: clickedLatLng.lng(),
+          x,
+          y,
+        },
         selectedWaypoint: null,
         waypointActionPosition: null,
         selectedWaypointInfo: null,
@@ -201,36 +221,47 @@ const MyMapV13 = () => {
   };
 
   const addWaypoint = () => {
-    if (!mapState.selectedLineForActions || !isInteractionAllowed(mapState.selectedLineForActions.isSavedLine)) return;
+    if (
+      !mapState.selectedLineForActions ||
+      !isInteractionAllowed(mapState.selectedLineForActions.isSavedLine)
+    )
+      return;
 
     const { line, index, isSavedLine } = mapState.selectedLineForActions;
 
     setMapState((prevState) => {
-      const updatedLines = isSavedLine ? prevState.savedPolylines : prevState.fiberLines;
+      const updatedLines = isSavedLine
+        ? prevState.savedPolylines
+        : prevState.fiberLines;
 
-      const updatedLinesWithWaypoint = updatedLines.map((currentLine, currentIndex) => {
-        if (currentIndex === index) {
-          const lastPoint =
-            currentLine.waypoints && currentLine.waypoints.length > 0
-              ? currentLine.waypoints[currentLine.waypoints.length - 1]
-              : currentLine.to;
+      const updatedLinesWithWaypoint = updatedLines.map(
+        (currentLine, currentIndex) => {
+          if (currentIndex === index) {
+            const lastPoint =
+              currentLine.waypoints && currentLine.waypoints.length > 0
+                ? currentLine.waypoints[currentLine.waypoints.length - 1]
+                : currentLine.to;
 
-          const midpoint = {
-            lat: (currentLine.from.lat + lastPoint.lat) / 2,
-            lng: (currentLine.from.lng + lastPoint.lng) / 2,
-          };
+            const midpoint = {
+              lat: (currentLine.from.lat + lastPoint.lat) / 2,
+              lng: (currentLine.from.lng + lastPoint.lng) / 2,
+            };
 
-          const updatedWaypoints = currentLine.waypoints
-            ? [...currentLine.waypoints, midpoint]
-            : [midpoint];
+            const updatedWaypoints = currentLine.waypoints
+              ? [...currentLine.waypoints, midpoint]
+              : [midpoint];
 
-          return { ...currentLine, waypoints: updatedWaypoints };
+            return { ...currentLine, waypoints: updatedWaypoints };
+          }
+          return currentLine;
         }
-        return currentLine;
-      });
+      );
 
       if (isSavedLine) {
-        localStorage.setItem("savedPolylines", JSON.stringify(updatedLinesWithWaypoint));
+        localStorage.setItem(
+          "savedPolylines",
+          JSON.stringify(updatedLinesWithWaypoint)
+        );
       }
 
       return {
@@ -245,7 +276,13 @@ const MyMapV13 = () => {
     });
   };
 
-  const handleWaypointClick = (lineIndex, waypointIndex, isSavedLine = false, waypoint, e) => {
+  const handleWaypointClick = (
+    lineIndex,
+    waypointIndex,
+    isSavedLine = false,
+    waypoint,
+    e
+  ) => {
     if (e && e.domEvent) {
       e.domEvent.preventDefault();
       e.domEvent.stopPropagation();
@@ -269,25 +306,42 @@ const MyMapV13 = () => {
   };
 
   const removeSelectedWaypoint = () => {
-    if (!mapState.selectedWaypointInfo || !isInteractionAllowed(mapState.selectedWaypointInfo.isSavedLine)) return;
+    if (
+      !mapState.selectedWaypointInfo ||
+      !isInteractionAllowed(mapState.selectedWaypointInfo.isSavedLine)
+    )
+      return;
 
-    const { lineIndex, waypointIndex, isSavedLine } = mapState.selectedWaypointInfo;
+    const { lineIndex, waypointIndex, isSavedLine } =
+      mapState.selectedWaypointInfo;
 
     setMapState((prevState) => {
-      const targetArray = isSavedLine ? prevState.savedPolylines : prevState.fiberLines;
+      const targetArray = isSavedLine
+        ? prevState.savedPolylines
+        : prevState.fiberLines;
       const updatedLines = targetArray.map((line, idx) => {
         if (idx === lineIndex && line.waypoints) {
-          const updatedWaypoints = line.waypoints.filter((_, wIdx) => wIdx !== waypointIndex);
+          const updatedWaypoints = line.waypoints.filter(
+            (_, wIdx) => wIdx !== waypointIndex
+          );
           return { ...line, waypoints: updatedWaypoints };
         }
         return line;
       });
 
       const updatedImageIcons = prevState.imageIcons.filter(
-        (icon) => !(icon.lat === prevState.selectedWaypoint.lat && icon.lng === prevState.selectedWaypoint.lng)
+        (icon) =>
+          !(
+            icon.lat === prevState.selectedWaypoint.lat &&
+            icon.lng === prevState.selectedWaypoint.lng
+          )
       );
       const updatedSavedIcons = prevState.savedIcons.filter(
-        (icon) => !(icon.lat === prevState.selectedWaypoint.lat && icon.lng === prevState.selectedWaypoint.lng)
+        (icon) =>
+          !(
+            icon.lat === prevState.selectedWaypoint.lat &&
+            icon.lng === prevState.selectedWaypoint.lng
+          )
       );
 
       if (isSavedLine) {
@@ -300,7 +354,9 @@ const MyMapV13 = () => {
         ...(isSavedLine
           ? {
               savedPolylines: updatedLines,
-              fiberLines: prevState.showSavedRoutes ? updatedLines : prevState.fiberLines,
+              fiberLines: prevState.showSavedRoutes
+                ? updatedLines
+                : prevState.fiberLines,
               savedIcons: updatedSavedIcons,
             }
           : { fiberLines: updatedLines }),
@@ -332,6 +388,7 @@ const MyMapV13 = () => {
           selectedSplitter: icon,
           showSplitterModal: true,
           splitterRatio: icon.splitterRatio || "", // Default to empty string
+          splitterInput: icon.name || "", // Populate with saved name
           waypointActionPosition: { x, y },
         }));
       } else {
@@ -350,14 +407,19 @@ const MyMapV13 = () => {
   };
 
   const removeSelectedIcon = () => {
-    if (!mapState.selectedWaypointInfo || !mapState.selectedWaypointInfo.isIcon) return;
+    if (!mapState.selectedWaypointInfo || !mapState.selectedWaypointInfo.isIcon)
+      return;
     if (mapState.showSavedRoutes && !mapState.isSavedRoutesEditable) return;
 
     const { iconId } = mapState.selectedWaypointInfo;
 
     setMapState((prevState) => {
-      const updatedImageIcons = prevState.imageIcons.filter((icon) => icon.id !== iconId);
-      const updatedSavedIcons = prevState.savedIcons.filter((icon) => icon.id !== iconId);
+      const updatedImageIcons = prevState.imageIcons.filter(
+        (icon) => icon.id !== iconId
+      );
+      const updatedSavedIcons = prevState.savedIcons.filter(
+        (icon) => icon.id !== iconId
+      );
 
       if (prevState.showSavedRoutes) {
         localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
@@ -375,10 +437,17 @@ const MyMapV13 = () => {
   };
 
   const addSplitterAtWaypoint = () => {
-    if (!mapState.selectedWaypointInfo || !isInteractionAllowed(mapState.selectedWaypointInfo.isSavedLine)) return;
+    if (
+      !mapState.selectedWaypointInfo ||
+      !isInteractionAllowed(mapState.selectedWaypointInfo.isSavedLine)
+    )
+      return;
 
-    const { lineIndex, waypointIndex, isSavedLine } = mapState.selectedWaypointInfo;
-    const targetArray = isSavedLine ? mapState.savedPolylines : mapState.fiberLines;
+    const { lineIndex, waypointIndex, isSavedLine } =
+      mapState.selectedWaypointInfo;
+    const targetArray = isSavedLine
+      ? mapState.savedPolylines
+      : mapState.fiberLines;
     const waypoint = targetArray[lineIndex].waypoints[waypointIndex];
 
     const newSplitter = {
@@ -387,6 +456,7 @@ const MyMapV13 = () => {
       type: "Splitter",
       id: `icon-${mapState.nextNumber}`,
       splitterRatio: "", // Default to empty string
+      name: "", // Add name field, initially empty
       linkedLineIndex: lineIndex,
       linkedWaypointIndex: waypointIndex,
       isSavedLine: isSavedLine,
@@ -394,7 +464,9 @@ const MyMapV13 = () => {
 
     setMapState((prevState) => {
       const updatedImageIcons = [...prevState.imageIcons, newSplitter];
-      const updatedSavedIcons = isSavedLine ? [...prevState.savedIcons, newSplitter] : prevState.savedIcons;
+      const updatedSavedIcons = isSavedLine
+        ? [...prevState.savedIcons, newSplitter]
+        : prevState.savedIcons;
 
       if (isSavedLine) {
         localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
@@ -413,24 +485,37 @@ const MyMapV13 = () => {
   };
 
   const removeSelectedLine = () => {
-    if (!mapState.selectedLineForActions || !isInteractionAllowed(mapState.selectedLineForActions.isSavedLine)) return;
+    if (
+      !mapState.selectedLineForActions ||
+      !isInteractionAllowed(mapState.selectedLineForActions.isSavedLine)
+    )
+      return;
 
     const { index, isSavedLine } = mapState.selectedLineForActions;
 
     setMapState((prevState) => {
       if (isSavedLine) {
-        const updatedSavedPolylines = prevState.savedPolylines.filter((_, i) => i !== index);
-        localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
+        const updatedSavedPolylines = prevState.savedPolylines.filter(
+          (_, i) => i !== index
+        );
+        localStorage.setItem(
+          "savedPolylines",
+          JSON.stringify(updatedSavedPolylines)
+        );
         return {
           ...prevState,
           savedPolylines: updatedSavedPolylines,
-          fiberLines: prevState.showSavedRoutes ? updatedSavedPolylines : prevState.fiberLines,
+          fiberLines: prevState.showSavedRoutes
+            ? updatedSavedPolylines
+            : prevState.fiberLines,
           selectedLineForActions: null,
           lineActionPosition: null,
           exactClickPosition: null,
         };
       } else {
-        const updatedFiberLines = prevState.fiberLines.filter((_, i) => i !== index);
+        const updatedFiberLines = prevState.fiberLines.filter(
+          (_, i) => i !== index
+        );
         return {
           ...prevState,
           fiberLines: updatedFiberLines,
@@ -449,7 +534,10 @@ const MyMapV13 = () => {
     const newLng = e.latLng.lng();
 
     setMapState((prevState) => {
-      const splitter = prevState.imageIcons.find((icon) => icon.id === iconId && icon.type === "Splitter");
+      // Find the dragged icon (could be a splitter or other type)
+      const draggedIcon = prevState.imageIcons.find(
+        (icon) => icon.id === iconId
+      );
       const updatedImageIcons = prevState.imageIcons.map((icon) =>
         icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
       );
@@ -465,55 +553,76 @@ const MyMapV13 = () => {
       let updatedFiberLines = [...prevState.fiberLines];
       let updatedSavedPolylines = [...prevState.savedPolylines];
 
-      if (splitter && splitter.linkedLineIndex !== undefined && splitter.linkedWaypointIndex !== undefined) {
-        const targetArray = splitter.isSavedLine ? updatedSavedPolylines : updatedFiberLines;
-        targetArray[splitter.linkedLineIndex] = {
-          ...targetArray[splitter.linkedLineIndex],
-          waypoints: targetArray[splitter.linkedLineIndex].waypoints.map((wp, idx) =>
-            idx === splitter.linkedWaypointIndex ? { lat: newLat, lng: newLng } : wp
+      // Handle splitter-specific logic
+      if (
+        draggedIcon.type === "Splitter" &&
+        draggedIcon.linkedLineIndex !== undefined &&
+        draggedIcon.linkedWaypointIndex !== undefined
+      ) {
+        const targetArray = draggedIcon.isSavedLine
+          ? updatedSavedPolylines
+          : updatedFiberLines;
+        targetArray[draggedIcon.linkedLineIndex] = {
+          ...targetArray[draggedIcon.linkedLineIndex],
+          waypoints: targetArray[draggedIcon.linkedLineIndex].waypoints.map(
+            (wp, idx) =>
+              idx === draggedIcon.linkedWaypointIndex
+                ? { lat: newLat, lng: newLng }
+                : wp
           ),
         };
-
-        if (splitter.isSavedLine) {
-          localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
+        if (draggedIcon.isSavedLine) {
+          localStorage.setItem(
+            "savedPolylines",
+            JSON.stringify(updatedSavedPolylines)
+          );
         }
       }
 
-      updatedFiberLines = updatedFiberLines.map((line) => {
-        if (
-          isSnappedToIcon(line.from.lat, line.from.lng) &&
-          line.from.lat === prevState.imageIcons.find((i) => i.id === iconId)?.lat &&
-          line.from.lng === prevState.imageIcons.find((i) => i.id === iconId)?.lng
-        ) {
-          return { ...line, from: { lat: newLat, lng: newLng } };
-        }
-        if (
-          isSnappedToIcon(line.to.lat, line.to.lng) &&
-          line.to.lat === prevState.imageIcons.find((i) => i.id === iconId)?.lat &&
-          line.to.lng === prevState.imageIcons.find((i) => i.id === iconId)?.lng
-        ) {
-          return { ...line, to: { lat: newLat, lng: newLng } };
-        }
-        return line;
-      });
+      // Update any lines snapped to this icon (including splitters)
+      const updateLines = (lines) =>
+        lines.map((line) => {
+          let updatedLine = { ...line };
 
-      updatedSavedPolylines = updatedSavedPolylines.map((line) => {
-        if (
-          isSnappedToIcon(line.from.lat, line.from.lng) &&
-          line.from.lat === prevState.imageIcons.find((i) => i.id === iconId)?.lat &&
-          line.from.lng === prevState.imageIcons.find((i) => i.id === iconId)?.lng
-        ) {
-          return { ...line, from: { lat: newLat, lng: newLng } };
-        }
-        if (
-          isSnappedToIcon(line.to.lat, line.to.lng) &&
-          line.to.lat === prevState.imageIcons.find((i) => i.id === iconId)?.lat &&
-          line.to.lng === prevState.imageIcons.find((i) => i.id === iconId)?.lng
-        ) {
-          return { ...line, to: { lat: newLat, lng: newLng } };
-        }
-        return line;
-      });
+          // Update 'from' if snapped to the dragged icon
+          if (
+            isSnappedToIcon(line.from.lat, line.from.lng) &&
+            line.from.lat === draggedIcon.lat &&
+            line.from.lng === draggedIcon.lng
+          ) {
+            updatedLine.from = { lat: newLat, lng: newLng };
+          }
+
+          // Update 'to' if snapped to the dragged icon
+          if (
+            isSnappedToIcon(line.to.lat, line.to.lng) &&
+            line.to.lat === draggedIcon.lat &&
+            line.to.lng === draggedIcon.lng
+          ) {
+            updatedLine.to = { lat: newLat, lng: newLng };
+          }
+
+          // Update waypoints if snapped to the dragged icon
+          if (line.waypoints) {
+            updatedLine.waypoints = line.waypoints.map((wp) =>
+              wp.lat === draggedIcon.lat && wp.lng === draggedIcon.lng
+                ? { lat: newLat, lng: newLng }
+                : wp
+            );
+          }
+
+          return updatedLine;
+        });
+
+      updatedFiberLines = updateLines(updatedFiberLines);
+      updatedSavedPolylines = updateLines(updatedSavedPolylines);
+
+      if (prevState.showSavedRoutes) {
+        localStorage.setItem(
+          "savedPolylines",
+          JSON.stringify(updatedSavedPolylines)
+        );
+      }
 
       return {
         ...prevState,
@@ -568,10 +677,24 @@ const MyMapV13 = () => {
     }));
   };
 
+  // const handleSplitterInputChange = (e) => {
+  //   setMapState((prevState) => ({
+  //     ...prevState,
+  //     splitterInput: e.target.value,
+  //   }));
+  // };
+
   const handleSplitterInputChange = (e) => {
+    const newName = e.target.value;
     setMapState((prevState) => ({
       ...prevState,
-      splitterInput: e.target.value,
+      splitterInput: newName,
+      imageIcons: prevState.imageIcons.map((icon) =>
+        icon.id === prevState.selectedSplitter?.id ? { ...icon, name: newName } : icon
+      ),
+      savedIcons: prevState.savedIcons.map((icon) =>
+        icon.id === prevState.selectedSplitter?.id ? { ...icon, name: newName } : icon
+      ),
     }));
   };
 
@@ -582,7 +705,10 @@ const MyMapV13 = () => {
     const newFiberLine = {
       id: generateUniqueId(),
       from: { lat: rightClickMarker.lat, lng: rightClickMarker.lng },
-      to: { lat: rightClickMarker.lat + 0.001, lng: rightClickMarker.lng + 0.001 },
+      to: {
+        lat: rightClickMarker.lat + 0.001,
+        lng: rightClickMarker.lng + 0.001,
+      },
       waypoints: [],
       createdAt: Date.now(),
     };
@@ -604,9 +730,15 @@ const MyMapV13 = () => {
     setMapState((prevState) => {
       const updatedLines = [...prevState.fiberLines];
       const line = updatedLines[index];
-      const newFrom = nearestIcon ? { lat: nearestIcon.lat, lng: nearestIcon.lng } : { lat: newLat, lng: newLng };
+      const newFrom = nearestIcon
+        ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+        : { lat: newLat, lng: newLng };
 
-      if (nearestIcon && nearestIcon.type === "Splitter" && nearestIcon.ratioSetTimestamp) {
+      if (
+        nearestIcon &&
+        nearestIcon.type === "Splitter" &&
+        nearestIcon.ratioSetTimestamp
+      ) {
         const splitNum = getRatioNumber(nearestIcon.splitterRatio);
         const connectedLines = getConnectedLinesCount(nearestIcon);
 
@@ -614,13 +746,16 @@ const MyMapV13 = () => {
           connectedLines >= splitNum &&
           !isSnappedToIcon(line.from.lat, line.from.lng)
         ) {
-          alert(`Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`);
+          alert(
+            `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`
+          );
           return prevState;
         }
       }
 
       updatedLines[index].from = newFrom;
-      updatedLines[index].createdAt = updatedLines[index].createdAt || Date.now();
+      updatedLines[index].createdAt =
+        updatedLines[index].createdAt || Date.now();
       return { ...prevState, fiberLines: updatedLines };
     });
   };
@@ -633,9 +768,15 @@ const MyMapV13 = () => {
     setMapState((prevState) => {
       const updatedLines = [...prevState.fiberLines];
       const line = updatedLines[index];
-      const newTo = nearestIcon ? { lat: nearestIcon.lat, lng: nearestIcon.lng } : { lat: newLat, lng: newLng };
+      const newTo = nearestIcon
+        ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+        : { lat: newLat, lng: newLng };
 
-      if (nearestIcon && nearestIcon.type === "Splitter" && nearestIcon.ratioSetTimestamp) {
+      if (
+        nearestIcon &&
+        nearestIcon.type === "Splitter" &&
+        nearestIcon.ratioSetTimestamp
+      ) {
         const splitNum = getRatioNumber(nearestIcon.splitterRatio);
         const connectedLines = getConnectedLinesCount(nearestIcon);
 
@@ -643,13 +784,16 @@ const MyMapV13 = () => {
           connectedLines >= splitNum &&
           !isSnappedToIcon(line.to.lat, line.to.lng)
         ) {
-          alert(`Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`);
+          alert(
+            `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`
+          );
           return prevState;
         }
       }
 
       updatedLines[index].to = newTo;
-      updatedLines[index].createdAt = updatedLines[index].createdAt || Date.now();
+      updatedLines[index].createdAt =
+        updatedLines[index].createdAt || Date.now();
       return { ...prevState, fiberLines: updatedLines };
     });
   };
@@ -664,15 +808,26 @@ const MyMapV13 = () => {
       let updatedSavedPolylines = [...prevState.savedPolylines];
       const line = updatedFiberLines[lineIndex];
 
-      if (nearestIcon && nearestIcon.type === "Splitter" && nearestIcon.ratioSetTimestamp) {
+      if (
+        nearestIcon &&
+        nearestIcon.type === "Splitter" &&
+        nearestIcon.ratioSetTimestamp
+      ) {
         const splitNum = getRatioNumber(nearestIcon.splitterRatio);
         const connectedLines = getConnectedLinesCount(nearestIcon);
 
         if (
           connectedLines >= splitNum &&
-          !line.waypoints.some((wp, idx) => idx === waypointIndex && wp.lat === nearestIcon.lat && wp.lng === nearestIcon.lng)
+          !line.waypoints.some(
+            (wp, idx) =>
+              idx === waypointIndex &&
+              wp.lat === nearestIcon.lat &&
+              wp.lng === nearestIcon.lng
+          )
         ) {
-          alert(`Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`);
+          alert(
+            `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`
+          );
           return prevState;
         }
       }
@@ -700,7 +855,10 @@ const MyMapV13 = () => {
               : wp
           ),
         };
-        localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
+        localStorage.setItem(
+          "savedPolylines",
+          JSON.stringify(updatedSavedPolylines)
+        );
       }
 
       return {
@@ -722,15 +880,20 @@ const MyMapV13 = () => {
         strokeColor: "#0000FF",
       }));
 
-      const savedPolylines = JSON.parse(localStorage.getItem("savedPolylines")) || [];
+      const savedPolylines =
+        JSON.parse(localStorage.getItem("savedPolylines")) || [];
       const updatedSavedPolylines = [
         ...savedPolylines.filter(
-          (existing) => !polylinesToSave.some((newLine) => newLine.id === existing.id)
+          (existing) =>
+            !polylinesToSave.some((newLine) => newLine.id === existing.id)
         ),
         ...polylinesToSave,
       ];
 
-      localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
+      localStorage.setItem(
+        "savedPolylines",
+        JSON.stringify(updatedSavedPolylines)
+      );
 
       setMapState((prevState) => ({
         ...prevState,
@@ -755,13 +918,15 @@ const MyMapV13 = () => {
         linkedLineIndex: icon.linkedLineIndex,
         linkedWaypointIndex: icon.linkedWaypointIndex,
         isSavedLine: icon.isSavedLine,
+        name: icon.name || "", // Explicitly include name
         createdAt: new Date().toISOString(),
       }));
 
       const savedIcons = JSON.parse(localStorage.getItem("savedIcons")) || [];
       const updatedSavedIcons = [
         ...savedIcons.filter(
-          (existing) => !iconsToSave.some((newIcon) => newIcon.id === existing.id)
+          (existing) =>
+            !iconsToSave.some((newIcon) => newIcon.id === existing.id)
         ),
         ...iconsToSave,
       ];
@@ -781,6 +946,7 @@ const MyMapV13 = () => {
           linkedLineIndex: icon.linkedLineIndex,
           linkedWaypointIndex: icon.linkedWaypointIndex,
           isSavedLine: icon.isSavedLine,
+          name: icon.name, // Include name in updated state
         })),
       }));
     }
@@ -793,7 +959,8 @@ const MyMapV13 = () => {
   };
 
   useEffect(() => {
-    const savedPolylines = JSON.parse(localStorage.getItem("savedPolylines")) || [];
+    const savedPolylines =
+      JSON.parse(localStorage.getItem("savedPolylines")) || [];
     const savedIcons = JSON.parse(localStorage.getItem("savedIcons")) || [];
 
     setMapState((prevState) => ({
@@ -802,11 +969,13 @@ const MyMapV13 = () => {
       savedIcons,
       imageIcons: savedIcons.map((icon) => ({
         ...icon,
-        splitterRatio: icon.splitterRatio || (icon.type === "Splitter" ? "" : null),
+        splitterRatio:
+          icon.splitterRatio || (icon.type === "Splitter" ? "" : null),
         ratioSetTimestamp: icon.ratioSetTimestamp,
         linkedLineIndex: icon.linkedLineIndex,
         linkedWaypointIndex: icon.linkedWaypointIndex,
         isSavedLine: icon.isSavedLine,
+        name: icon.name || "", // Restore name
       })),
     }));
   }, []);
@@ -855,7 +1024,11 @@ const MyMapV13 = () => {
     setMapState((prevState) => {
       const updatedSavedPolylines = prevState.savedPolylines.map((polyline) => {
         if (polyline.id === polylineId) {
-          if (nearestIcon && nearestIcon.type === "Splitter" && nearestIcon.ratioSetTimestamp) {
+          if (
+            nearestIcon &&
+            nearestIcon.type === "Splitter" &&
+            nearestIcon.ratioSetTimestamp
+          ) {
             const splitNum = getRatioNumber(nearestIcon.splitterRatio);
             const connectedLines = getConnectedLinesCount(nearestIcon);
 
@@ -863,7 +1036,9 @@ const MyMapV13 = () => {
               connectedLines >= splitNum &&
               !isSnappedToIcon(polyline[pointType].lat, polyline[pointType].lng)
             ) {
-              alert(`Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`);
+              alert(
+                `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`
+              );
               return polyline;
             }
           }
@@ -871,16 +1046,25 @@ const MyMapV13 = () => {
           const newPoint = nearestIcon
             ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
             : { lat: newLat, lng: newLng };
-          return { ...polyline, [pointType]: newPoint, createdAt: polyline.createdAt || Date.now() };
+          return {
+            ...polyline,
+            [pointType]: newPoint,
+            createdAt: polyline.createdAt || Date.now(),
+          };
         }
         return polyline;
       });
 
-      localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
+      localStorage.setItem(
+        "savedPolylines",
+        JSON.stringify(updatedSavedPolylines)
+      );
       return {
         ...prevState,
         savedPolylines: updatedSavedPolylines,
-        fiberLines: prevState.showSavedRoutes ? updatedSavedPolylines : prevState.fiberLines,
+        fiberLines: prevState.showSavedRoutes
+          ? updatedSavedPolylines
+          : prevState.fiberLines,
       };
     });
   };
@@ -895,15 +1079,26 @@ const MyMapV13 = () => {
     setMapState((prevState) => {
       const updatedSavedPolylines = prevState.savedPolylines.map((polyline) => {
         if (polyline.id === polylineId && polyline.waypoints) {
-          if (nearestIcon && nearestIcon.type === "Splitter" && nearestIcon.ratioSetTimestamp) {
+          if (
+            nearestIcon &&
+            nearestIcon.type === "Splitter" &&
+            nearestIcon.ratioSetTimestamp
+          ) {
             const splitNum = getRatioNumber(nearestIcon.splitterRatio);
             const connectedLines = getConnectedLinesCount(nearestIcon);
 
             if (
               connectedLines >= splitNum &&
-              !polyline.waypoints.some((wp, idx) => idx === waypointIndex && wp.lat === nearestIcon.lat && wp.lng === nearestIcon.lng)
+              !polyline.waypoints.some(
+                (wp, idx) =>
+                  idx === waypointIndex &&
+                  wp.lat === nearestIcon.lat &&
+                  wp.lng === nearestIcon.lng
+              )
             ) {
-              alert(`Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`);
+              alert(
+                `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`
+              );
               return polyline;
             }
           }
@@ -922,11 +1117,16 @@ const MyMapV13 = () => {
         return polyline;
       });
 
-      localStorage.setItem("savedPolylines", JSON.stringify(updatedSavedPolylines));
+      localStorage.setItem(
+        "savedPolylines",
+        JSON.stringify(updatedSavedPolylines)
+      );
       return {
         ...prevState,
         savedPolylines: updatedSavedPolylines,
-        fiberLines: prevState.showSavedRoutes ? updatedSavedPolylines : prevState.fiberLines,
+        fiberLines: prevState.showSavedRoutes
+          ? updatedSavedPolylines
+          : prevState.fiberLines,
       };
     });
   };
@@ -947,6 +1147,15 @@ const MyMapV13 = () => {
     }));
   };
 
+  const isWaypointOverlaidBySplitter = (waypoint) => {
+    return mapState.imageIcons.some(
+      (icon) =>
+        icon.type === "Splitter" &&
+        Math.abs(icon.lat - waypoint.lat) < 0.0001 && // Smaller threshold for exact match
+        Math.abs(icon.lng - waypoint.lng) < 0.0001
+    );
+  };
+
   if (loadError) return <div>Error loading maps</div>;
   if (!isLoaded) return <div>Loading Maps...</div>;
 
@@ -956,11 +1165,15 @@ const MyMapV13 = () => {
         <button onClick={resetMap}>Reset Map</button>
         <button onClick={saveRoute}>Save Route</button>
         <button onClick={togglePreviousRoutes}>
-          {mapState.showSavedRoutes ? "Hide Previous Routes" : "Show Previous Routes"}
+          {mapState.showSavedRoutes
+            ? "Hide Previous Routes"
+            : "Show Previous Routes"}
         </button>
         {mapState.showSavedRoutes && (
           <button onClick={toggleSavedRoutesEditability}>
-            {mapState.isSavedRoutesEditable ? "Disable Editing" : "Enable Editing"}
+            {mapState.isSavedRoutesEditable
+              ? "Disable Editing"
+              : "Enable Editing"}
           </button>
         )}
       </div>
@@ -976,7 +1189,9 @@ const MyMapV13 = () => {
           <MarkerF
             key={icon.id}
             position={{ lat: icon.lat, lng: icon.lng }}
-            draggable={mapState.isSavedRoutesEditable || !mapState.showSavedRoutes}
+            draggable={
+              mapState.isSavedRoutesEditable || !mapState.showSavedRoutes
+            }
             icon={{
               url: icon.imageUrl || iconImages[icon.type],
               scaledSize: new google.maps.Size(30, 30),
@@ -992,7 +1207,10 @@ const MyMapV13 = () => {
           <MarkerF
             key={`right-click-${mapState.rightClickMarker.lat}-${mapState.rightClickMarker.lng}`}
             position={mapState.rightClickMarker}
-            icon={{ url: "/img/location.jpg", scaledSize: new google.maps.Size(20, 20) }}
+            icon={{
+              url: "/img/location.jpg",
+              scaledSize: new google.maps.Size(20, 20),
+            }}
           />
         )}
 
@@ -1012,59 +1230,80 @@ const MyMapV13 = () => {
                   handleLineClick(line, index, false, e);
                 }}
               />
-              {mapState.selectedLineForActions && mapState.exactClickPosition && (
-                <div
-                  className="line-action-modal"
-                  style={{
-                    top: `${mapState.exactClickPosition.y - 95}px`,
-                    left: `${mapState.exactClickPosition.x}px`,
-                    transform: "translateX(-50%)",
-                  }}
-                >
-                  <div className="line-action-item" onClick={addWaypoint}>
-                    <Plus size={20} className="text-gray-600" />
-                    <span className="line-action-tooltip">Add Waypoint</span>
-                  </div>
-                  <div className="line-action-item" onClick={removeSelectedLine}>
-                    <Trash2 size={20} className="text-red-500" />
-                    <span className="line-action-tooltip">Delete Line</span>
-                  </div>
+              {mapState.selectedLineForActions &&
+                mapState.exactClickPosition && (
                   <div
-                    className="line-action-item"
-                    onClick={() =>
-                      setMapState((prev) => ({
-                        ...prev,
-                        selectedLineForActions: null,
-                        lineActionPosition: null,
-                        exactClickPosition: null,
-                      }))
-                    }
+                    className="line-action-modal"
+                    style={{
+                      top: `${mapState.exactClickPosition.y - 95}px`,
+                      left: `${mapState.exactClickPosition.x}px`,
+                      transform: "translateX(-50%)",
+                    }}
                   >
-                    <span className="line-action-close">×</span>
-                    <span className="line-action-tooltip">Close</span>
+                    <div className="line-action-item" onClick={addWaypoint}>
+                      <Plus size={20} className="text-gray-600" />
+                      <span className="line-action-tooltip">Add Waypoint</span>
+                    </div>
+                    <div
+                      className="line-action-item"
+                      onClick={removeSelectedLine}
+                    >
+                      <Trash2 size={20} className="text-red-500" />
+                      <span className="line-action-tooltip">Delete Line</span>
+                    </div>
+                    <div
+                      className="line-action-item"
+                      onClick={() =>
+                        setMapState((prev) => ({
+                          ...prev,
+                          selectedLineForActions: null,
+                          lineActionPosition: null,
+                          exactClickPosition: null,
+                        }))
+                      }
+                    >
+                      <span className="line-action-close">×</span>
+                      <span className="line-action-tooltip">Close</span>
+                    </div>
+                    <div className="modal-spike"></div>
                   </div>
-                  <div className="modal-spike"></div>
-                </div>
+                )}
+
+              {(line.waypoints || []).map((waypoint, waypointIndex) =>
+                !isWaypointOverlaidBySplitter(waypoint) ? (
+                  <MarkerF
+                    key={`waypoint-${index}-${waypointIndex}`}
+                    position={waypoint}
+                    draggable={true}
+                    onDragEnd={(e) =>
+                      handleWaypointDragEnd(index, waypointIndex, e)
+                    }
+                    icon={{
+                      url: "/img/location.jpg",
+                      scaledSize: new google.maps.Size(15, 15),
+                    }}
+                    onClick={(e) => {
+                      e.domEvent.stopPropagation();
+                      handleWaypointClick(
+                        index,
+                        waypointIndex,
+                        false,
+                        waypoint,
+                        e
+                      );
+                    }}
+                  />
+                ) : null
               )}
-              {(line.waypoints || []).map((waypoint, waypointIndex) => (
-                <MarkerF
-                  key={`waypoint-${index}-${waypointIndex}`}
-                  position={waypoint}
-                  draggable={true}
-                  onDragEnd={(e) => handleWaypointDragEnd(index, waypointIndex, e)}
-                  icon={{ url: "/img/location.jpg", scaledSize: new google.maps.Size(15, 15) }}
-                  onClick={(e) => {
-                    e.domEvent.stopPropagation();
-                    handleWaypointClick(index, waypointIndex, false, waypoint, e);
-                  }}
-                />
-              ))}
               {!isSnappedToIcon(line.from.lat, line.from.lng) && (
                 <MarkerF
                   position={line.from}
                   draggable={true}
                   onDragEnd={(e) => handleStartMarkerDragEnd(index, e)}
-                  icon={{ url: "/img/location.jpg", scaledSize: new google.maps.Size(20, 20) }}
+                  icon={{
+                    url: "/img/location.jpg",
+                    scaledSize: new google.maps.Size(20, 20),
+                  }}
                 />
               )}
               {!isSnappedToIcon(line.to.lat, line.to.lng) && (
@@ -1072,7 +1311,10 @@ const MyMapV13 = () => {
                   position={line.to}
                   draggable={true}
                   onDragEnd={(e) => handleEndMarkerDragEnd(index, e)}
-                  icon={{ url: "/img/location.jpg", scaledSize: new google.maps.Size(20, 20) }}
+                  icon={{
+                    url: "/img/location.jpg",
+                    scaledSize: new google.maps.Size(20, 20),
+                  }}
                 />
               )}
             </React.Fragment>
@@ -1081,38 +1323,73 @@ const MyMapV13 = () => {
 
         {mapState.showSavedRoutes &&
           mapState.savedPolylines.map((polyline, index) => {
-            const fullPath = [polyline.from, ...(polyline.waypoints || []), polyline.to];
+            const fullPath = [
+              polyline.from,
+              ...(polyline.waypoints || []),
+              polyline.to,
+            ];
             return (
               <React.Fragment key={polyline.id || `saved-polyline-${index}`}>
                 <PolylineF
                   path={fullPath}
-                  options={{ strokeColor: "#0000FF", strokeOpacity: 1.0, strokeWeight: 2 }}
+                  options={{
+                    strokeColor: "#0000FF",
+                    strokeOpacity: 1.0,
+                    strokeWeight: 2,
+                  }}
                   onClick={(e) => handleLineClick(polyline, index, true, e)}
                 />
-                {(polyline.waypoints || []).map((waypoint, waypointIndex) => (
-                  <MarkerF
-                    key={`saved-waypoint-${index}-${waypointIndex}`}
-                    position={waypoint}
-                    draggable={mapState.isSavedRoutesEditable}
-                    onDragEnd={
-                      mapState.isSavedRoutesEditable
-                        ? (e) => handleSavedPolylineWaypointDragEnd(polyline.id, waypointIndex, e)
-                        : undefined
-                    }
-                    icon={{ url: "/img/location.jpg", scaledSize: new google.maps.Size(15, 15) }}
-                    onClick={(e) => handleWaypointClick(index, waypointIndex, true, waypoint, e)}
-                  />
-                ))}
+
+                {(polyline.waypoints || []).map((waypoint, waypointIndex) =>
+                  !isWaypointOverlaidBySplitter(waypoint) ? (
+                    <MarkerF
+                      key={`saved-waypoint-${index}-${waypointIndex}`}
+                      position={waypoint}
+                      draggable={mapState.isSavedRoutesEditable}
+                      onDragEnd={
+                        mapState.isSavedRoutesEditable
+                          ? (e) =>
+                              handleSavedPolylineWaypointDragEnd(
+                                polyline.id,
+                                waypointIndex,
+                                e
+                              )
+                          : undefined
+                      }
+                      icon={{
+                        url: "/img/location.jpg",
+                        scaledSize: new google.maps.Size(15, 15),
+                      }}
+                      onClick={(e) =>
+                        handleWaypointClick(
+                          index,
+                          waypointIndex,
+                          true,
+                          waypoint,
+                          e
+                        )
+                      }
+                    />
+                  ) : null
+                )}
                 {!isSnappedToIcon(polyline.from.lat, polyline.from.lng) && (
                   <MarkerF
                     position={polyline.from}
                     draggable={mapState.isSavedRoutesEditable}
                     onDragEnd={
                       mapState.isSavedRoutesEditable
-                        ? (e) => handleSavedPolylinePointDragEnd(polyline.id, "from", e)
+                        ? (e) =>
+                            handleSavedPolylinePointDragEnd(
+                              polyline.id,
+                              "from",
+                              e
+                            )
                         : undefined
                     }
-                    icon={{ url: "/img/location.jpg", scaledSize: new google.maps.Size(20, 20) }}
+                    icon={{
+                      url: "/img/location.jpg",
+                      scaledSize: new google.maps.Size(20, 20),
+                    }}
                   />
                 )}
                 {!isSnappedToIcon(polyline.to.lat, polyline.to.lng) && (
@@ -1121,10 +1398,18 @@ const MyMapV13 = () => {
                     draggable={mapState.isSavedRoutesEditable}
                     onDragEnd={
                       mapState.isSavedRoutesEditable
-                        ? (e) => handleSavedPolylinePointDragEnd(polyline.id, "to", e)
+                        ? (e) =>
+                            handleSavedPolylinePointDragEnd(
+                              polyline.id,
+                              "to",
+                              e
+                            )
                         : undefined
                     }
-                    icon={{ url: "/img/location.jpg", scaledSize: new google.maps.Size(20, 20) }}
+                    icon={{
+                      url: "/img/location.jpg",
+                      scaledSize: new google.maps.Size(20, 20),
+                    }}
                   />
                 )}
               </React.Fragment>
@@ -1141,7 +1426,11 @@ const MyMapV13 = () => {
           >
             <div
               className="line-action-item"
-              onClick={mapState.selectedWaypointInfo?.isIcon ? removeSelectedIcon : removeSelectedWaypoint}
+              onClick={
+                mapState.selectedWaypointInfo?.isIcon
+                  ? removeSelectedIcon
+                  : removeSelectedWaypoint
+              }
             >
               <Trash2 size={20} color="red" />
               <span className="line-action-tooltip">Remove</span>
@@ -1187,14 +1476,19 @@ const MyMapV13 = () => {
                 onChange={handleSplitterRatioChange}
                 style={{ width: "100%", marginBottom: "10px" }}
               >
-                <option value="" disabled>Choose a ratio</option>
+                <option value="" disabled>
+                  Choose a ratio
+                </option>
                 <option value="1:2">1:2</option>
                 <option value="1:4">1:4</option>
                 <option value="1:8">1:8</option>
                 <option value="1:16">1:16</option>
                 <option value="1:32">1:32</option>
               </select>
-              <button onClick={closeSplitterModal} style={{ marginLeft: "10px" }}>
+              <button
+                onClick={closeSplitterModal}
+                style={{ marginLeft: "10px" }}
+              >
                 Close
               </button>
             </div>
