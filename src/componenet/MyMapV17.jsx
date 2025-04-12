@@ -5,7 +5,7 @@ import {
   MarkerF,
   PolylineF,
 } from "@react-google-maps/api";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2, Plus, Edit } from "lucide-react";
 
 const containerStyle = { width: "100%", height: "600px" };
 const center = { lat: 23.685, lng: 90.3563 };
@@ -48,7 +48,7 @@ const mapStyles = [
   },
 ];
 
-const MyMapV16 = () => {
+const MyMapV17 = () => {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
   });
@@ -83,6 +83,8 @@ const MyMapV16 = () => {
     selectedSplitter: null,
     splitterRatio: "",
     splitterInput: "",
+    editingLineId: null,
+    tempLineName: "",
   });
 
   const isInteractionAllowed = (isSavedLine) => {
@@ -280,8 +282,55 @@ const MyMapV16 = () => {
         savedPolylines: updatedSavedPolylines,
         imageIcons: updatedImageIcons,
         savedIcons: updatedSavedIcons,
+        editingLineId: null,
+        tempLineName: "",
       };
     });
+  };
+
+  const handleEditLine = (lineId, currentName) => {
+    setMapState((prevState) => ({
+      ...prevState,
+      editingLineId: lineId,
+      tempLineName: currentName || "",
+    }));
+  };
+
+  const handleLineNameChange = (e) => {
+    setMapState((prevState) => ({
+      ...prevState,
+      tempLineName: e.target.value,
+    }));
+  };
+
+  const handleSave = () => {
+    if (mapState.editingLineId) {
+      setMapState((prevState) => {
+        const updatedFiberLines = prevState.fiberLines.map((line) =>
+          line.id === prevState.editingLineId
+            ? { ...line, name: prevState.tempLineName }
+            : line
+        );
+        const updatedSavedPolylines = prevState.savedPolylines.map((line) =>
+          line.id === prevState.editingLineId
+            ? { ...line, name: prevState.tempLineName }
+            : line
+        );
+        if (prevState.showSavedRoutes) {
+          localStorage.setItem(
+            "savedPolylines",
+            JSON.stringify(updatedSavedPolylines)
+          );
+        }
+        return {
+          ...prevState,
+          fiberLines: updatedFiberLines,
+          savedPolylines: updatedSavedPolylines,
+          editingLineId: null,
+          tempLineName: "",
+        };
+      });
+    }
   };
 
   const addWaypoint = () => {
@@ -454,6 +503,8 @@ const MyMapV16 = () => {
           splitterRatio: icon.splitterRatio || "",
           splitterInput: icon.name || "",
           waypointActionPosition: { x, y },
+          editingLineId: null,
+          tempLineName: "",
         }));
       } else {
         setMapState((prevState) => ({
@@ -744,6 +795,8 @@ const MyMapV16 = () => {
       showSplitterModal: false,
       selectedSplitter: null,
       splitterInput: "",
+      editingLineId: null,
+      tempLineName: "",
     }));
   };
 
@@ -1166,6 +1219,8 @@ const MyMapV16 = () => {
       selectedSplitter: null,
       splitterRatio: "",
       splitterInput: "",
+      editingLineId: null,
+      tempLineName: "",
     });
   };
 
@@ -1712,7 +1767,6 @@ const MyMapV16 = () => {
               left: `${mapState.waypointActionPosition.x - 245}px`,
             }}
           >
-            {/* Left side - Form inputs */}
             <div className="splitter-form">
               <div className="form-group">
                 <label htmlFor="splitter-name" className="form-label">
@@ -1740,38 +1794,55 @@ const MyMapV16 = () => {
                   <option value="" disabled>
                     Choose a ratio
                   </option>
-                  {getAvailableRatios(mapState.selectedSplitter).map(
-                    (ratio) => (
-                      <option key={ratio} value={ratio}>
-                        {ratio}
-                      </option>
-                    )
-                  )}
+                  {getAvailableRatios(mapState.selectedSplitter).map((ratio) => (
+                    <option key={ratio} value={ratio}>
+                      {ratio}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="form-footer">
+                <button onClick={handleSave} className="btn btn-save">
+                  Save
+                </button>
                 <button onClick={closeSplitterModal} className="btn btn-close">
                   Close
                 </button>
               </div>
             </div>
 
-            {/* Right side - Connected lines list */}
             <div className="connected-lines-panel">
               <h4 className="panel-heading">Connected Lines</h4>
               <div className="connected-lines-list">
                 {getConnectedLines(mapState.selectedSplitter).length > 0 ? (
                   getConnectedLines(mapState.selectedSplitter).map((line) => (
                     <div key={line.id} className="line-item">
-                      <span className="line-name">
-                        {line.name || "Unnamed Line"}
-                      </span>
-                      <button
-                        onClick={() => removeConnectedLine(line.id)}
-                        className="btn-delete"
-                      >
-                        <Trash2 size={16} color="#dc3545" />
-                      </button>
+                      {mapState.editingLineId === line.id ? (
+                        <input
+                          type="text"
+                          value={mapState.tempLineName}
+                          onChange={handleLineNameChange}
+                          className="form-input"
+                        />
+                      ) : (
+                        <span className="line-name">
+                          {line.name || "Unnamed Line"}
+                        </span>
+                      )}
+                      <div>
+                        <button
+                          onClick={() => handleEditLine(line.id, line.name)}
+                          className="btn btn-edit"
+                        >
+                          <Edit size={16} color="#007bff" />
+                        </button>
+                        <button
+                          onClick={() => removeConnectedLine(line.id)}
+                          className="btn btn-delete"
+                        >
+                          <Trash2 size={16} color="#dc3545" />
+                        </button>
+                      </div>
                     </div>
                   ))
                 ) : (
@@ -1826,4 +1897,4 @@ const MyMapV16 = () => {
   );
 };
 
-export default MyMapV16;
+export default MyMapV17;

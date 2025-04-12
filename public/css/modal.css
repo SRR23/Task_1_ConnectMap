@@ -137,6 +137,7 @@
   .form-footer {
     display: flex;
     justify-content: flex-end;
+    gap: 8px;
     margin-top: 16px;
   }
   
@@ -146,6 +147,11 @@
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
+  }
+
+  .btn-save {
+    background: #28a745; /* Green for save */
+    color: white;
   }
   
   .btn-close {
@@ -172,33 +178,62 @@
     overflow-y: auto;
   }
   
-  .line-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid #f1f3f5;
-    font-size: 14px;
-    color: #333;
-    height: 40px;
-    box-sizing: border-box;
-  }
-  
-  .line-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  
-  .btn-delete {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 4px;
-    display: flex;
-    align-items: center;
-  }
+ /* Line item layout */
+.line-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  width: 100%; /* Ensures full width for proper spacing */
+}
+
+/* Line name styling */
+.line-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px; /* Space between name and buttons */
+}
+
+/* Input in line-item when editing */
+.line-item .form-input {
+  flex: 1;
+  margin-right: 8px; /* Space between input and buttons */
+}
+
+  /* Provided styles for edit and delete buttons */
+.btn-edit {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.btn-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  /* Removed display: flex; align-items: center to avoid layout conflicts */
+}
+
+/* Provided styles for edit and delete buttons */
+.btn-edit {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.btn-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  /* Removed display: flex; align-items: center to avoid layout conflicts */
+}
+
   
   .no-lines-message {
     font-size: 14px;
