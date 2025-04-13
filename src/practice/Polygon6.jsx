@@ -10,7 +10,7 @@ import { Edit, Trash, Eye, MoreVertical, Lock, Unlock } from "lucide-react";
 
 const libraries = ["drawing"];
 
-const Polygon5 = () => {
+const Polygon6 = () => {
   const [drawing, setDrawing] = useState(false);
   const [points, setPoints] = useState([]);
 
@@ -631,4 +631,4 @@ const Polygon5 = () => {
   );
 };
 
-export default Polygon5;
+export default Polygon6;

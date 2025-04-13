@@ -241,3 +241,55 @@
     margin: 0;
     padding: 8px 0;
   }
+
+  .map-controls {
+    display: flex;
+    flex-direction: row; /* Align buttons horizontally */
+    align-items: center; /* Center vertically within the container */
+    justify-content: center; /* Center horizontally within the container */
+    background: white;
+    padding: 8px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    gap: 8px; /* Space between buttons */
+  }
+  
+  .map-control-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  
+  .map-control-button:hover .control-tooltip {
+    visibility: visible;
+    opacity: 1;
+  }
+  
+  .map-control-button svg {
+    width: 20px;
+    height: 20px;
+    fill: #333; /* Icon color */
+  }
+  
+  .control-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: opacity 0.2s;
+    z-index: 10;
+  }
+  
