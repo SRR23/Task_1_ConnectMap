@@ -5,6 +5,8 @@ import MyMapV15 from "./componenet/MyMapV15";
 import MyMapV16 from "./componenet/MyMapV16";
 import MyMapV17 from "./componenet/MyMapV17";
 import Polygon5 from "./practice/Polygon5";
+import Polygon6 from "./practice/Polygon6";
+import Polygon7 from "./practice/Polygon7";
 
 
 function App() {
@@ -16,7 +18,10 @@ function App() {
       {/* <MyMapV14 /> */}
       {/* <MyMapV15 /> */}
       {/* <MyMapV16 /> */}
-      <MyMapV17 />
+      {/* <MyMapV17 /> */}
+
+      {/* <Polygon6 /> */}
+      <Polygon7 />
       
       
       {/* <Polygon5 /> */}

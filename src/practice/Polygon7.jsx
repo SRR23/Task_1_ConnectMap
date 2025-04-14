@@ -1,14 +1,17 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   GoogleMap,
-  useLoadScript,
-  MarkerF,
+  LoadScript,
+  PolygonF as GooglePolygon,
   PolylineF,
+  MarkerF,
 } from "@react-google-maps/api";
-import { Trash2, Plus, Edit, Save, Eye, EyeOff, Lock, Unlock } from "lucide-react";
+import { Edit, Trash, Trash2, Plus, Eye, MoreVertical, Lock, Unlock } from "lucide-react";
 
-const containerStyle = { width: "100%", height: "600px" };
+// const containerStyle = { width: "100%", height: "600px" };
 const center = { lat: 23.685, lng: 90.3563 };
+
+const libraries = ["drawing"];
 
 const mapStyles = [
   {
@@ -48,11 +51,7 @@ const mapStyles = [
   },
 ];
 
-const MyMapV17 = () => {
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-  });
-
+const Polygon7 = () => {
   const iconImages = {
     BTS: "/img/BTS.png",
     Termination: "/img/Termination.png",
@@ -60,9 +59,23 @@ const MyMapV17 = () => {
     ONU: "/img/ONU.png",
   };
 
-  const mapRef = useRef(null); // Ref to store map instance
-
   const [mapState, setMapState] = useState({
+    drawing: false,
+    points: [],
+    polygons: (() => {
+      const saved = localStorage.getItem("polygons");
+      return saved ? JSON.parse(saved) : [];
+    })(),
+    polygonName: "",
+    currentMousePosition: null,
+    isMapLoaded: false,
+    isPolygonClosed: false,
+    isDragging: false,
+    previewIndex: null,
+    mapCenter: { lat: 51.505, lng: -0.09 },
+    editingIndex: null,
+    intermediatePoints: [],
+
     savedRoutes: [],
     nextNumber: 1,
     selectedType: null,
@@ -88,6 +101,8 @@ const MyMapV17 = () => {
     editingLineId: null,
     tempLineName: "",
   });
+
+  const mapRef = useRef(null);
 
   const isInteractionAllowed = (isSavedLine) => {
     return (
@@ -1203,28 +1218,28 @@ const MyMapV17 = () => {
     }));
   };
 
-  const resetMap = () => {
-    setMapState({
-      savedRoutes: mapState.savedRoutes,
-      showSavedRoutes: false,
-      nextNumber: 1,
-      selectedType: null,
-      showModal: false,
-      selectedPoint: null,
-      rightClickMarker: null,
-      fiberLines: [],
-      imageIcons: [],
-      selectedWaypoint: null,
-      waypointActionPosition: null,
-      selectedWaypointInfo: null,
-      showSplitterModal: false,
-      selectedSplitter: null,
-      splitterRatio: "",
-      splitterInput: "",
-      editingLineId: null,
-      tempLineName: "",
-    });
-  };
+  // const resetMap = () => {
+  //   setMapState({
+  //     savedRoutes: mapState.savedRoutes,
+  //     showSavedRoutes: false,
+  //     nextNumber: 1,
+  //     selectedType: null,
+  //     showModal: false,
+  //     selectedPoint: null,
+  //     rightClickMarker: null,
+  //     fiberLines: [],
+  //     imageIcons: [],
+  //     selectedWaypoint: null,
+  //     waypointActionPosition: null,
+  //     selectedWaypointInfo: null,
+  //     showSplitterModal: false,
+  //     selectedSplitter: null,
+  //     splitterRatio: "",
+  //     splitterInput: "",
+  //     editingLineId: null,
+  //     tempLineName: "",
+  //   });
+  // };
 
   const handleSavedPolylinePointDragEnd = (polylineId, pointType, e) => {
     if (!mapState.isSavedRoutesEditable) return;
@@ -1332,6 +1347,7 @@ const MyMapV17 = () => {
       };
     });
   };
+
 
   const handleSavedPolylineWaypointDragEnd = (polylineId, waypointIndex, e) => {
     if (!mapState.isSavedRoutesEditable) return;
@@ -1463,325 +1479,702 @@ const MyMapV17 = () => {
     );
   };
 
- // Handle map load to store map instance
- const onMapLoad = useCallback((map) => {
-  mapRef.current = map;
-}, []);
+  // Handle map load to store map instance
+  const onMapLoad = useCallback((map) => {
+    mapRef.current = map;
+  }, []);
 
-// Add custom controls when map loads
-useEffect(() => {
-  if (!mapRef.current || !window.google) return;
+  // Add custom controls when map loads
+  useEffect(() => {
+    if (!mapRef.current || !window.google) return;
 
-  // Clear existing controls to prevent duplicates
-  mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].clear();
+    // Clear existing controls to prevent duplicates
+    mapRef.current.controls[
+      window.google.maps.ControlPosition.TOP_CENTER
+    ].clear();
 
-  const controlDiv = document.createElement("div");
-  controlDiv.className = "map-controls";
+    const controlDiv = document.createElement("div");
+    controlDiv.className = "map-controls";
 
-  const buttons = [
-    {
-      imgSrc: "/img/Reset.jpg", // Ensure this file exists in your public/img folder
-      tooltip: "Reset Map",
-      onClick: resetMap,
-    },
-    {
-      imgSrc: "/img/Save.png",
-      tooltip: "Save Route",
-      onClick: saveRoute,
-    },
-    {
-      imgSrc: mapState.showSavedRoutes ? "/img/Eye-close.png" : "/img/Eye.png",
-      tooltip: mapState.showSavedRoutes ? "Hide Previous Routes" : "Show Previous Routes",
-      onClick: togglePreviousRoutes,
-    },
-    ...(mapState.showSavedRoutes
-      ? [
-          {
-            imgSrc: mapState.isSavedRoutesEditable ? "/img/Edit-not.png" : "/img/Edit.png",
-            tooltip: mapState.isSavedRoutesEditable ? "Disable Editing" : "Enable Editing",
-            onClick: toggleSavedRoutesEditability,
-          },
-        ]
-      : []),
-  ];
-  
-  buttons.forEach(({ imgSrc, tooltip, onClick }) => {
-    const button = document.createElement("button");
-    button.className = "map-control-button";
-    if (imgSrc) {
-      const img = document.createElement("img");
-      img.src = imgSrc;
-      img.style.width = "20px";
-      img.style.height = "20px";
-      button.appendChild(img);
+    const buttons = [
+      // {
+      //   imgSrc: "/img/Reset.jpg", // Ensure this file exists in your public/img folder
+      //   tooltip: "Reset Map",
+      //   onClick: resetMap,
+      // },
+      {
+        imgSrc: "/img/Save.png",
+        tooltip: "Save Route",
+        onClick: saveRoute,
+      },
+      {
+        imgSrc: mapState.showSavedRoutes
+          ? "/img/Eye-close.png"
+          : "/img/Eye.png",
+        tooltip: mapState.showSavedRoutes
+          ? "Hide Previous Routes"
+          : "Show Previous Routes",
+        onClick: togglePreviousRoutes,
+      },
+      ...(mapState.showSavedRoutes
+        ? [
+            {
+              imgSrc: mapState.isSavedRoutesEditable
+                ? "/img/Edit-not.png"
+                : "/img/Edit.png",
+              tooltip: mapState.isSavedRoutesEditable
+                ? "Disable Editing"
+                : "Enable Editing",
+              onClick: toggleSavedRoutesEditability,
+            },
+          ]
+        : []),
+    ];
+
+    buttons.forEach(({ imgSrc, tooltip, onClick }) => {
+      const button = document.createElement("button");
+      button.className = "map-control-button";
+      if (imgSrc) {
+        const img = document.createElement("img");
+        img.src = imgSrc;
+        img.style.width = "20px";
+        img.style.height = "20px";
+        button.appendChild(img);
+      }
+      button.title = tooltip;
+      button.addEventListener("click", onClick);
+      controlDiv.appendChild(button);
+    });
+    // Add control to TOP_CENTER
+    mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].push(
+      controlDiv
+    );
+
+    // Debug log
+    console.log("Controls added:", controlDiv);
+
+    // Cleanup on unmount or state change
+    return () => {
+      if (mapRef.current && window.google) {
+        mapRef.current.controls[
+          window.google.maps.ControlPosition.TOP_CENTER
+        ].clear();
+      }
+    };
+  }, [
+    mapState.showSavedRoutes,
+    mapState.isSavedRoutesEditable,
+    // resetMap,
+    saveRoute,
+    togglePreviousRoutes,
+    toggleSavedRoutesEditability,
+  ]);
+
+  useEffect(() => {
+    localStorage.setItem("polygons", JSON.stringify(mapState.polygons));
+  }, [mapState.polygons]);
+
+  const updateIntermediatePoints = useCallback(() => {
+    if (mapState.points.length > 1) {
+      const newIntermediatePoints = [];
+      for (let i = 0; i < mapState.points.length - 1; i++) {
+        newIntermediatePoints.push({
+          position: calculateMidpoint(
+            mapState.points[i],
+            mapState.points[i + 1]
+          ),
+          segmentStart: i,
+          segmentEnd: i + 1,
+        });
+      }
+      if (mapState.isPolygonClosed && mapState.points.length > 2) {
+        newIntermediatePoints.push({
+          position: calculateMidpoint(
+            mapState.points[mapState.points.length - 1],
+            mapState.points[0]
+          ),
+          segmentStart: mapState.points.length - 1,
+          segmentEnd: 0,
+        });
+      }
+      setMapState((prev) => ({
+        ...prev,
+        intermediatePoints: newIntermediatePoints,
+      }));
+    } else {
+      setMapState((prev) => ({ ...prev, intermediatePoints: [] }));
     }
-    button.title = tooltip;
-    button.addEventListener("click", onClick);
-    controlDiv.appendChild(button);
-  });
-  // Add control to TOP_CENTER
-  mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].push(controlDiv);
+  }, [mapState.points, mapState.isPolygonClosed]);
 
-  // Debug log
-  console.log("Controls added:", controlDiv);
+  useEffect(() => {
+    updateIntermediatePoints();
+  }, [mapState.points, mapState.isPolygonClosed, updateIntermediatePoints]);
 
-  // Cleanup on unmount or state change
-  return () => {
-    if (mapRef.current && window.google) {
-      mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].clear();
+  const mapOptions = {
+    zoom: 13,
+    clickableIcons: false,
+  };
+
+  const calculateDistance = (point1, point2) => {
+    const lat1 = point1.lat;
+    const lng1 = point1.lng;
+    const lat2 = point2.lat;
+    const lng2 = point2.lng;
+    const R = 6371;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c * 1000;
+  };
+
+  const calculateMidpoint = (point1, point2) => {
+    return {
+      lat: (point1.lat + point2.lat) / 2,
+      lng: (point1.lng + point2.lng) / 2,
+    };
+  };
+
+  const isNearStartingPoint = (point) => {
+    if (mapState.points.length === 0) return false;
+    const startPoint = mapState.points[0];
+    const distance = calculateDistance(startPoint, point);
+    return distance < 50;
+  };
+
+  const calculateCentroid = (coordinates) => {
+    if (!coordinates || coordinates.length === 0)
+      return { lat: 51.505, lng: -0.09 };
+    const n = coordinates.length;
+    const centroid = coordinates.reduce(
+      (acc, point) => ({
+        lat: acc.lat + point.lat,
+        lng: acc.lng + point.lng,
+      }),
+      { lat: 0, lng: 0 }
+    );
+    return {
+      lat: centroid.lat / n,
+      lng: centroid.lng / n,
+    };
+  };
+
+  const handleStartMarkerClick = useCallback(() => {
+    if (mapState.drawing && mapState.points.length >= 3) {
+      setMapState((prev) => ({ ...prev, isPolygonClosed: true }));
+    }
+  }, [mapState.drawing, mapState.points.length]);
+
+  const handleMapClick = useCallback(
+    (e) => {
+      if (!mapState.drawing || mapState.isDragging) return;
+
+      const newPoint = {
+        lat: e.latLng.lat(),
+        lng: e.latLng.lng(),
+      };
+
+      if (mapState.points.length >= 2 && isNearStartingPoint(newPoint)) {
+        setMapState((prev) => ({ ...prev, isPolygonClosed: true }));
+        return;
+      }
+
+      setMapState((prev) => ({
+        ...prev,
+        points: [...prev.points, newPoint],
+        isPolygonClosed: false,
+      }));
+    },
+    [mapState.drawing, mapState.isDragging, mapState.points]
+  );
+
+  const handleMouseMove = useCallback(
+    (e) => {
+      if (
+        mapState.drawing &&
+        !mapState.isDragging &&
+        !mapState.isPolygonClosed
+      ) {
+        setMapState((prev) => ({
+          ...prev,
+          currentMousePosition: {
+            lat: e.latLng.lat(),
+            lng: e.latLng.lng(),
+          },
+        }));
+      }
+    },
+    [mapState.drawing, mapState.isDragging, mapState.isPolygonClosed]
+  );
+
+  const handleMapLoad = useCallback((map) => {
+    mapRef.current = map;
+    setMapState((prev) => ({ ...prev, isMapLoaded: true }));
+  }, []);
+
+  const handleMapDrag = useCallback(() => {
+    if (mapRef.current) {
+      const center = mapRef.current.getCenter();
+      setMapState((prev) => ({
+        ...prev,
+        mapCenter: {
+          lat: center.lat(),
+          lng: center.lng(),
+        },
+      }));
+    }
+  }, []);
+
+  const handlePolygonIconClick = () => {
+    setMapState((prev) => ({
+      ...prev,
+      drawing: true,
+      points: [],
+      isPolygonClosed: false,
+      currentMousePosition: null,
+      previewIndex: null,
+      polygonName: "",
+      editingIndex: null,
+      intermediatePoints: [],
+    }));
+  };
+
+  const handleSavePolygon = () => {
+    if (
+      mapState.points.length > 2 &&
+      mapState.isPolygonClosed &&
+      mapState.polygonName
+    ) {
+      const newPolygon = {
+        name: mapState.polygonName,
+        coordinates: [...mapState.points],
+        locked: false,
+      };
+      setMapState((prev) => {
+        const updatedPolygons =
+          prev.editingIndex !== null
+            ? prev.polygons.map((poly, i) =>
+                i === prev.editingIndex ? newPolygon : poly
+              )
+            : [...prev.polygons, newPolygon];
+        localStorage.setItem("polygons", JSON.stringify(updatedPolygons));
+        return {
+          ...prev,
+          polygons: updatedPolygons,
+          drawing: false,
+          points: [],
+          polygonName: "",
+          currentMousePosition: null,
+          isPolygonClosed: false,
+          previewIndex: null,
+          editingIndex: null,
+          intermediatePoints: [],
+        };
+      });
+    } else if (!mapState.isPolygonClosed) {
+      alert("Please close the polygon by clicking near the starting point.");
+    } else if (!mapState.polygonName) {
+      alert("Please provide a name for the polygon.");
+    } else {
+      alert(
+        "Please add at least 3 points, close the polygon, and provide a name."
+      );
     }
   };
-}, [
-  mapState.showSavedRoutes,
-  mapState.isSavedRoutesEditable,
-  resetMap,
-  saveRoute,
-  togglePreviousRoutes,
-  toggleSavedRoutesEditability,
-]);
 
-  if (loadError) return <div>Error loading maps</div>;
-  if (!isLoaded) return <div>Loading Maps...</div>;
+  const handleEditPolygon = (index) => {
+    if (mapState.polygons[index].locked) {
+      alert("This polygon is locked and cannot be edited.");
+      return;
+    }
+
+    const polygonToEdit = mapState.polygons[index];
+    setMapState((prev) => ({
+      ...prev,
+      points: polygonToEdit.coordinates,
+      polygonName: polygonToEdit.name,
+      drawing: true,
+      isPolygonClosed: true,
+      previewIndex: null,
+      editingIndex: index,
+    }));
+  };
+
+  const handleCancelDrawing = () => {
+    setMapState((prev) => ({
+      ...prev,
+      drawing: false,
+      points: [],
+      polygonName: "",
+      currentMousePosition: null,
+      isPolygonClosed: false,
+      previewIndex: null,
+      editingIndex: null,
+      intermediatePoints: [],
+    }));
+  };
+
+  const handleDeletePolygon = (index) => {
+    if (mapState.polygons[index].locked) {
+      alert("This polygon is locked and cannot be deleted.");
+      return;
+    }
+
+    setMapState((prev) => {
+      const updatedPolygons = prev.polygons.filter((_, i) => i !== index);
+      localStorage.setItem("polygons", JSON.stringify(updatedPolygons));
+      return {
+        ...prev,
+        polygons: updatedPolygons,
+        previewIndex:
+          prev.previewIndex === index
+            ? null
+            : prev.previewIndex > index
+            ? prev.previewIndex - 1
+            : prev.previewIndex,
+      };
+    });
+  };
+
+  const handlePreviewToggle = (index) => {
+    setMapState((prev) => {
+      const newPreviewIndex = prev.previewIndex === index ? null : index;
+      const centroid =
+        prev.previewIndex !== index
+          ? calculateCentroid(prev.polygons[index].coordinates)
+          : prev.mapCenter;
+      return {
+        ...prev,
+        previewIndex: newPreviewIndex,
+        mapCenter: centroid,
+      };
+    });
+  };
+
+  const getRubberBandPath = () => {
+    if (
+      mapState.drawing &&
+      mapState.points.length > 0 &&
+      mapState.currentMousePosition &&
+      !mapState.isPolygonClosed
+    ) {
+      return [
+        mapState.points[mapState.points.length - 1],
+        mapState.currentMousePosition,
+      ];
+    }
+    return [];
+  };
+
+  const handleMarkerDrag = useCallback((index, event) => {
+    const newPoint = {
+      lat: event.latLng.lat(),
+      lng: event.latLng.lng(),
+    };
+    setMapState((prev) => {
+      const newPoints = [...prev.points];
+      newPoints[index] = newPoint;
+      return { ...prev, points: newPoints };
+    });
+  }, []);
+
+  const handleIntermediateDragEnd = useCallback(
+    (index) => {
+      setMapState((prev) => {
+        const draggedPoint = prev.intermediatePoints[index];
+        const { segmentStart, segmentEnd } = draggedPoint;
+        const newPoints = [...prev.points];
+        newPoints.splice(segmentStart + 1, 0, draggedPoint.position);
+        return { ...prev, points: newPoints, isDragging: false };
+      });
+      updateIntermediatePoints();
+    },
+    [mapState.intermediatePoints, updateIntermediatePoints]
+  );
+
+  const handleIntermediateDrag = useCallback((index, event) => {
+    const newPosition = {
+      lat: event.latLng.lat(),
+      lng: event.latLng.lng(),
+    };
+    setMapState((prev) => {
+      const newIntermediatePoints = [...prev.intermediatePoints];
+      newIntermediatePoints[index] = {
+        ...newIntermediatePoints[index],
+        position: newPosition,
+      };
+      return { ...prev, intermediatePoints: newIntermediatePoints };
+    });
+  }, []);
+
+  const handlePointDragStart = useCallback(() => {
+    setMapState((prev) => ({
+      ...prev,
+      isDragging: true,
+      currentMousePosition: null,
+    }));
+  }, []);
+
+  const handlePointDragEnd = useCallback(() => {
+    setMapState((prev) => ({
+      ...prev,
+      isDragging: false,
+      isPolygonClosed:
+        prev.points.length >= 3 && prev.editingIndex === null
+          ? true
+          : prev.isPolygonClosed,
+    }));
+  }, [mapState.points.length, mapState.editingIndex]);
+
+  const Sidebar = () => {
+    const [openMenuIndex, setOpenMenuIndex] = useState(null);
+
+    const toggleMenu = (index) => {
+      setOpenMenuIndex(openMenuIndex === index ? null : index);
+    };
+
+    const handleLockToggle = (index) => {
+      setMapState((prev) => {
+        const updatedPolygons = prev.polygons.map((poly, i) =>
+          i === index ? { ...poly, locked: !poly.locked } : poly
+        );
+        localStorage.setItem("polygons", JSON.stringify(updatedPolygons));
+        return { ...prev, polygons: updatedPolygons };
+      });
+      setOpenMenuIndex(null);
+    };
+
+    return (
+      <div className="sidebar">
+        <img
+          src="/img/janata-wifi.svg"
+          alt="Sidebar Header"
+          className="sidebar-image"
+        />
+        <hr />
+        <h3>Saved Polygons</h3>
+        <div className="polygon-list">
+          {mapState.polygons.length === 0 ? (
+            <p>No polygons saved yet</p>
+          ) : (
+            <ul>
+              {mapState.polygons.map((poly, index) => (
+                <li key={index} className="polygon-item">
+                  <div className="polygon-item-content">
+                    <button
+                      onClick={() => toggleMenu(index)}
+                      className="menu-toggle"
+                      title="More options"
+                    >
+                      <MoreVertical size={20} />
+                    </button>
+                    <span>
+                      {poly.name}{" "}
+                      {poly.locked && <Lock size={14} className="lock-icon" />}
+                    </span>
+                    <button
+                      onClick={() => handleLockToggle(index)}
+                      className="lock-toggle-btn"
+                      title={poly.locked ? "Unlock" : "Lock"}
+                    >
+                      {poly.locked ? <Unlock size={16} /> : <Lock size={16} />}
+                    </button>
+                  </div>
+                  {openMenuIndex === index && (
+                    <div className="dropdown-menu">
+                      <button
+                        onClick={() => {
+                          handleEditPolygon(index);
+                          setOpenMenuIndex(null);
+                        }}
+                      >
+                        <Edit size={16} /> Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleDeletePolygon(index);
+                          setOpenMenuIndex(null);
+                        }}
+                      >
+                        <Trash size={16} /> Delete
+                      </button>
+                      <button
+                        onClick={() => {
+                          handlePreviewToggle(index);
+                          setOpenMenuIndex(null);
+                        }}
+                      >
+                        <Eye size={16} />{" "}
+                        {mapState.previewIndex === index ? "Hide" : "Preview"}
+                      </button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <>
-
-      <GoogleMap
-        mapContainerStyle={containerStyle}
-        center={center}
-        zoom={7}
-        onRightClick={handleMapRightClick}
-        options={{ styles: mapStyles, disableDefaultUI: false }}
-        onLoad={onMapLoad} // Add onLoad handler
+    <div className="container">
+      <Sidebar />
+      <LoadScript
+        googleMapsApiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
+        libraries={libraries}
       >
+        <GoogleMap
+          mapContainerClassName="map-container"
+          // center={mapState.mapCenter}
+          // mapContainerStyle={containerStyle}
+          center={center}
+          zoom={7}
+          onClick={handleMapClick}
+          onRightClick={handleMapRightClick}
+          onMouseMove={handleMouseMove}
+          onLoad={handleMapLoad}
+          onDragEnd={handleMapDrag}
+          options={{ styles: mapStyles, disableDefaultUI: false }}
+        >
+          {/* Polyline Start */}
+          {mapState.imageIcons.map((icon) => (
+            <MarkerF
+              key={icon.id}
+              position={{ lat: icon.lat, lng: icon.lng }}
+              draggable={
+                mapState.isSavedRoutesEditable || !mapState.showSavedRoutes
+              }
+              icon={{
+                url: icon.imageUrl || iconImages[icon.type],
+                scaledSize: new google.maps.Size(30, 30),
+                anchor: new google.maps.Point(15, 15),
+              }}
+              onDragEnd={(e) => handleMarkerDragEnd(icon.id, e)}
+              onRightClick={(e) => handleRightClickOnIcon(icon, e)}
+              onClick={(e) => handleIconClick(icon, e)}
+            />
+          ))}
 
-        
-        {mapState.imageIcons.map((icon) => (
-          <MarkerF
-            key={icon.id}
-            position={{ lat: icon.lat, lng: icon.lng }}
-            draggable={
-              mapState.isSavedRoutesEditable || !mapState.showSavedRoutes
-            }
-            icon={{
-              url: icon.imageUrl || iconImages[icon.type],
-              scaledSize: new google.maps.Size(30, 30),
-              anchor: new google.maps.Point(15, 15),
-            }}
-            onDragEnd={(e) => handleMarkerDragEnd(icon.id, e)}
-            onRightClick={(e) => handleRightClickOnIcon(icon, e)}
-            onClick={(e) => handleIconClick(icon, e)}
-          />
-        ))}
+          {mapState.rightClickMarker && (
+            <MarkerF
+              key={`right-click-${mapState.rightClickMarker.lat}-${mapState.rightClickMarker.lng}`}
+              position={mapState.rightClickMarker}
+              icon={{
+                url: "/img/location.jpg",
+                scaledSize: new google.maps.Size(20, 20),
+              }}
+            />
+          )}
 
-        {mapState.rightClickMarker && (
-          <MarkerF
-            key={`right-click-${mapState.rightClickMarker.lat}-${mapState.rightClickMarker.lng}`}
-            position={mapState.rightClickMarker}
-            icon={{
-              url: "/img/location.jpg",
-              scaledSize: new google.maps.Size(20, 20),
-            }}
-          />
-        )}
-
-        {mapState.fiberLines.map((line, index) => {
-          const fullPath = [line.from, ...(line.waypoints || []), line.to];
-          return (
-            <React.Fragment key={line.id || `fiber-line-${index}`}>
-              <PolylineF
-                path={fullPath}
-                options={{
-                  strokeColor: line.strokeColor || "#FF0000",
-                  strokeOpacity: 1.0,
-                  strokeWeight: 2,
-                }}
-                onClick={(e) => {
-                  e.domEvent.stopPropagation();
-                  handleLineClick(line, index, false, e);
-                }}
-              />
-
-              {mapState.selectedLineForActions &&
-                mapState.exactClickPosition && (
-                  <div
-                    className="line-action-modal"
-                    style={{
-                      top: `${mapState.exactClickPosition.y - 95}px`,
-                      left: `${mapState.exactClickPosition.x}px`,
-                      transform: "translateX(-50%)",
-                    }}
-                  >
-                    <div className="line-action-item" onClick={addWaypoint}>
-                      <Plus size={20} className="text-gray-600" />
-                      <span className="line-action-tooltip">Add Waypoint</span>
-                    </div>
-                    <div
-                      className="line-action-item"
-                      onClick={removeSelectedLine}
-                    >
-                      <Trash2 size={20} className="text-red-500" />
-                      <span className="line-action-tooltip">Delete Line</span>
-                    </div>
-                    <div
-                      className="line-action-item"
-                      onClick={() =>
-                        setMapState((prev) => ({
-                          ...prev,
-                          selectedLineForActions: null,
-                          lineActionPosition: null,
-                          exactClickPosition: null,
-                        }))
-                      }
-                    >
-                      <span className="line-action-close">×</span>
-                      <span className="line-action-tooltip">Close</span>
-                    </div>
-                    <div className="modal-spike"></div>
-                  </div>
-                )}
-
-              {(line.waypoints || []).map((waypoint, waypointIndex) =>
-                !isWaypointOverlaidBySplitter(waypoint) ? (
-                  <MarkerF
-                    key={`waypoint-${line.id}-${waypointIndex}`}
-                    position={waypoint}
-                    draggable={true}
-                    onDragEnd={(e) =>
-                      handleWaypointDragEnd(index, waypointIndex, e)
-                    }
-                    icon={{
-                      url: "/img/location.jpg",
-                      scaledSize: new google.maps.Size(15, 15),
-                    }}
-                    onClick={(e) => {
-                      e.domEvent.stopPropagation();
-                      handleWaypointClick(
-                        index,
-                        waypointIndex,
-                        false,
-                        waypoint,
-                        e
-                      );
-                    }}
-                  />
-                ) : null
-              )}
-              {!isSnappedToIcon(line.from.lat, line.from.lng) && (
-                <MarkerF
-                  key={`start-${line.id}`}
-                  position={line.from}
-                  draggable={true}
-                  onDragEnd={(e) => handleStartMarkerDragEnd(index, e)}
-                  icon={{
-                    url: "/img/location.jpg",
-                    scaledSize: new google.maps.Size(20, 20),
-                  }}
-                />
-              )}
-              {!isSnappedToIcon(line.to.lat, line.to.lng) && (
-                <MarkerF
-                  key={`end-${line.id}`}
-                  position={line.to}
-                  draggable={true}
-                  onDragEnd={(e) => handleEndMarkerDragEnd(index, e)}
-                  icon={{
-                    url: "/img/location.jpg",
-                    scaledSize: new google.maps.Size(20, 20),
-                  }}
-                />
-              )}
-            </React.Fragment>
-          );
-        })}
-
-        {mapState.showSavedRoutes &&
-          mapState.savedPolylines.map((polyline, index) => {
-            const fullPath = [
-              polyline.from,
-              ...(polyline.waypoints || []),
-              polyline.to,
-            ];
+          {mapState.fiberLines.map((line, index) => {
+            const fullPath = [line.from, ...(line.waypoints || []), line.to];
             return (
-              <React.Fragment key={`saved-polyline-${polyline.id}`}>
+              <React.Fragment key={line.id || `fiber-line-${index}`}>
                 <PolylineF
                   path={fullPath}
                   options={{
-                    strokeColor: "#0000FF",
+                    strokeColor: line.strokeColor || "#FF0000",
                     strokeOpacity: 1.0,
                     strokeWeight: 2,
                   }}
-                  onClick={(e) => handleLineClick(polyline, index, true, e)}
+                  onClick={(e) => {
+                    e.domEvent.stopPropagation();
+                    handleLineClick(line, index, false, e);
+                  }}
                 />
 
-                {(polyline.waypoints || []).map((waypoint, waypointIndex) =>
+                {mapState.selectedLineForActions &&
+                  mapState.exactClickPosition && (
+                    <div
+                      className="line-action-modal"
+                      style={{
+                        top: `${mapState.exactClickPosition.y - 80}px`,
+                        left: `${mapState.exactClickPosition.x - 207}px`,
+                        transform: "translateX(-50%)",
+                      }}
+                    >
+                      <div className="line-action-item" onClick={addWaypoint}>
+                        <Plus size={20} className="text-gray-600" />
+                        <span className="line-action-tooltip">
+                          Add Waypoint
+                        </span>
+                      </div>
+                      <div
+                        className="line-action-item"
+                        onClick={removeSelectedLine}
+                      >
+                        <Trash2 size={20} className="text-red-500" />
+                        <span className="line-action-tooltip">Delete Line</span>
+                      </div>
+                      <div
+                        className="line-action-item"
+                        onClick={() =>
+                          setMapState((prev) => ({
+                            ...prev,
+                            selectedLineForActions: null,
+                            lineActionPosition: null,
+                            exactClickPosition: null,
+                          }))
+                        }
+                      >
+                        <span className="line-action-close">×</span>
+                        <span className="line-action-tooltip">Close</span>
+                      </div>
+                      <div className="modal-spike"></div>
+                    </div>
+                  )}
+
+                {(line.waypoints || []).map((waypoint, waypointIndex) =>
                   !isWaypointOverlaidBySplitter(waypoint) ? (
                     <MarkerF
-                      key={`saved-waypoint-${polyline.id}-${waypointIndex}`}
+                      key={`waypoint-${line.id}-${waypointIndex}`}
                       position={waypoint}
-                      draggable={mapState.isSavedRoutesEditable}
-                      onDragEnd={
-                        mapState.isSavedRoutesEditable
-                          ? (e) =>
-                              handleSavedPolylineWaypointDragEnd(
-                                polyline.id,
-                                waypointIndex,
-                                e
-                              )
-                          : undefined
+                      draggable={true}
+                      onDragEnd={(e) =>
+                        handleWaypointDragEnd(index, waypointIndex, e)
                       }
                       icon={{
                         url: "/img/location.jpg",
                         scaledSize: new google.maps.Size(15, 15),
                       }}
-                      onClick={(e) =>
+                      onClick={(e) => {
+                        e.domEvent.stopPropagation();
                         handleWaypointClick(
                           index,
                           waypointIndex,
-                          true,
+                          false,
                           waypoint,
                           e
-                        )
-                      }
+                        );
+                      }}
                     />
                   ) : null
                 )}
-                {!isSnappedToIcon(polyline.from.lat, polyline.from.lng) && (
+                {!isSnappedToIcon(line.from.lat, line.from.lng) && (
                   <MarkerF
-                    key={`saved-start-${polyline.id}`}
-                    position={polyline.from}
-                    draggable={mapState.isSavedRoutesEditable}
-                    onDragEnd={
-                      mapState.isSavedRoutesEditable
-                        ? (e) =>
-                            handleSavedPolylinePointDragEnd(
-                              polyline.id,
-                              "from",
-                              e
-                            )
-                        : undefined
-                    }
+                    key={`start-${line.id}`}
+                    position={line.from}
+                    draggable={true}
+                    onDragEnd={(e) => handleStartMarkerDragEnd(index, e)}
                     icon={{
                       url: "/img/location.jpg",
                       scaledSize: new google.maps.Size(20, 20),
                     }}
                   />
                 )}
-                {!isSnappedToIcon(polyline.to.lat, polyline.to.lng) && (
+                {!isSnappedToIcon(line.to.lat, line.to.lng) && (
                   <MarkerF
-                    key={`saved-end-${polyline.id}`}
-                    position={polyline.to}
-                    draggable={mapState.isSavedRoutesEditable}
-                    onDragEnd={
-                      mapState.isSavedRoutesEditable
-                        ? (e) =>
-                            handleSavedPolylinePointDragEnd(
-                              polyline.id,
-                              "to",
-                              e
-                            )
-                        : undefined
-                    }
+                    key={`end-${line.id}`}
+                    position={line.to}
+                    draggable={true}
+                    onDragEnd={(e) => handleEndMarkerDragEnd(index, e)}
                     icon={{
                       url: "/img/location.jpg",
                       scaledSize: new google.maps.Size(20, 20),
@@ -1790,143 +2183,371 @@ useEffect(() => {
                 )}
               </React.Fragment>
             );
-        })}
+          })}
 
-        {mapState.selectedWaypoint && mapState.waypointActionPosition && (
-          <div
-            className="line-action-modal"
-            style={{
-              top: `${mapState.waypointActionPosition.y - 100}px`,
-              left: `${mapState.waypointActionPosition.x - 74}px`,
-            }}
-          >
+          {mapState.showSavedRoutes &&
+            mapState.savedPolylines.map((polyline, index) => {
+              const fullPath = [
+                polyline.from,
+                ...(polyline.waypoints || []),
+                polyline.to,
+              ];
+              return (
+                <React.Fragment key={`saved-polyline-${polyline.id}`}>
+                  <PolylineF
+                    path={fullPath}
+                    options={{
+                      strokeColor: "#0000FF",
+                      strokeOpacity: 1.0,
+                      strokeWeight: 2,
+                    }}
+                    onClick={(e) => handleLineClick(polyline, index, true, e)}
+                  />
+
+                  {(polyline.waypoints || []).map((waypoint, waypointIndex) =>
+                    !isWaypointOverlaidBySplitter(waypoint) ? (
+                      <MarkerF
+                        key={`saved-waypoint-${polyline.id}-${waypointIndex}`}
+                        position={waypoint}
+                        draggable={mapState.isSavedRoutesEditable}
+                        onDragEnd={
+                          mapState.isSavedRoutesEditable
+                            ? (e) =>
+                                handleSavedPolylineWaypointDragEnd(
+                                  polyline.id,
+                                  waypointIndex,
+                                  e
+                                )
+                            : undefined
+                        }
+                        icon={{
+                          url: "/img/location.jpg",
+                          scaledSize: new google.maps.Size(15, 15),
+                        }}
+                        onClick={(e) =>
+                          handleWaypointClick(
+                            index,
+                            waypointIndex,
+                            true,
+                            waypoint,
+                            e
+                          )
+                        }
+                      />
+                    ) : null
+                  )}
+                  {!isSnappedToIcon(polyline.from.lat, polyline.from.lng) && (
+                    <MarkerF
+                      key={`saved-start-${polyline.id}`}
+                      position={polyline.from}
+                      draggable={mapState.isSavedRoutesEditable}
+                      onDragEnd={
+                        mapState.isSavedRoutesEditable
+                          ? (e) =>
+                              handleSavedPolylinePointDragEnd(
+                                polyline.id,
+                                "from",
+                                e
+                              )
+                          : undefined
+                      }
+                      icon={{
+                        url: "/img/location.jpg",
+                        scaledSize: new google.maps.Size(20, 20),
+                      }}
+                    />
+                  )}
+                  {!isSnappedToIcon(polyline.to.lat, polyline.to.lng) && (
+                    <MarkerF
+                      key={`saved-end-${polyline.id}`}
+                      position={polyline.to}
+                      draggable={mapState.isSavedRoutesEditable}
+                      onDragEnd={
+                        mapState.isSavedRoutesEditable
+                          ? (e) =>
+                              handleSavedPolylinePointDragEnd(
+                                polyline.id,
+                                "to",
+                                e
+                              )
+                          : undefined
+                      }
+                      icon={{
+                        url: "/img/location.jpg",
+                        scaledSize: new google.maps.Size(20, 20),
+                      }}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
+
+          {mapState.selectedWaypoint && mapState.waypointActionPosition && (
             <div
-              className="line-action-item"
-              onClick={
-                mapState.selectedWaypointInfo?.isIcon
-                  ? removeSelectedIcon
-                  : removeSelectedWaypoint
-              }
+              className="line-action-modal"
+              style={{
+                top: `${mapState.waypointActionPosition.y - 80}px`,
+                left: `${mapState.waypointActionPosition.x - 274}px`,
+              }}
             >
-              <Trash2 size={20} color="red" />
-              <span className="line-action-tooltip">Remove</span>
-            </div>
-            {!mapState.selectedWaypointInfo?.isIcon && (
-              <div className="line-action-item" onClick={addSplitterAtWaypoint}>
-                <Plus size={20} color="blue" />
-                <span className="line-action-tooltip">Add Splitter</span>
+              <div
+                className="line-action-item"
+                onClick={
+                  mapState.selectedWaypointInfo?.isIcon
+                    ? removeSelectedIcon
+                    : removeSelectedWaypoint
+                }
+              >
+                <Trash2 size={20} color="red" />
+                <span className="line-action-tooltip">Remove</span>
               </div>
-            )}
-            <div className="line-action-item" onClick={closeWaypointActions}>
-              <span className="close-icon">×</span>
-              <span className="line-action-tooltip">Close</span>
-            </div>
-            <div className="modal-spike"></div>
-          </div>
-        )}
-
-        {mapState.showSplitterModal && mapState.selectedSplitter && (
-          <div
-            className="splitter-modal"
-            style={{
-              top: `${mapState.waypointActionPosition.y - 270}px`,
-              left: `${mapState.waypointActionPosition.x - 245}px`,
-            }}
-          >
-            <div className="splitter-form">
-              <div className="form-group">
-                <label htmlFor="splitter-name" className="form-label">
-                  Splitter Name
-                </label>
-                <input
-                  id="splitter-name"
-                  type="text"
-                  value={mapState.splitterInput}
-                  onChange={handleSplitterInputChange}
-                  placeholder="Enter splitter name"
-                  className="form-input"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="splitter-ratio" className="form-label">
-                  Splitter Ratio
-                </label>
-                <select
-                  id="splitter-ratio"
-                  value={mapState.splitterRatio}
-                  onChange={handleSplitterRatioChange}
-                  className="form-select"
+              {!mapState.selectedWaypointInfo?.isIcon && (
+                <div
+                  className="line-action-item"
+                  onClick={addSplitterAtWaypoint}
                 >
-                  <option value="" disabled>
-                    Choose a ratio
-                  </option>
-                  {getAvailableRatios(mapState.selectedSplitter).map((ratio) => (
-                    <option key={ratio} value={ratio}>
-                      {ratio}
-                    </option>
-                  ))}
-                </select>
+                  <Plus size={20} color="blue" />
+                  <span className="line-action-tooltip">Add Splitter</span>
+                </div>
+              )}
+              <div className="line-action-item" onClick={closeWaypointActions}>
+                <span className="close-icon">×</span>
+                <span className="line-action-tooltip">Close</span>
               </div>
-              <div className="form-footer">
-                <button onClick={handleSave} className="btn btn-save">
-                  Save
-                </button>
-                <button onClick={closeSplitterModal} className="btn btn-close">
-                  Close
-                </button>
-              </div>
+              <div className="modal-spike"></div>
             </div>
+          )}
 
-            <div className="connected-lines-panel">
-              <h4 className="panel-heading">Connected Lines</h4>
-              <div className="connected-lines-list">
-                {getConnectedLines(mapState.selectedSplitter).length > 0 ? (
-                  getConnectedLines(mapState.selectedSplitter).map((line) => (
-                    <div key={line.id} className="line-item">
-                      {mapState.editingLineId === line.id ? (
-                        <input
-                          type="text"
-                          value={mapState.tempLineName}
-                          onChange={handleLineNameChange}
-                          className="form-input"
-                        />
-                      ) : (
-                        <span className="line-name">
-                          {line.name || "Unnamed Line"}
-                        </span>
-                      )}
-                      <div>
-                        <button
-                          onClick={() => handleEditLine(line.id, line.name)}
-                          className="btn btn-edit"
-                        >
-                          <Edit size={16} color="#007bff" />
-                        </button>
-                        <button
-                          onClick={() => removeConnectedLine(line.id)}
-                          className="btn btn-delete"
-                        >
-                          <Trash2 size={16} color="#dc3545" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="no-lines-message">No connected lines</p>
-                )}
+          {mapState.showSplitterModal && mapState.selectedSplitter && (
+            <div
+              className="splitter-modal"
+              style={{
+                top: `${mapState.waypointActionPosition.y - 260}px`,
+                left: `${mapState.waypointActionPosition.x - 450}px`,
+              }}
+            >
+              <div className="splitter-form">
+                <div className="form-group">
+                  <label htmlFor="splitter-name" className="form-label">
+                    Splitter Name
+                  </label>
+                  <input
+                    id="splitter-name"
+                    type="text"
+                    value={mapState.splitterInput}
+                    onChange={handleSplitterInputChange}
+                    placeholder="Enter splitter name"
+                    className="form-input"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="splitter-ratio" className="form-label">
+                    Splitter Ratio
+                  </label>
+                  <select
+                    id="splitter-ratio"
+                    value={mapState.splitterRatio}
+                    onChange={handleSplitterRatioChange}
+                    className="form-select"
+                  >
+                    <option value="" disabled>
+                      Choose a ratio
+                    </option>
+                    {getAvailableRatios(mapState.selectedSplitter).map(
+                      (ratio) => (
+                        <option key={ratio} value={ratio}>
+                          {ratio}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+                <div className="form-footer">
+                  <button onClick={handleSave} className="btn btn-save">
+                    Save
+                  </button>
+                  <button
+                    onClick={closeSplitterModal}
+                    className="btn btn-close"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
+
+              <div className="connected-lines-panel">
+                <h4 className="panel-heading">Connected Lines</h4>
+                <div className="connected-lines-list">
+                  {getConnectedLines(mapState.selectedSplitter).length > 0 ? (
+                    getConnectedLines(mapState.selectedSplitter).map((line) => (
+                      <div key={line.id} className="line-item">
+                        {mapState.editingLineId === line.id ? (
+                          <input
+                            type="text"
+                            value={mapState.tempLineName}
+                            onChange={handleLineNameChange}
+                            className="form-input"
+                          />
+                        ) : (
+                          <span className="line-name">
+                            {line.name || "Unnamed Line"}
+                          </span>
+                        )}
+                        <div>
+                          <button
+                            onClick={() => handleEditLine(line.id, line.name)}
+                            className="btn btn-edit"
+                          >
+                            <Edit size={16} color="#007bff" />
+                          </button>
+                          <button
+                            onClick={() => removeConnectedLine(line.id)}
+                            className="btn btn-delete"
+                          >
+                            <Trash2 size={16} color="#dc3545" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="no-lines-message">No connected lines</p>
+                  )}
+                </div>
+              </div>
+              <div className="modal-spike"></div>
             </div>
-            <div className="modal-spike"></div>
-          </div>
-        )}
-      </GoogleMap>
+          )}
+
+          {/* Polygon Start */}
+          {mapState.drawing && (
+            <div className="drawing-status">
+              {mapState.isPolygonClosed
+                ? "Polygon Closed - Ready to Save"
+                : "Drawing Mode Active - Click to add points"}
+              {mapState.drawing && mapState.points.length > 0 && (
+                <div className="drawing-tip">Drag circles to adjust points</div>
+              )}
+            </div>
+          )}
+
+          {!mapState.drawing && mapState.previewIndex !== null && (
+            <GooglePolygon
+              key={`polygon-${mapState.previewIndex}`}
+              paths={mapState.polygons[mapState.previewIndex].coordinates}
+              options={{
+                fillColor: "#FF0000",
+                fillOpacity: 0.35,
+                strokeColor: "#FF0000",
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+              }}
+            />
+          )}
+
+          {mapState.drawing && mapState.points.length > 0 && (
+            <>
+              {mapState.isPolygonClosed ? (
+                <GooglePolygon
+                  paths={mapState.points}
+                  options={{
+                    fillColor: "#0000FF",
+                    fillOpacity: 0.35,
+                    strokeColor: "#0000FF",
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2,
+                  }}
+                />
+              ) : (
+                <PolylineF
+                  path={mapState.points}
+                  options={{
+                    strokeColor: "#0000FF",
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2,
+                  }}
+                />
+              )}
+            </>
+          )}
+
+          {mapState.drawing &&
+            mapState.points.length > 0 &&
+            mapState.points.map((point, index) => (
+              <MarkerF
+                key={`point-${index}`}
+                position={point}
+                draggable={true}
+                onDrag={handleMarkerDrag.bind(null, index)}
+                onDragStart={handlePointDragStart}
+                onDragEnd={handlePointDragEnd}
+                onClick={index === 0 ? handleStartMarkerClick : undefined}
+                clickable={index === 0}
+                icon={{
+                  path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
+                  fillColor: index === 0 ? "#FF0000" : "#0000FF",
+                  fillOpacity: 1,
+                  strokeColor: index === 0 ? "#FF0000" : "#0000FF",
+                  strokeOpacity: 1,
+                  strokeWeight: 2,
+                  scale: 7,
+                }}
+                zIndex={1000 + index}
+                title={
+                  index === 0 ? "Click to close polygon" : `Point ${index + 1}`
+                }
+              />
+            ))}
+
+          {mapState.drawing &&
+            mapState.intermediatePoints.length > 0 &&
+            mapState.intermediatePoints.map((point, index) => (
+              <MarkerF
+                key={`intermediate-${index}`}
+                position={point.position}
+                draggable={true}
+                onDrag={handleIntermediateDrag.bind(null, index)}
+                onDragEnd={handleIntermediateDragEnd.bind(null, index)}
+                onDragStart={() =>
+                  setMapState((prev) => ({ ...prev, isDragging: true }))
+                }
+                icon={{
+                  path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
+                  fillColor: "#00FF00",
+                  fillOpacity: 1,
+                  strokeColor: "#00FF00",
+                  strokeOpacity: 1,
+                  strokeWeight: 2,
+                  scale: 5,
+                }}
+                zIndex={900 + index}
+                title={`Control Point ${index + 1}`}
+              />
+            ))}
+
+          {mapState.drawing &&
+            mapState.points.length > 0 &&
+            mapState.currentMousePosition &&
+            !mapState.isPolygonClosed &&
+            !mapState.isDragging && (
+              <PolylineF
+                path={getRubberBandPath()}
+                options={{
+                  strokeColor: "#0000FF",
+                  strokeOpacity: 0.8,
+                  strokeWeight: 2,
+                  strokeDasharray: [2, 2],
+                }}
+              />
+            )}
+        </GoogleMap>
+      </LoadScript>
 
       {mapState.showModal && mapState.selectedPoint && (
         <div
           className="modal"
           style={{
             top: `${mapState.selectedPoint.y - 110}px`,
-            left: `${mapState.selectedPoint.x - 210}px`,
+            left: `${mapState.selectedPoint.x - 218}px`,
           }}
         >
           <button
@@ -1959,8 +2580,80 @@ useEffect(() => {
           <div className="modal-spike"></div>
         </div>
       )}
-    </>
+
+      <div className="controls">
+        {!mapState.drawing ? (
+          <button
+            onClick={handlePolygonIconClick}
+            className="start-drawing-btn"
+          >
+            Start Drawing Polygon
+          </button>
+        ) : (
+          <div className="drawing-controls">
+            <div
+              className={`status-text ${
+                mapState.isPolygonClosed ? "closed" : "active"
+              }`}
+            >
+              {mapState.isPolygonClosed
+                ? "Polygon Closed - Ready to Save"
+                : "Drawing Mode Active"}
+            </div>
+            <div className="input-container">
+              <label htmlFor="polygonName">Polygon Name:</label>
+              <input
+                id="polygonName"
+                type="text"
+                value={mapState.polygonName}
+                onChange={(e) =>
+                  setMapState((prev) => ({
+                    ...prev,
+                    polygonName: e.target.value,
+                  }))
+                }
+                placeholder="Enter polygon name"
+              />
+            </div>
+
+            <div className="button-group">
+              <button
+                onClick={handleSavePolygon}
+                disabled={
+                  !(
+                    mapState.points.length > 2 &&
+                    mapState.isPolygonClosed &&
+                    mapState.polygonName
+                  )
+                }
+                className="save-btn"
+              >
+                Save Polygon
+              </button>
+              <button onClick={handleCancelDrawing} className="cancel-btn">
+                Cancel
+              </button>
+            </div>
+
+            <div className="info">
+              <div>Points: {mapState.points.length}</div>
+              {mapState.points.length < 3 && (
+                <div className="warning">Need at least 3 points</div>
+              )}
+              {mapState.points.length >= 3 && !mapState.isPolygonClosed && (
+                <div className="instruction">
+                  Click on first point (red marker) to close polygon
+                </div>
+              )}
+              {mapState.isPolygonClosed && !mapState.polygonName && (
+                <div className="warning">Enter a name to save</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
-export default MyMapV17;
+export default Polygon7;

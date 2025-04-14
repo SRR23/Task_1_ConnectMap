@@ -11,55 +11,56 @@ import { Edit, Trash, Eye, MoreVertical, Lock, Unlock } from "lucide-react";
 const libraries = ["drawing"];
 
 const Polygon6 = () => {
-  const [drawing, setDrawing] = useState(false);
-  const [points, setPoints] = useState([]);
-
-  const [polygons, setPolygons] = useState(() => {
-    const saved = localStorage.getItem("polygons");
-    return saved ? JSON.parse(saved) : [];
+  const [mapState, setMapState] = useState({
+    drawing: false,
+    points: [],
+    polygons: (() => {
+      const saved = localStorage.getItem("polygons");
+      return saved ? JSON.parse(saved) : [];
+    })(),
+    polygonName: "",
+    currentMousePosition: null,
+    isMapLoaded: false,
+    isPolygonClosed: false,
+    isDragging: false,
+    previewIndex: null,
+    mapCenter: { lat: 51.505, lng: -0.09 },
+    editingIndex: null,
+    intermediatePoints: [],
   });
 
-  const [polygonName, setPolygonName] = useState("");
-  const [currentMousePosition, setCurrentMousePosition] = useState(null);
-  const [isMapLoaded, setIsMapLoaded] = useState(false);
-  const [isPolygonClosed, setIsPolygonClosed] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [previewIndex, setPreviewIndex] = useState(null);
-  const [mapCenter, setMapCenter] = useState({ lat: 51.505, lng: -0.09 });
-  const [editingIndex, setEditingIndex] = useState(null);
-  const [intermediatePoints, setIntermediatePoints] = useState([]);
   const mapRef = useRef(null);
 
   useEffect(() => {
-    localStorage.setItem("polygons", JSON.stringify(polygons));
-  }, [polygons]);
+    localStorage.setItem("polygons", JSON.stringify(mapState.polygons));
+  }, [mapState.polygons]);
 
   const updateIntermediatePoints = useCallback(() => {
-    if (points.length > 1) {
+    if (mapState.points.length > 1) {
       const newIntermediatePoints = [];
-      for (let i = 0; i < points.length - 1; i++) {
+      for (let i = 0; i < mapState.points.length - 1; i++) {
         newIntermediatePoints.push({
-          position: calculateMidpoint(points[i], points[i + 1]),
+          position: calculateMidpoint(mapState.points[i], mapState.points[i + 1]),
           segmentStart: i,
           segmentEnd: i + 1,
         });
       }
-      if (isPolygonClosed && points.length > 2) {
+      if (mapState.isPolygonClosed && mapState.points.length > 2) {
         newIntermediatePoints.push({
-          position: calculateMidpoint(points[points.length - 1], points[0]),
-          segmentStart: points.length - 1,
+          position: calculateMidpoint(mapState.points[mapState.points.length - 1], mapState.points[0]),
+          segmentStart: mapState.points.length - 1,
           segmentEnd: 0,
         });
       }
-      setIntermediatePoints(newIntermediatePoints);
+      setMapState(prev => ({ ...prev, intermediatePoints: newIntermediatePoints }));
     } else {
-      setIntermediatePoints([]);
+      setMapState(prev => ({ ...prev, intermediatePoints: [] }));
     }
-  }, [points, isPolygonClosed]);
+  }, [mapState.points, mapState.isPolygonClosed]);
 
   useEffect(() => {
     updateIntermediatePoints();
-  }, [points, isPolygonClosed, updateIntermediatePoints]);
+  }, [mapState.points, mapState.isPolygonClosed, updateIntermediatePoints]);
 
   const mapOptions = {
     zoom: 13,
@@ -92,8 +93,8 @@ const Polygon6 = () => {
   };
 
   const isNearStartingPoint = (point) => {
-    if (points.length === 0) return false;
-    const startPoint = points[0];
+    if (mapState.points.length === 0) return false;
+    const startPoint = mapState.points[0];
     const distance = calculateDistance(startPoint, point);
     return distance < 50;
   };
@@ -116,95 +117,110 @@ const Polygon6 = () => {
   };
 
   const handleStartMarkerClick = useCallback(() => {
-    if (drawing && points.length >= 3) {
-      setIsPolygonClosed(true);
+    if (mapState.drawing && mapState.points.length >= 3) {
+      setMapState(prev => ({ ...prev, isPolygonClosed: true }));
     }
-  }, [drawing, points.length]);
+  }, [mapState.drawing, mapState.points.length]);
 
   const handleMapClick = useCallback(
     (e) => {
-      if (!drawing || isDragging) return;
+      if (!mapState.drawing || mapState.isDragging) return;
 
       const newPoint = {
         lat: e.latLng.lat(),
         lng: e.latLng.lng(),
       };
 
-      if (points.length >= 2 && isNearStartingPoint(newPoint)) {
-        setIsPolygonClosed(true);
+      if (mapState.points.length >= 2 && isNearStartingPoint(newPoint)) {
+        setMapState(prev => ({ ...prev, isPolygonClosed: true }));
         return;
       }
 
-      setPoints((prevPoints) => [...prevPoints, newPoint]);
-      setIsPolygonClosed(false);
+      setMapState(prev => ({
+        ...prev,
+        points: [...prev.points, newPoint],
+        isPolygonClosed: false,
+      }));
     },
-    [drawing, isDragging, points]
+    [mapState.drawing, mapState.isDragging, mapState.points]
   );
 
   const handleMouseMove = useCallback(
     (e) => {
-      if (drawing && !isDragging && !isPolygonClosed) {
-        setCurrentMousePosition({
-          lat: e.latLng.lat(),
-          lng: e.latLng.lng(),
-        });
+      if (mapState.drawing && !mapState.isDragging && !mapState.isPolygonClosed) {
+        setMapState(prev => ({
+          ...prev,
+          currentMousePosition: {
+            lat: e.latLng.lat(),
+            lng: e.latLng.lng(),
+          },
+        }));
       }
     },
-    [drawing, isDragging, isPolygonClosed]
+    [mapState.drawing, mapState.isDragging, mapState.isPolygonClosed]
   );
 
   const handleMapLoad = useCallback((map) => {
     mapRef.current = map;
-    setIsMapLoaded(true);
+    setMapState(prev => ({ ...prev, isMapLoaded: true }));
   }, []);
 
   const handleMapDrag = useCallback(() => {
     if (mapRef.current) {
       const center = mapRef.current.getCenter();
-      setMapCenter({
-        lat: center.lat(),
-        lng: center.lng(),
-      });
+      setMapState(prev => ({
+        ...prev,
+        mapCenter: {
+          lat: center.lat(),
+          lng: center.lng(),
+        },
+      }));
     }
   }, []);
 
   const handlePolygonIconClick = () => {
-    setDrawing(true);
-    setPoints([]);
-    setIsPolygonClosed(false);
-    setCurrentMousePosition(null);
-    setPreviewIndex(null);
-    setPolygonName("");
-    setEditingIndex(null);
-    setIntermediatePoints([]);
+    setMapState(prev => ({
+      ...prev,
+      drawing: true,
+      points: [],
+      isPolygonClosed: false,
+      currentMousePosition: null,
+      previewIndex: null,
+      polygonName: "",
+      editingIndex: null,
+      intermediatePoints: [],
+    }));
   };
 
   const handleSavePolygon = () => {
-    if (points.length > 2 && isPolygonClosed && polygonName) {
+    if (mapState.points.length > 2 && mapState.isPolygonClosed && mapState.polygonName) {
       const newPolygon = {
-        name: polygonName,
-        coordinates: [...points],
+        name: mapState.polygonName,
+        coordinates: [...mapState.points],
         locked: false,
       };
-      setPolygons((prev) => {
+      setMapState(prev => {
         const updatedPolygons =
-          editingIndex !== null
-            ? prev.map((poly, i) => (i === editingIndex ? newPolygon : poly))
-            : [...prev, newPolygon];
+          prev.editingIndex !== null
+            ? prev.polygons.map((poly, i) => (i === prev.editingIndex ? newPolygon : poly))
+            : [...prev.polygons, newPolygon];
         localStorage.setItem("polygons", JSON.stringify(updatedPolygons));
-        return updatedPolygons;
+        return {
+          ...prev,
+          polygons: updatedPolygons,
+          drawing: false,
+          points: [],
+          polygonName: "",
+          currentMousePosition: null,
+          isPolygonClosed: false,
+          previewIndex: null,
+          editingIndex: null,
+          intermediatePoints: [],
+        };
       });
-      setDrawing(false);
-      setPoints([]);
-      setPolygonName("");
-      setCurrentMousePosition(null);
-      setIsPolygonClosed(false);
-      setPreviewIndex(null);
-      setEditingIndex(null);
-      setIntermediatePoints([]);
-    } else if (!isPolygonClosed) {
+    } else if (!mapState.isPolygonClosed) {
       alert("Please close the polygon by clicking near the starting point.");
-    } else if (!polygonName) {
+    } else if (!mapState.polygonName) {
       alert("Please provide a name for the polygon.");
     } else {
       alert(
@@ -214,67 +230,79 @@ const Polygon6 = () => {
   };
 
   const handleEditPolygon = (index) => {
-    if (polygons[index].locked) {
+    if (mapState.polygons[index].locked) {
       alert("This polygon is locked and cannot be edited.");
       return;
     }
 
-    const polygonToEdit = polygons[index];
-    setPoints(polygonToEdit.coordinates);
-    setPolygonName(polygonToEdit.name);
-    setDrawing(true);
-    setIsPolygonClosed(true);
-    setPreviewIndex(null);
-    setEditingIndex(index);
+    const polygonToEdit = mapState.polygons[index];
+    setMapState(prev => ({
+      ...prev,
+      points: polygonToEdit.coordinates,
+      polygonName: polygonToEdit.name,
+      drawing: true,
+      isPolygonClosed: true,
+      previewIndex: null,
+      editingIndex: index,
+    }));
   };
 
   const handleCancelDrawing = () => {
-    setDrawing(false);
-    setPoints([]);
-    setPolygonName("");
-    setCurrentMousePosition(null);
-    setIsPolygonClosed(false);
-    setPreviewIndex(null);
-    setEditingIndex(null);
-    setIntermediatePoints([]);
+    setMapState(prev => ({
+      ...prev,
+      drawing: false,
+      points: [],
+      polygonName: "",
+      currentMousePosition: null,
+      isPolygonClosed: false,
+      previewIndex: null,
+      editingIndex: null,
+      intermediatePoints: [],
+    }));
   };
 
   const handleDeletePolygon = (index) => {
-    if (polygons[index].locked) {
+    if (mapState.polygons[index].locked) {
       alert("This polygon is locked and cannot be deleted.");
       return;
     }
 
-    setPolygons((prev) => {
-      const updatedPolygons = prev.filter((_, i) => i !== index);
+    setMapState(prev => {
+      const updatedPolygons = prev.polygons.filter((_, i) => i !== index);
       localStorage.setItem("polygons", JSON.stringify(updatedPolygons));
-      return updatedPolygons;
+      return {
+        ...prev,
+        polygons: updatedPolygons,
+        previewIndex:
+          prev.previewIndex === index
+            ? null
+            : prev.previewIndex > index
+            ? prev.previewIndex - 1
+            : prev.previewIndex,
+      };
     });
-    if (previewIndex === index) {
-      setPreviewIndex(null);
-    } else if (previewIndex > index) {
-      setPreviewIndex((prev) => prev - 1);
-    }
   };
 
   const handlePreviewToggle = (index) => {
-    if (previewIndex === index) {
-      setPreviewIndex(null);
-    } else {
-      setPreviewIndex(index);
-      const centroid = calculateCentroid(polygons[index].coordinates);
-      setMapCenter(centroid);
-    }
+    setMapState(prev => {
+      const newPreviewIndex = prev.previewIndex === index ? null: index;
+      const centroid = prev.previewIndex !== index ? calculateCentroid(prev.polygons[index].coordinates) : prev.mapCenter;
+      return {
+        ...prev,
+        previewIndex: newPreviewIndex,
+        mapCenter: centroid,
+      };
+    });
   };
 
   const getRubberBandPath = () => {
     if (
-      drawing &&
-      points.length > 0 &&
-      currentMousePosition &&
-      !isPolygonClosed
+      mapState.drawing &&
+      mapState.points.length > 0 &&
+      mapState.currentMousePosition &&
+      !mapState.isPolygonClosed
     ) {
-      return [points[points.length - 1], currentMousePosition];
+      return [mapState.points[mapState.points.length - 1], mapState.currentMousePosition];
     }
     return [];
   };
@@ -284,28 +312,25 @@ const Polygon6 = () => {
       lat: event.latLng.lat(),
       lng: event.latLng.lng(),
     };
-    setPoints((prevPoints) => {
-      const newPoints = [...prevPoints];
+    setMapState(prev => {
+      const newPoints = [...prev.points];
       newPoints[index] = newPoint;
-      return newPoints;
+      return { ...prev, points: newPoints };
     });
   }, []);
 
   const handleIntermediateDragEnd = useCallback(
     (index) => {
-      setIsDragging(false);
-      const draggedPoint = intermediatePoints[index];
-      const { segmentStart, segmentEnd } = draggedPoint;
-
-      setPoints((prevPoints) => {
-        const newPoints = [...prevPoints];
+      setMapState(prev => {
+        const draggedPoint = prev.intermediatePoints[index];
+        const { segmentStart, segmentEnd } = draggedPoint;
+        const newPoints = [...prev.points];
         newPoints.splice(segmentStart + 1, 0, draggedPoint.position);
-        return newPoints;
+        return { ...prev, points: newPoints, isDragging: false };
       });
-
       updateIntermediatePoints();
     },
-    [intermediatePoints, updateIntermediatePoints]
+    [mapState.intermediatePoints, updateIntermediatePoints]
   );
 
   const handleIntermediateDrag = useCallback((index, event) => {
@@ -313,63 +338,61 @@ const Polygon6 = () => {
       lat: event.latLng.lat(),
       lng: event.latLng.lng(),
     };
-
-    setIntermediatePoints((prevPoints) => {
-      const newIntermediatePoints = [...prevPoints];
+    setMapState(prev => {
+      const newIntermediatePoints = [...prev.intermediatePoints];
       newIntermediatePoints[index] = {
         ...newIntermediatePoints[index],
         position: newPosition,
       };
-      return newIntermediatePoints;
+      return { ...prev, intermediatePoints: newIntermediatePoints };
     });
   }, []);
 
   const handlePointDragStart = useCallback(() => {
-    setIsDragging(true);
-    setCurrentMousePosition(null);
+    setMapState(prev => ({ ...prev, isDragging: true, currentMousePosition: null }));
   }, []);
 
   const handlePointDragEnd = useCallback(() => {
-    setIsDragging(false);
-    if (points.length >= 3 && editingIndex === null) {
-      setIsPolygonClosed(true);
-    }
-  }, [points.length, editingIndex]);
+    setMapState(prev => ({
+      ...prev,
+      isDragging: false,
+      isPolygonClosed: prev.points.length >= 3 && prev.editingIndex === null ? true : prev.isPolygonClosed,
+    }));
+  }, [mapState.points.length, mapState.editingIndex]);
 
   const Sidebar = () => {
     const [openMenuIndex, setOpenMenuIndex] = useState(null);
-  
+
     const toggleMenu = (index) => {
       setOpenMenuIndex(openMenuIndex === index ? null : index);
     };
-  
+
     const handleLockToggle = (index) => {
-      setPolygons((prev) => {
-        const updatedPolygons = prev.map((poly, i) =>
+      setMapState((prev) => {
+        const updatedPolygons = prev.polygons.map((poly, i) =>
           i === index ? { ...poly, locked: !poly.locked } : poly
         );
-        console.log("Locked state:", updatedPolygons[index].locked); // Debug
         localStorage.setItem("polygons", JSON.stringify(updatedPolygons));
-        return updatedPolygons;
+        return { ...prev, polygons: updatedPolygons };
       });
       setOpenMenuIndex(null);
     };
-  
+
     return (
       <div className="sidebar">
         <img
-          src="/img/janata-wifi.svg" // Replace with your image path or URL
+          src="/img/janata-wifi.svg"
           alt="Sidebar Header"
           className="sidebar-image"
         />
         <hr />
         <h3>Saved Polygons</h3>
         <div className="polygon-list">
-          {polygons.length === 0 ? (
+          {mapState.polygons.length === 0 ? (
             <p>No polygons saved yet</p>
           ) : (
             <ul>
-              {polygons.map((poly, index) => (
+              {mapState.polygons.map((poly, index) => (
                 <li key={index} className="polygon-item">
                   <div className="polygon-item-content">
                     <button
@@ -416,7 +439,7 @@ const Polygon6 = () => {
                         }}
                       >
                         <Eye size={16} />{" "}
-                        {previewIndex === index ? "Hide" : "Preview"}
+                        {mapState.previewIndex === index ? "Hide" : "Preview"}
                       </button>
                     </div>
                   )}
@@ -438,7 +461,7 @@ const Polygon6 = () => {
       >
         <GoogleMap
           mapContainerClassName="map-container"
-          center={mapCenter}
+          center={mapState.mapCenter}
           zoom={mapOptions.zoom}
           options={mapOptions}
           onClick={handleMapClick}
@@ -446,21 +469,21 @@ const Polygon6 = () => {
           onLoad={handleMapLoad}
           onDragEnd={handleMapDrag}
         >
-          {drawing && (
+          {mapState.drawing && (
             <div className="drawing-status">
-              {isPolygonClosed
+              {mapState.isPolygonClosed
                 ? "Polygon Closed - Ready to Save"
                 : "Drawing Mode Active - Click to add points"}
-              {drawing && points.length > 0 && (
+              {mapState.drawing && mapState.points.length > 0 && (
                 <div className="drawing-tip">Drag circles to adjust points</div>
               )}
             </div>
           )}
 
-          {!drawing && previewIndex !== null && (
+          {!mapState.drawing && mapState.previewIndex !== null && (
             <GooglePolygon
-              key={`polygon-${previewIndex}`}
-              paths={polygons[previewIndex].coordinates}
+              key={`polygon-${mapState.previewIndex}`}
+              paths={mapState.polygons[mapState.previewIndex].coordinates}
               options={{
                 fillColor: "#FF0000",
                 fillOpacity: 0.35,
@@ -471,11 +494,11 @@ const Polygon6 = () => {
             />
           )}
 
-          {drawing && points.length > 0 && (
+          {mapState.drawing && mapState.points.length > 0 && (
             <>
-              {isPolygonClosed ? (
+              {mapState.isPolygonClosed ? (
                 <GooglePolygon
-                  paths={points}
+                  paths={mapState.points}
                   options={{
                     fillColor: "#0000FF",
                     fillOpacity: 0.35,
@@ -486,7 +509,7 @@ const Polygon6 = () => {
                 />
               ) : (
                 <PolylineF
-                  path={points}
+                  path={mapState.points}
                   options={{
                     strokeColor: "#0000FF",
                     strokeOpacity: 0.8,
@@ -497,9 +520,9 @@ const Polygon6 = () => {
             </>
           )}
 
-          {drawing &&
-            points.length > 0 &&
-            points.map((point, index) => (
+          {mapState.drawing &&
+            mapState.points.length > 0 &&
+            mapState.points.map((point, index) => (
               <MarkerF
                 key={`point-${index}`}
                 position={point}
@@ -525,16 +548,16 @@ const Polygon6 = () => {
               />
             ))}
 
-          {drawing &&
-            intermediatePoints.length > 0 &&
-            intermediatePoints.map((point, index) => (
+          {mapState.drawing &&
+            mapState.intermediatePoints.length > 0 &&
+            mapState.intermediatePoints.map((point, index) => (
               <MarkerF
                 key={`intermediate-${index}`}
                 position={point.position}
                 draggable={true}
                 onDrag={handleIntermediateDrag.bind(null, index)}
                 onDragEnd={handleIntermediateDragEnd.bind(null, index)}
-                onDragStart={() => setIsDragging(true)}
+                onDragStart={() => setMapState(prev => ({ ...prev, isDragging: true }))}
                 icon={{
                   path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
                   fillColor: "#00FF00",
@@ -549,11 +572,11 @@ const Polygon6 = () => {
               />
             ))}
 
-          {drawing &&
-            points.length > 0 &&
-            currentMousePosition &&
-            !isPolygonClosed &&
-            !isDragging && (
+          {mapState.drawing &&
+            mapState.points.length > 0 &&
+            mapState.currentMousePosition &&
+            !mapState.isPolygonClosed &&
+            !mapState.isDragging && (
               <PolylineF
                 path={getRubberBandPath()}
                 options={{
@@ -568,7 +591,7 @@ const Polygon6 = () => {
       </LoadScript>
 
       <div className="controls">
-        {!drawing ? (
+        {!mapState.drawing ? (
           <button
             onClick={handlePolygonIconClick}
             className="start-drawing-btn"
@@ -578,9 +601,9 @@ const Polygon6 = () => {
         ) : (
           <div className="drawing-controls">
             <div
-              className={`status-text ${isPolygonClosed ? "closed" : "active"}`}
+              className={`status-text ${mapState.isPolygonClosed ? "closed" : "active"}`}
             >
-              {isPolygonClosed
+              {mapState.isPolygonClosed
                 ? "Polygon Closed - Ready to Save"
                 : "Drawing Mode Active"}
             </div>
@@ -589,8 +612,8 @@ const Polygon6 = () => {
               <input
                 id="polygonName"
                 type="text"
-                value={polygonName}
-                onChange={(e) => setPolygonName(e.target.value)}
+                value={mapState.polygonName}
+                onChange={(e) => setMapState(prev => ({ ...prev, polygonName: e.target.value }))}
                 placeholder="Enter polygon name"
               />
             </div>
@@ -599,7 +622,7 @@ const Polygon6 = () => {
               <button
                 onClick={handleSavePolygon}
                 disabled={
-                  !(points.length > 2 && isPolygonClosed && polygonName)
+                  !(mapState.points.length > 2 && mapState.isPolygonClosed && mapState.polygonName)
                 }
                 className="save-btn"
               >
@@ -611,16 +634,16 @@ const Polygon6 = () => {
             </div>
 
             <div className="info">
-              <div>Points: {points.length}</div>
-              {points.length < 3 && (
+              <div>Points: {mapState.points.length}</div>
+              {mapState.points.length < 3 && (
                 <div className="warning">Need at least 3 points</div>
               )}
-              {points.length >= 3 && !isPolygonClosed && (
+              {mapState.points.length >= 3 && !mapState.isPolygonClosed && (
                 <div className="instruction">
                   Click on first point (red marker) to close polygon
                 </div>
               )}
-              {isPolygonClosed && !polygonName && (
+              {mapState.isPolygonClosed && !mapState.polygonName && (
                 <div className="warning">Enter a name to save</div>
               )}
             </div>
