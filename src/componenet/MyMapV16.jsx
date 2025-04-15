@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   GoogleMap,
   useLoadScript,
   MarkerF,
   PolylineF,
 } from "@react-google-maps/api";
-import { Trash2, Plus, Edit } from "lucide-react";
+import { Trash2, Plus, Edit, Save, Eye, EyeOff, Lock, Unlock } from "lucide-react";
 
 const containerStyle = { width: "100%", height: "600px" };
 const center = { lat: 23.685, lng: 90.3563 };
@@ -59,6 +59,8 @@ const MyMapV16 = () => {
     Splitter: "/img/Splitter.png",
     ONU: "/img/ONU.png",
   };
+
+  const mapRef = useRef(null); // Ref to store map instance
 
   const [mapState, setMapState] = useState({
     savedRoutes: [],
@@ -1461,27 +1463,88 @@ const MyMapV16 = () => {
     );
   };
 
+ // Handle map load to store map instance
+ const onMapLoad = useCallback((map) => {
+  mapRef.current = map;
+}, []);
+
+// Add custom controls when map loads
+useEffect(() => {
+  if (!mapRef.current || !window.google) return;
+
+  // Clear existing controls to prevent duplicates
+  mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].clear();
+
+  const controlDiv = document.createElement("div");
+  controlDiv.className = "map-controls";
+
+  const buttons = [
+    {
+      imgSrc: "/img/Reset.jpg", // Ensure this file exists in your public/img folder
+      tooltip: "Reset Map",
+      onClick: resetMap,
+    },
+    {
+      imgSrc: "/img/Save.png",
+      tooltip: "Save Route",
+      onClick: saveRoute,
+    },
+    {
+      imgSrc: mapState.showSavedRoutes ? "/img/Eye-close.png" : "/img/Eye.png",
+      tooltip: mapState.showSavedRoutes ? "Hide Previous Routes" : "Show Previous Routes",
+      onClick: togglePreviousRoutes,
+    },
+    ...(mapState.showSavedRoutes
+      ? [
+          {
+            imgSrc: mapState.isSavedRoutesEditable ? "/img/Edit-not.png" : "/img/Edit.png",
+            tooltip: mapState.isSavedRoutesEditable ? "Disable Editing" : "Enable Editing",
+            onClick: toggleSavedRoutesEditability,
+          },
+        ]
+      : []),
+  ];
+  
+  buttons.forEach(({ imgSrc, tooltip, onClick }) => {
+    const button = document.createElement("button");
+    button.className = "map-control-button";
+    if (imgSrc) {
+      const img = document.createElement("img");
+      img.src = imgSrc;
+      img.style.width = "20px";
+      img.style.height = "20px";
+      button.appendChild(img);
+    }
+    button.title = tooltip;
+    button.addEventListener("click", onClick);
+    controlDiv.appendChild(button);
+  });
+  // Add control to TOP_CENTER
+  mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].push(controlDiv);
+
+  // Debug log
+  console.log("Controls added:", controlDiv);
+
+  // Cleanup on unmount or state change
+  return () => {
+    if (mapRef.current && window.google) {
+      mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].clear();
+    }
+  };
+}, [
+  mapState.showSavedRoutes,
+  mapState.isSavedRoutesEditable,
+  resetMap,
+  saveRoute,
+  togglePreviousRoutes,
+  toggleSavedRoutesEditability,
+]);
+
   if (loadError) return <div>Error loading maps</div>;
   if (!isLoaded) return <div>Loading Maps...</div>;
 
   return (
     <>
-      <div>
-        <button onClick={resetMap}>Reset Map</button>
-        <button onClick={saveRoute}>Save Route</button>
-        <button onClick={togglePreviousRoutes}>
-          {mapState.showSavedRoutes
-            ? "Hide Previous Routes"
-            : "Show Previous Routes"}
-        </button>
-        {mapState.showSavedRoutes && (
-          <button onClick={toggleSavedRoutesEditability}>
-            {mapState.isSavedRoutesEditable
-              ? "Disable Editing"
-              : "Enable Editing"}
-          </button>
-        )}
-      </div>
 
       <GoogleMap
         mapContainerStyle={containerStyle}
@@ -1489,7 +1552,10 @@ const MyMapV16 = () => {
         zoom={7}
         onRightClick={handleMapRightClick}
         options={{ styles: mapStyles, disableDefaultUI: false }}
+        onLoad={onMapLoad} // Add onLoad handler
       >
+
+        
         {mapState.imageIcons.map((icon) => (
           <MarkerF
             key={icon.id}
@@ -1724,7 +1790,7 @@ const MyMapV16 = () => {
                 )}
               </React.Fragment>
             );
-          })}
+        })}
 
         {mapState.selectedWaypoint && mapState.waypointActionPosition && (
           <div

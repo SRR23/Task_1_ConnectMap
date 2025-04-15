@@ -18,10 +18,10 @@ function App() {
       {/* <MyMapV14 /> */}
       {/* <MyMapV15 /> */}
       {/* <MyMapV16 /> */}
-      {/* <MyMapV17 /> */}
+      <MyMapV17 />
 
       {/* <Polygon6 /> */}
-      <Polygon7 />
+      {/* <Polygon7 /> */}
       
       
       {/* <Polygon5 /> */}

@@ -1,12 +1,107 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import {
   GoogleMap,
   useLoadScript,
   MarkerF,
   PolylineF,
 } from "@react-google-maps/api";
-import { Trash2, Plus, Edit, Save, Eye, EyeOff, Lock, Unlock } from "lucide-react";
+import {
+  Trash2,
+  Plus,
+  Edit,
+  Save,
+  Eye,
+  EyeOff,
+  Lock,
+  Unlock,
+} from "lucide-react";
 
+import "reactflow/dist/style.css";
+import ReactFlow, {
+  MiniMap,
+  Controls,
+  Background,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  Handle,
+} from "reactflow";
+
+// Custom Node Component
+const CustomNode = React.memo(({ data }) => {
+  return (
+    <div
+      style={{
+        width: 130,
+        height: 30,
+        backgroundColor: data.color,
+        color: "white",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 4,
+        cursor: "pointer",
+        fontSize: 14,
+      }}
+    >
+      {data.label}
+      {data.side === "left" && (
+        <Handle
+          type="source"
+          position="right"
+          id="right"
+          style={{
+            right: -5, // Slightly outside node
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 10,
+            height: 10,
+            background: "transparent",
+          }}
+        />
+      )}
+      {data.side === "right" && (
+        <Handle
+          type="target"
+          position="left"
+          id="left"
+          style={{
+            left: -5,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 10,
+            height: 10,
+            background: "transparent",
+          }}
+        />
+      )}
+      {data.side === "temp" && (
+        <Handle
+          type="target"
+          position="left"
+          id="temp"
+          style={{
+            left: -5,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 10,
+            height: 10,
+            background: "transparent",
+          }}
+        />
+      )}
+    </div>
+  );
+});
+
+// Define nodeTypes outside the component
+const nodeTypes = { custom: CustomNode };
 const containerStyle = { width: "100%", height: "600px" };
 const center = { lat: 23.685, lng: 90.3563 };
 
@@ -60,8 +155,17 @@ const MyMapV17 = () => {
     ONU: "/img/ONU.png",
   };
 
-  const mapRef = useRef(null); // Ref to store map instance
+  const terminationColors = [
+    { number: 1, value: "#FF0000" }, // Red
+    { number: 2, value: "#0000FF" }, // Blue
+    { number: 3, value: "#00FF00" }, // Green
+    { number: 4, value: "#FFFF00" }, // Yellow
+    { number: 5, value: "#800080" }, // Purple
+  ];
 
+  const mapRef = useRef(null); // Ref to store map instance
+  const flowRef = useRef(null); // Ref to track ReactFlow container
+  
   const [mapState, setMapState] = useState({
     savedRoutes: [],
     nextNumber: 1,
@@ -87,7 +191,26 @@ const MyMapV17 = () => {
     splitterInput: "",
     editingLineId: null,
     tempLineName: "",
+
+    showTerminationModal: false,
+    selectedTermination: null,
+    terminationConnections: [], // Persistent connections: [{ terminationId, leftColor, rightColor }]
+    tempConnection: null, // Temporary line: { leftColor, rightColor } or null
   });
+
+  // React Flow state
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [drawingSource, setDrawingSource] = useState(null); // Track source node ID
+
+  // Ensure ReactFlow container is available after mount
+  useEffect(() => {
+    if (mapState.showTerminationModal && flowRef.current) {
+      console.log("ReactFlow container ref:", flowRef.current);
+      const flowEl = flowRef.current.querySelector(".reactflow");
+      console.log("Found .reactflow:", flowEl);
+    }
+  }, [mapState.showTerminationModal]);
 
   const isInteractionAllowed = (isSavedLine) => {
     return (
@@ -115,8 +238,20 @@ const MyMapV17 = () => {
     return num;
   };
 
-  const getConnectedLinesCount = (splitter) => {
-    if (!splitter.ratioSetTimestamp) return 0;
+  const getConnectedLinesCount = (icon) => {
+    if (icon.type === "Termination") {
+      return mapState.fiberLines.filter(
+        (line) =>
+          (line.from.lat === icon.lat && line.from.lng === icon.lng) ||
+          (line.to.lat === icon.lat && line.to.lng === icon.lng) ||
+          (line.waypoints &&
+            line.waypoints.some(
+              (wp) => wp.lat === icon.lat && wp.lng === wp.lng
+            ))
+      ).length;
+    }
+
+    if (!icon.ratioSetTimestamp) return 0;
     return mapState.fiberLines.filter(
       (line) =>
         line.createdAt > splitter.ratioSetTimestamp &&
@@ -508,6 +643,20 @@ const MyMapV17 = () => {
           editingLineId: null,
           tempLineName: "",
         }));
+      } else if (icon.type === "Termination") {
+        setMapState((prevState) => ({
+          ...prevState,
+          selectedLineForActions: null,
+          lineActionPosition: null,
+          exactClickPosition: null,
+          showModal: false,
+          showTerminationModal: true,
+          selectedTermination: icon,
+          pendingConnection: { leftColor: null, rightColor: null },
+          waypointActionPosition: { x, y },
+        }));
+        initializeNodesAndEdges(icon);
+        setDrawingSource(null);
       } else {
         setMapState((prevState) => ({
           ...prevState,
@@ -857,7 +1006,18 @@ const MyMapV17 = () => {
         ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
         : { lat: newLat, lng: newLng };
 
-      if (
+      if (nearestIcon && nearestIcon.type === "Termination") {
+        const connectedLines = getConnectedLinesCount(nearestIcon);
+        if (
+          connectedLines >= 2 &&
+          !isSnappedToIcon(line.from.lat, line.from.lng)
+        ) {
+          alert(
+            "Cannot connect more lines. Termination box allows only 2 connections."
+          );
+          return prevState;
+        }
+      } else if (
         nearestIcon &&
         nearestIcon.type === "Splitter" &&
         nearestIcon.splitterRatio
@@ -926,7 +1086,15 @@ const MyMapV17 = () => {
         ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
         : { lat: newLat, lng: newLng };
 
-      if (
+      if (nearestIcon && nearestIcon.type === "Termination") {
+        const connectedLines = getConnectedLinesCount(nearestIcon);
+        if (connectedLines >= 2 && !isSnappedToIcon(line.to.lat, line.to.lng)) {
+          alert(
+            "Cannot connect more lines. Termination box allows only 2 connections."
+          );
+          return prevState;
+        }
+      } else if (
         nearestIcon &&
         nearestIcon.type === "Splitter" &&
         nearestIcon.splitterRatio
@@ -1226,6 +1394,200 @@ const MyMapV17 = () => {
     });
   };
 
+  const initializeNodesAndEdges = useCallback(
+    (selectedTermination) => {
+      console.log("Initializing nodes for termination:", selectedTermination.id);
+      const leftNodes = terminationColors.map((color, index) => ({
+        id: `left-${color.number}`,
+        type: "custom",
+        position: { x: 10, y: 40 + index * 50 },
+        data: { label: `${color.number}`, color: color.value, side: "left" },
+      }));
+
+      const rightNodes = terminationColors.map((color, index) => ({
+        id: `right-${color.number}`,
+        type: "custom",
+        position: { x: 290, y: 40 + index * 50 },
+        data: { label: `${color.number}`, color: color.value, side: "right" },
+      }));
+
+      const initialNodes = [...leftNodes, ...rightNodes];
+      setNodes(initialNodes);
+      console.log("Initial nodes set:", initialNodes);
+
+      const prevEdges = mapState.terminationConnections
+        .filter((conn) => conn.terminationId === selectedTermination.id)
+        .map((conn, index) => {
+          const leftIndex = terminationColors.findIndex(
+            (c) => c.value === conn.leftColor
+          );
+          const rightIndex = terminationColors.findIndex(
+            (c) => c.value === conn.rightColor
+          );
+          return {
+            id: `edge-${index}`,
+            source: `left-${leftIndex + 1}`,
+            target: `right-${rightIndex + 1}`,
+            sourceHandle: "right",
+            targetHandle: "left",
+            style: { stroke: "black", strokeWidth: 2 },
+          };
+        });
+
+      setEdges(prevEdges);
+      console.log("Initial edges set:", prevEdges);
+    },
+    [mapState.terminationConnections, setNodes, setEdges]
+  );
+
+  const handleNodeClick = useCallback(
+    (event, node) => {
+      console.log("Node clicked:", node.id, node.data);
+      if (
+        node.data.side === "left" &&
+        !drawingSource &&
+        !mapState.tempConnection
+      ) {
+        setDrawingSource(node.id);
+        console.log("Drawing source set to:", node.id);
+      } else if (node.data.side === "right" && drawingSource) {
+        console.log("Connecting:", drawingSource, "to", node.id);
+        const newEdge = {
+          id: `edge-${Date.now()}`,
+          source: drawingSource,
+          target: node.id,
+          sourceHandle: "right",
+          targetHandle: "left",
+          style: { stroke: "black", strokeWidth: 2 },
+        };
+        setEdges((eds) => {
+          const updatedEdges = [
+            ...eds.filter((e) => e.id !== "drawing-edge"),
+            newEdge,
+          ];
+          console.log("Edges updated:", updatedEdges);
+          return updatedEdges;
+        });
+        setMapState((prevState) => ({
+          ...prevState,
+          tempConnection: {
+            source: drawingSource,
+            target: node.id,
+            sourceHandle: "right",
+            targetHandle: "left",
+          },
+        }));
+        setDrawingSource(null);
+        setNodes((nds) => {
+          const updatedNodes = nds.filter((n) => n.id !== "temp");
+          console.log("Nodes updated (temp removed):", updatedNodes);
+          return updatedNodes;
+        });
+      }
+    },
+    [drawingSource, mapState.tempConnection, setEdges, setNodes]
+  );
+
+  const handleMouseMove = useCallback(
+    (e) => {
+      if (!drawingSource) return;
+      console.log("Mouse move detected, drawingSource:", drawingSource);
+      const flowEl = flowRef.current?.querySelector(".reactflow");
+      if (!flowEl) {
+        console.warn("React Flow container not found");
+        return;
+      }
+      const rect = flowEl.getBoundingClientRect();
+      console.log("Flow container rect:", rect);
+
+      const tempNode = {
+        id: "temp",
+        type: "custom",
+        position: {
+          x: e.clientX - rect.left - 5,
+          y: e.clientY - rect.top - 5,
+        },
+        data: { label: "", color: "transparent", side: "temp" },
+      };
+
+      setNodes((nds) => {
+        const others = nds.filter((n) => n.id !== "temp");
+        const updatedNodes = [...others, tempNode];
+        console.log("Temp node updated:", tempNode);
+        return updatedNodes;
+      });
+
+      setEdges((eds) => {
+        const others = eds.filter((e) => e.id !== "drawing-edge");
+        const drawingEdge = {
+          id: "drawing-edge",
+          source: drawingSource,
+          sourceHandle: "right",
+          target: "temp",
+          targetHandle: "temp",
+          animated: true,
+          style: { stroke: "black", strokeWidth: 2 },
+        };
+        const updatedEdges = [...others, drawingEdge];
+        console.log("Drawing edge updated:", drawingEdge);
+        return updatedEdges;
+      });
+    },
+    [drawingSource, setNodes, setEdges]
+  );
+
+  const saveTerminationConnection = useCallback(() => {
+    if (!mapState.tempConnection) {
+      console.log("No temp connection, closing modal");
+      setMapState((prevState) => ({
+        ...prevState,
+        showTerminationModal: false,
+        selectedTermination: null,
+        tempConnection: null,
+      }));
+      setNodes([]);
+      setEdges([]);
+      setDrawingSource(null);
+      return;
+    }
+
+    const leftNumber = parseInt(mapState.tempConnection.source.split("-")[1]);
+    const rightNumber = parseInt(mapState.tempConnection.target.split("-")[1]);
+    const newConnection = {
+      terminationId: mapState.selectedTermination.id,
+      leftColor: terminationColors[leftNumber - 1].value,
+      rightColor: terminationColors[rightNumber - 1].value,
+    };
+
+    console.log("Saving connection:", newConnection);
+    setMapState((prevState) => ({
+      ...prevState,
+      terminationConnections: [
+        ...prevState.terminationConnections,
+        newConnection,
+      ],
+      showTerminationModal: false,
+      selectedTermination: null,
+      tempConnection: null,
+    }));
+    setNodes([]);
+    setEdges([]);
+    setDrawingSource(null);
+  }, [mapState.tempConnection, mapState.selectedTermination, setNodes, setEdges]);
+
+  const closeTerminationModal = useCallback(() => {
+    console.log("Closing termination modal");
+    setMapState((prevState) => ({
+      ...prevState,
+      showTerminationModal: false,
+      selectedTermination: null,
+      tempConnection: null,
+    }));
+    setNodes([]);
+    setEdges([]);
+    setDrawingSource(null);
+  }, [setNodes, setEdges]);
+
   const handleSavedPolylinePointDragEnd = (polylineId, pointType, e) => {
     if (!mapState.isSavedRoutesEditable) return;
 
@@ -1463,89 +1825,102 @@ const MyMapV17 = () => {
     );
   };
 
- // Handle map load to store map instance
- const onMapLoad = useCallback((map) => {
-  mapRef.current = map;
-}, []);
+  // Handle map load to store map instance
+  const onMapLoad = useCallback((map) => {
+    mapRef.current = map;
+  }, []);
 
-// Add custom controls when map loads
-useEffect(() => {
-  if (!mapRef.current || !window.google) return;
+  // Add custom controls when map loads
+  useEffect(() => {
+    if (!mapRef.current || !window.google) return;
 
-  // Clear existing controls to prevent duplicates
-  mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].clear();
+    // Clear existing controls to prevent duplicates
+    mapRef.current.controls[
+      window.google.maps.ControlPosition.TOP_CENTER
+    ].clear();
 
-  const controlDiv = document.createElement("div");
-  controlDiv.className = "map-controls";
+    const controlDiv = document.createElement("div");
+    controlDiv.className = "map-controls";
 
-  const buttons = [
-    {
-      imgSrc: "/img/Reset.jpg", // Ensure this file exists in your public/img folder
-      tooltip: "Reset Map",
-      onClick: resetMap,
-    },
-    {
-      imgSrc: "/img/Save.png",
-      tooltip: "Save Route",
-      onClick: saveRoute,
-    },
-    {
-      imgSrc: mapState.showSavedRoutes ? "/img/Eye-close.png" : "/img/Eye.png",
-      tooltip: mapState.showSavedRoutes ? "Hide Previous Routes" : "Show Previous Routes",
-      onClick: togglePreviousRoutes,
-    },
-    ...(mapState.showSavedRoutes
-      ? [
-          {
-            imgSrc: mapState.isSavedRoutesEditable ? "/img/Edit-not.png" : "/img/Edit.png",
-            tooltip: mapState.isSavedRoutesEditable ? "Disable Editing" : "Enable Editing",
-            onClick: toggleSavedRoutesEditability,
-          },
-        ]
-      : []),
-  ];
-  
-  buttons.forEach(({ imgSrc, tooltip, onClick }) => {
-    const button = document.createElement("button");
-    button.className = "map-control-button";
-    if (imgSrc) {
-      const img = document.createElement("img");
-      img.src = imgSrc;
-      img.style.width = "20px";
-      img.style.height = "20px";
-      button.appendChild(img);
-    }
-    button.title = tooltip;
-    button.addEventListener("click", onClick);
-    controlDiv.appendChild(button);
-  });
-  // Add control to TOP_CENTER
-  mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].push(controlDiv);
+    const buttons = [
+      {
+        imgSrc: "/img/Reset.jpg", // Ensure this file exists in your public/img folder
+        tooltip: "Reset Map",
+        onClick: resetMap,
+      },
+      {
+        imgSrc: "/img/Save.png",
+        tooltip: "Save Route",
+        onClick: saveRoute,
+      },
+      {
+        imgSrc: mapState.showSavedRoutes
+          ? "/img/Eye-close.png"
+          : "/img/Eye.png",
+        tooltip: mapState.showSavedRoutes
+          ? "Hide Previous Routes"
+          : "Show Previous Routes",
+        onClick: togglePreviousRoutes,
+      },
+      ...(mapState.showSavedRoutes
+        ? [
+            {
+              imgSrc: mapState.isSavedRoutesEditable
+                ? "/img/Edit-not.png"
+                : "/img/Edit.png",
+              tooltip: mapState.isSavedRoutesEditable
+                ? "Disable Editing"
+                : "Enable Editing",
+              onClick: toggleSavedRoutesEditability,
+            },
+          ]
+        : []),
+    ];
 
-  // Debug log
-  console.log("Controls added:", controlDiv);
+    buttons.forEach(({ imgSrc, tooltip, onClick }) => {
+      const button = document.createElement("button");
+      button.className = "map-control-button";
+      if (imgSrc) {
+        const img = document.createElement("img");
+        img.src = imgSrc;
+        img.style.width = "20px";
+        img.style.height = "20px";
+        button.appendChild(img);
+      }
+      button.title = tooltip;
+      button.addEventListener("click", onClick);
+      controlDiv.appendChild(button);
+    });
+    // Add control to TOP_CENTER
+    mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].push(
+      controlDiv
+    );
 
-  // Cleanup on unmount or state change
-  return () => {
-    if (mapRef.current && window.google) {
-      mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].clear();
-    }
-  };
-}, [
-  mapState.showSavedRoutes,
-  mapState.isSavedRoutesEditable,
-  resetMap,
-  saveRoute,
-  togglePreviousRoutes,
-  toggleSavedRoutesEditability,
-]);
+    // Debug log
+    console.log("Controls added:", controlDiv);
+
+    // Cleanup on unmount or state change
+    return () => {
+      if (mapRef.current && window.google) {
+        mapRef.current.controls[
+          window.google.maps.ControlPosition.TOP_CENTER
+        ].clear();
+      }
+    };
+  }, [
+    mapState.showSavedRoutes,
+    mapState.isSavedRoutesEditable,
+    resetMap,
+    saveRoute,
+    togglePreviousRoutes,
+    toggleSavedRoutesEditability,
+  ]);
 
   if (loadError) return <div>Error loading maps</div>;
   if (!isLoaded) return <div>Loading Maps...</div>;
 
   return (
     <>
-
       <GoogleMap
         mapContainerStyle={containerStyle}
         center={center}
@@ -1554,8 +1929,6 @@ useEffect(() => {
         options={{ styles: mapStyles, disableDefaultUI: false }}
         onLoad={onMapLoad} // Add onLoad handler
       >
-
-        
         {mapState.imageIcons.map((icon) => (
           <MarkerF
             key={icon.id}
@@ -1790,7 +2163,7 @@ useEffect(() => {
                 )}
               </React.Fragment>
             );
-        })}
+          })}
 
         {mapState.selectedWaypoint && mapState.waypointActionPosition && (
           <div
@@ -1860,11 +2233,13 @@ useEffect(() => {
                   <option value="" disabled>
                     Choose a ratio
                   </option>
-                  {getAvailableRatios(mapState.selectedSplitter).map((ratio) => (
-                    <option key={ratio} value={ratio}>
-                      {ratio}
-                    </option>
-                  ))}
+                  {getAvailableRatios(mapState.selectedSplitter).map(
+                    (ratio) => (
+                      <option key={ratio} value={ratio}>
+                        {ratio}
+                      </option>
+                    )
+                  )}
                 </select>
               </div>
               <div className="form-footer">
@@ -1914,6 +2289,57 @@ useEffect(() => {
                 ) : (
                   <p className="no-lines-message">No connected lines</p>
                 )}
+              </div>
+            </div>
+            <div className="modal-spike"></div>
+          </div>
+        )}
+
+{mapState.showTerminationModal && mapState.selectedTermination && (
+          <div
+            className="termination-modal"
+            style={{
+              top: `${mapState.waypointActionPosition.y - 200}px`,
+              left: `${mapState.waypointActionPosition.x - 350}px`,
+              width: "400px",
+              height: "300px",
+            }}
+          >
+            <div className="termination-modal-content" style={{ height: "100%" }}>
+              <div className="flow-container" style={{ width: "100%", height: "80%" }}>
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onNodeClick={handleNodeClick}
+                  onPaneMouseMove={handleMouseMove}
+                  nodeTypes={nodeTypes}
+                  fitView
+                  nodesDraggable={false}
+                  nodesConnectable={false}
+                  zoomOnScroll={false}
+                  panOnScroll={false}
+                  panOnDrag={false}
+                  preventScrolling={false}
+                  style={{ width: "100%", height: "100%" }}
+                >
+                  <Background />
+                </ReactFlow>
+              </div>
+              <div className="modal-footer">
+                <button
+                  onClick={saveTerminationConnection}
+                  className="btn btn-save"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={closeTerminationModal}
+                  className="btn btn-close"
+                >
+                  Close
+                </button>
               </div>
             </div>
             <div className="modal-spike"></div>

@@ -203,7 +203,7 @@
 }
 
   /* Provided styles for edit and delete buttons */
-.btn-edit {
+/* .btn-edit {
   background: none;
   border: none;
   cursor: pointer;
@@ -215,8 +215,8 @@
   border: none;
   cursor: pointer;
   padding: 4px;
-  /* Removed display: flex; align-items: center to avoid layout conflicts */
-}
+ 
+} */
 
 /* Provided styles for edit and delete buttons */
 .btn-edit {
@@ -242,6 +242,7 @@
     padding: 8px 0;
   }
 
+  /* Map Control */
   .map-controls {
     display: flex;
     flex-direction: row; /* Align buttons horizontally */
@@ -292,4 +293,50 @@
     transition: opacity 0.2s;
     z-index: 10;
   }
+
+  /* Termination */
+  .termination-modal {
+    position: absolute;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    padding: 20px;
+    z-index: 1000;
+    width: 600px;
+  }
+  
+  .termination-modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  
+  .flow-container {
+    height: 300px;
+    width: 100%;
+  }
+  
+  .reactflow {
+    background: #f5f5f5;
+  }
+
+  
+  .reactflow__node {
+    padding: 0;
+  }
+  
+  .reactflow__handle {
+    background: transparent;
+  }
+  
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  /* Hide React Flow attribution */
+.reactflow__attribution {
+  display: none;
+}
   
