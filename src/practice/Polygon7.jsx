@@ -19,81 +19,11 @@ import {
 
 import "reactflow/dist/style.css";
 import ReactFlow, {
-  MiniMap,
-  Controls,
   Background,
   useNodesState,
   useEdgesState,
-  addEdge,
   Handle,
 } from "reactflow";
-
-// Custom Node Component
-// const CustomNode = React.memo(({ data }) => {
-//   return (
-//     <div
-//       style={{
-//         width: 130,
-//         height: 30,
-//         backgroundColor: data.color,
-//         color: "white",
-//         display: "flex",
-//         alignItems: "center",
-//         justifyContent: "center",
-//         borderRadius: 4,
-//         cursor: "pointer",
-//         fontSize: 14,
-//       }}
-//     >
-//       {data.label}
-//       {data.side === "left" && (
-//         <Handle
-//           type="source"
-//           position="right"
-//           id="right"
-//           style={{
-//             right: -5, // Slightly outside node
-//             top: "50%",
-//             transform: "translateY(-50%)",
-//             width: 10,
-//             height: 10,
-//             background: "transparent",
-//           }}
-//         />
-//       )}
-//       {data.side === "right" && (
-//         <Handle
-//           type="target"
-//           position="left"
-//           id="left"
-//           style={{
-//             left: -5,
-//             top: "50%",
-//             transform: "translateY(-50%)",
-//             width: 10,
-//             height: 10,
-//             background: "transparent",
-//           }}
-//         />
-//       )}
-//       {data.side === "temp" && (
-//         <Handle
-//           type="target"
-//           position="left"
-//           id="temp"
-//           style={{
-//             left: -5,
-//             top: "50%",
-//             transform: "translateY(-50%)",
-//             width: 10,
-//             height: 10,
-//             background: "transparent",
-//           }}
-//         />
-//       )}
-//     </div>
-//   );
-// });
 
 const CustomNode = React.memo(({ data }) => {
   return (
@@ -290,13 +220,13 @@ const Polygon7 = () => {
   const [drawingSource, setDrawingSource] = useState(null); // Track source node ID
 
   // Ensure ReactFlow container is available after mount
-  useEffect(() => {
-    if (mapState.showTerminationModal && flowRef.current) {
-      console.log("ReactFlow container ref:", flowRef.current);
-      const flowEl = flowRef.current.querySelector(".reactflow");
-      console.log("Found .reactflow:", flowEl);
-    }
-  }, [mapState.showTerminationModal]);
+  // useEffect(() => {
+  //   if (mapState.showTerminationModal && flowRef.current) {
+  //     // console.log("ReactFlow container ref:", flowRef.current);
+  //     const flowEl = flowRef.current.querySelector(".reactflow");
+  //     // console.log("Found .reactflow:", flowEl);
+  //   }
+  // }, [mapState.showTerminationModal]);
 
   const isInteractionAllowed = (isSavedLine) => {
     return (
@@ -337,17 +267,19 @@ const Polygon7 = () => {
       ).length;
     }
 
-    if (!icon.ratioSetTimestamp) return 0;
-    return mapState.fiberLines.filter(
-      (line) =>
-        line.createdAt > splitter.ratioSetTimestamp &&
-        ((line.from.lat === splitter.lat && line.from.lng === splitter.lng) ||
-          (line.to.lat === splitter.lat && line.to.lng === splitter.lng) ||
-          (line.waypoints &&
-            line.waypoints.some(
-              (wp) => wp.lat === splitter.lat && wp.lng === splitter.lng
-            )))
-    ).length;
+    if (icon.type === "Splitter") {
+      if (!icon.ratioSetTimestamp) return 0;
+      return mapState.fiberLines.filter(
+        (line) =>
+          line.createdAt > icon.ratioSetTimestamp &&
+          ((line.from.lat === icon.lat && line.from.lng === icon.lng) ||
+            (line.to.lat === icon.lat && line.to.lng === icon.lng) ||
+            (line.waypoints &&
+              line.waypoints.some(
+                (wp) => wp.lat === icon.lat && wp.lng === icon.lng
+              )))
+      ).length;
+    }
   };
 
   const getConnectedLines = (splitter) => {
@@ -1130,11 +1062,11 @@ const Polygon7 = () => {
         }
 
         if (!isSnappedToIcon(line.from.lat, line.from.lng)) {
-          console.log("Line start connected to splitter:", {
-            lineId: line.id,
-            splitterId: nearestIcon.id,
-            ratio: nearestIcon.splitterRatio,
-          });
+          // console.log("Line start connected to splitter:", {
+          //   lineId: line.id,
+          //   splitterId: nearestIcon.id,
+          //   ratio: nearestIcon.splitterRatio,
+          // });
           const splitter = prevState.imageIcons.find(
             (icon) => icon.id === nearestIcon.id
           );
@@ -1207,11 +1139,11 @@ const Polygon7 = () => {
         }
 
         if (!isSnappedToIcon(line.to.lat, line.to.lng)) {
-          console.log("Line end connected to splitter:", {
-            lineId: line.id,
-            splitterId: nearestIcon.id,
-            ratio: nearestIcon.splitterRatio,
-          });
+          // console.log("Line end connected to splitter:", {
+          //   lineId: line.id,
+          //   splitterId: nearestIcon.id,
+          //   ratio: nearestIcon.splitterRatio,
+          // });
           const splitter = prevState.imageIcons.find(
             (icon) => icon.id === nearestIcon.id
           );
@@ -1292,12 +1224,12 @@ const Polygon7 = () => {
               wp.lng === nearestIcon.lng
           )
         ) {
-          console.log("Waypoint connected to splitter:", {
-            lineId: line.id,
-            waypointIndex,
-            splitterId: nearestIcon.id,
-            ratio: nearestIcon.splitterRatio,
-          });
+          // console.log("Waypoint connected to splitter:", {
+          //   lineId: line.id,
+          //   waypointIndex,
+          //   splitterId: nearestIcon.id,
+          //   ratio: nearestIcon.splitterRatio,
+          // });
           const splitter = prevState.imageIcons.find(
             (icon) => icon.id === nearestIcon.id
           );
@@ -1472,30 +1404,6 @@ const Polygon7 = () => {
     }));
   };
 
-  // const resetMap = () => {
-  //   setMapState({
-  //     savedRoutes: mapState.savedRoutes,
-  //     showSavedRoutes: false,
-  //     nextNumber: 1,
-  //     selectedType: null,
-  //     showModal: false,
-  //     selectedPoint: null,
-  //     rightClickMarker: null,
-  //     fiberLines: [],
-  //     imageIcons: [],
-  //     selectedWaypoint: null,
-  //     waypointActionPosition: null,
-  //     selectedWaypointInfo: null,
-  //     showSplitterModal: false,
-  //     selectedSplitter: null,
-  //     splitterRatio: "",
-  //     splitterInput: "",
-  //     editingLineId: null,
-  //     tempLineName: "",
-  //   });
-  // };
-
-
   const initializeNodesAndEdges = useCallback(
     (selectedTermination) => {
       // Calculate sensible positions
@@ -1547,14 +1455,12 @@ const Polygon7 = () => {
 
   const handleNodeClick = useCallback(
     (event, node) => {
-      
       if (
         node.data.side === "left" &&
         !drawingSource &&
         !mapState.tempConnection
       ) {
         setDrawingSource(node.id);
-        
       } else if (node.data.side === "right" && drawingSource) {
         console.log("Connecting:", drawingSource, "to", node.id);
         const newEdge = {
@@ -1594,8 +1500,8 @@ const Polygon7 = () => {
   const handleTerminationMouseMove = useCallback(
     (e) => {
       if (!drawingSource) return;
-      
-      const rect = flowEl.getBoundingClientRect();
+
+      // const rect = flowEl.getBoundingClientRect();
 
       const tempNode = {
         id: "temp",
@@ -1610,7 +1516,7 @@ const Polygon7 = () => {
       setNodes((nds) => {
         const others = nds.filter((n) => n.id !== "temp");
         const updatedNodes = [...others, tempNode];
-        // console.log("Temp node updated:", tempNode);
+
         return updatedNodes;
       });
 
@@ -1626,7 +1532,7 @@ const Polygon7 = () => {
           style: { stroke: "black", strokeWidth: 2 },
         };
         const updatedEdges = [...others, drawingEdge];
-        // console.log("Drawing edge updated:", drawingEdge);
+
         return updatedEdges;
       });
     },
@@ -1635,7 +1541,6 @@ const Polygon7 = () => {
 
   const saveTerminationConnection = useCallback(() => {
     if (!mapState.tempConnection) {
-      // console.log("No temp connection, closing modal");
       setMapState((prevState) => ({
         ...prevState,
         showTerminationModal: false,
@@ -1656,7 +1561,6 @@ const Polygon7 = () => {
       rightColor: terminationColors[rightNumber - 1].value,
     };
 
-    console.log("Saving connection:", newConnection);
     setMapState((prevState) => ({
       ...prevState,
       terminationConnections: [
@@ -1678,7 +1582,6 @@ const Polygon7 = () => {
   ]);
 
   const closeTerminationModal = useCallback(() => {
-    console.log("Closing termination modal");
     setMapState((prevState) => ({
       ...prevState,
       showTerminationModal: false,
@@ -1861,12 +1764,12 @@ const Polygon7 = () => {
                   wp.lng === nearestIcon.lng
               )
             ) {
-              console.log("Saved waypoint connected to splitter:", {
-                polylineId,
-                waypointIndex,
-                splitterId: nearestIcon.id,
-                ratio: nearestIcon.splitterRatio,
-              });
+              // console.log("Saved waypoint connected to splitter:", {
+              //   polylineId,
+              //   waypointIndex,
+              //   splitterId: nearestIcon.id,
+              //   ratio: nearestIcon.splitterRatio,
+              // });
               const splitter = prevState.imageIcons.find(
                 (icon) => icon.id === nearestIcon.id
               );
@@ -2019,9 +1922,9 @@ const Polygon7 = () => {
   };
 
   // Handle map load to store map instance
-  const onMapLoad = useCallback((map) => {
-    mapRef.current = map;
-  }, []);
+  // const onMapLoad = useCallback((map) => {
+  //   mapRef.current = map;
+  // }, []);
 
   // Add custom controls when map loads
   useEffect(() => {
@@ -2089,9 +1992,6 @@ const Polygon7 = () => {
       controlDiv
     );
 
-    // Debug log
-    console.log("Controls added:", controlDiv);
-
     // Cleanup on unmount or state change
     return () => {
       if (mapRef.current && window.google) {
@@ -2149,10 +2049,10 @@ const Polygon7 = () => {
     updateIntermediatePoints();
   }, [mapState.points, mapState.isPolygonClosed, updateIntermediatePoints]);
 
-  const mapOptions = {
-    zoom: 13,
-    clickableIcons: false,
-  };
+  // const mapOptions = {
+  //   zoom: 13,
+  //   clickableIcons: false,
+  // };
 
   const calculateDistance = (point1, point2) => {
     const lat1 = point1.lat;
@@ -2571,8 +2471,6 @@ const Polygon7 = () => {
       >
         <GoogleMap
           mapContainerClassName="map-container"
-          // center={mapState.mapCenter}
-          // mapContainerStyle={containerStyle}
           center={center}
           zoom={7}
           onClick={handleMapClick}
@@ -2745,13 +2643,13 @@ const Polygon7 = () => {
 
                   {(polyline.waypoints || []).map((waypoint, waypointIndex) => {
                     const isOverlaid = isWaypointOverlaidBySplitter(waypoint);
-                    console.log(
-                      `Rendering waypoint ${waypointIndex} for polyline ${polyline.id}:`,
-                      {
-                        position: waypoint,
-                        isOverlaid,
-                      }
-                    );
+                    // console.log(
+                    //   `Rendering waypoint ${waypointIndex} for polyline ${polyline.id}:`,
+                    //   {
+                    //     position: waypoint,
+                    //     isOverlaid,
+                    //   }
+                    // );
                     return !isOverlaid ? (
                       <MarkerF
                         key={`saved-waypoint-${polyline.id}-${waypointIndex}`}
