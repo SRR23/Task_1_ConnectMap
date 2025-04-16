@@ -165,7 +165,7 @@ const MyMapV17 = () => {
 
   const mapRef = useRef(null); // Ref to store map instance
   const flowRef = useRef(null); // Ref to track ReactFlow container
-  
+
   const [mapState, setMapState] = useState({
     savedRoutes: [],
     nextNumber: 1,
@@ -1396,7 +1396,7 @@ const MyMapV17 = () => {
 
   const initializeNodesAndEdges = useCallback(
     (selectedTermination) => {
-      console.log("Initializing nodes for termination:", selectedTermination.id);
+      // console.log("Initializing nodes for termination:", selectedTermination.id);
       const leftNodes = terminationColors.map((color, index) => ({
         id: `left-${color.number}`,
         type: "custom",
@@ -1413,7 +1413,7 @@ const MyMapV17 = () => {
 
       const initialNodes = [...leftNodes, ...rightNodes];
       setNodes(initialNodes);
-      console.log("Initial nodes set:", initialNodes);
+      // console.log("Initial nodes set:", initialNodes);
 
       const prevEdges = mapState.terminationConnections
         .filter((conn) => conn.terminationId === selectedTermination.id)
@@ -1435,21 +1435,21 @@ const MyMapV17 = () => {
         });
 
       setEdges(prevEdges);
-      console.log("Initial edges set:", prevEdges);
+      // console.log("Initial edges set:", prevEdges);
     },
     [mapState.terminationConnections, setNodes, setEdges]
   );
 
   const handleNodeClick = useCallback(
     (event, node) => {
-      console.log("Node clicked:", node.id, node.data);
+      // console.log("Node clicked:", node.id, node.data);
       if (
         node.data.side === "left" &&
         !drawingSource &&
         !mapState.tempConnection
       ) {
         setDrawingSource(node.id);
-        console.log("Drawing source set to:", node.id);
+        // console.log("Drawing source set to:", node.id);
       } else if (node.data.side === "right" && drawingSource) {
         console.log("Connecting:", drawingSource, "to", node.id);
         const newEdge = {
@@ -1465,7 +1465,7 @@ const MyMapV17 = () => {
             ...eds.filter((e) => e.id !== "drawing-edge"),
             newEdge,
           ];
-          console.log("Edges updated:", updatedEdges);
+          // console.log("Edges updated:", updatedEdges);
           return updatedEdges;
         });
         setMapState((prevState) => ({
@@ -1480,7 +1480,7 @@ const MyMapV17 = () => {
         setDrawingSource(null);
         setNodes((nds) => {
           const updatedNodes = nds.filter((n) => n.id !== "temp");
-          console.log("Nodes updated (temp removed):", updatedNodes);
+          // console.log("Nodes updated (temp removed):", updatedNodes);
           return updatedNodes;
         });
       }
@@ -1491,14 +1491,14 @@ const MyMapV17 = () => {
   const handleMouseMove = useCallback(
     (e) => {
       if (!drawingSource) return;
-      console.log("Mouse move detected, drawingSource:", drawingSource);
-      const flowEl = flowRef.current?.querySelector(".reactflow");
-      if (!flowEl) {
-        console.warn("React Flow container not found");
-        return;
-      }
+      // console.log("Mouse move detected, drawingSource:", drawingSource);
+      // const flowEl = flowRef.current?.querySelector(".reactflow");
+      // if (!flowEl) {
+      //   console.warn("React Flow container not found");
+      //   return;
+      // }
       const rect = flowEl.getBoundingClientRect();
-      console.log("Flow container rect:", rect);
+      // console.log("Flow container rect:", rect);
 
       const tempNode = {
         id: "temp",
@@ -1513,7 +1513,7 @@ const MyMapV17 = () => {
       setNodes((nds) => {
         const others = nds.filter((n) => n.id !== "temp");
         const updatedNodes = [...others, tempNode];
-        console.log("Temp node updated:", tempNode);
+        // console.log("Temp node updated:", tempNode);
         return updatedNodes;
       });
 
@@ -1529,7 +1529,7 @@ const MyMapV17 = () => {
           style: { stroke: "black", strokeWidth: 2 },
         };
         const updatedEdges = [...others, drawingEdge];
-        console.log("Drawing edge updated:", drawingEdge);
+        // console.log("Drawing edge updated:", drawingEdge);
         return updatedEdges;
       });
     },
@@ -1538,7 +1538,7 @@ const MyMapV17 = () => {
 
   const saveTerminationConnection = useCallback(() => {
     if (!mapState.tempConnection) {
-      console.log("No temp connection, closing modal");
+      // console.log("No temp connection, closing modal");
       setMapState((prevState) => ({
         ...prevState,
         showTerminationModal: false,
@@ -1573,7 +1573,12 @@ const MyMapV17 = () => {
     setNodes([]);
     setEdges([]);
     setDrawingSource(null);
-  }, [mapState.tempConnection, mapState.selectedTermination, setNodes, setEdges]);
+  }, [
+    mapState.tempConnection,
+    mapState.selectedTermination,
+    setNodes,
+    setEdges,
+  ]);
 
   const closeTerminationModal = useCallback(() => {
     console.log("Closing termination modal");
@@ -2295,7 +2300,7 @@ const MyMapV17 = () => {
           </div>
         )}
 
-{mapState.showTerminationModal && mapState.selectedTermination && (
+        {mapState.showTerminationModal && mapState.selectedTermination && (
           <div
             className="termination-modal"
             style={{
@@ -2305,8 +2310,14 @@ const MyMapV17 = () => {
               height: "300px",
             }}
           >
-            <div className="termination-modal-content" style={{ height: "100%" }}>
-              <div className="flow-container" style={{ width: "100%", height: "80%" }}>
+            <div
+              className="termination-modal-content"
+              style={{ height: "100%" }}
+            >
+              <div
+                className="flow-container"
+                style={{ width: "100%", height: "80%" }}
+              >
                 <ReactFlow
                   nodes={nodes}
                   edges={edges}
@@ -2323,6 +2334,7 @@ const MyMapV17 = () => {
                   panOnDrag={false}
                   preventScrolling={false}
                   style={{ width: "100%", height: "100%" }}
+                  proOptions={{ hideAttribution: true }} // Hide attribution as previously resolved
                 >
                   <Background />
                 </ReactFlow>

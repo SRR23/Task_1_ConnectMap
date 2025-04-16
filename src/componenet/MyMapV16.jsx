@@ -5,7 +5,16 @@ import {
   MarkerF,
   PolylineF,
 } from "@react-google-maps/api";
-import { Trash2, Plus, Edit, Save, Eye, EyeOff, Lock, Unlock } from "lucide-react";
+import {
+  Trash2,
+  Plus,
+  Edit,
+  Save,
+  Eye,
+  EyeOff,
+  Lock,
+  Unlock,
+} from "lucide-react";
 
 const containerStyle = { width: "100%", height: "600px" };
 const center = { lat: 23.685, lng: 90.3563 };
@@ -335,6 +344,62 @@ const MyMapV16 = () => {
     }
   };
 
+  // const addWaypoint = () => {
+  //   if (
+  //     !mapState.selectedLineForActions ||
+  //     !isInteractionAllowed(mapState.selectedLineForActions.isSavedLine)
+  //   )
+  //     return;
+
+  //   const { line, index, isSavedLine } = mapState.selectedLineForActions;
+
+  //   setMapState((prevState) => {
+  //     const updatedLines = isSavedLine
+  //       ? prevState.savedPolylines
+  //       : prevState.fiberLines;
+
+  //     const updatedLinesWithWaypoint = updatedLines.map(
+  //       (currentLine, currentIndex) => {
+  //         if (currentIndex === index) {
+  //           const lastPoint =
+  //             currentLine.waypoints && currentLine.waypoints.length > 0
+  //               ? currentLine.waypoints[currentLine.waypoints.length - 1]
+  //               : currentLine.to;
+
+  //           const midpoint = {
+  //             lat: (currentLine.from.lat + lastPoint.lat) / 2,
+  //             lng: (currentLine.from.lng + lastPoint.lng) / 2,
+  //           };
+
+  //           const updatedWaypoints = currentLine.waypoints
+  //             ? [...currentLine.waypoints, midpoint]
+  //             : [midpoint];
+
+  //           return { ...currentLine, waypoints: updatedWaypoints };
+  //         }
+  //         return currentLine;
+  //       }
+  //     );
+
+  //     if (isSavedLine) {
+  //       localStorage.setItem(
+  //         "savedPolylines",
+  //         JSON.stringify(updatedLinesWithWaypoint)
+  //       );
+  //     }
+
+  //     return {
+  //       ...prevState,
+  //       ...(isSavedLine
+  //         ? { savedPolylines: updatedLinesWithWaypoint }
+  //         : { fiberLines: updatedLinesWithWaypoint }),
+  //       selectedLineForActions: null,
+  //       lineActionPosition: null,
+  //       exactClickPosition: null,
+  //     };
+  //   });
+  // };
+
   const addWaypoint = () => {
     if (
       !mapState.selectedLineForActions ||
@@ -345,45 +410,53 @@ const MyMapV16 = () => {
     const { line, index, isSavedLine } = mapState.selectedLineForActions;
 
     setMapState((prevState) => {
-      const updatedLines = isSavedLine
-        ? prevState.savedPolylines
-        : prevState.fiberLines;
+      // Deep clone the target arrays
+      const updatedFiberLines = prevState.fiberLines.map((l) => ({
+        ...l,
+        waypoints: l.waypoints ? [...l.waypoints] : [],
+      }));
+      const updatedSavedPolylines = prevState.savedPolylines.map((l) => ({
+        ...l,
+        waypoints: l.waypoints ? [...l.waypoints] : [],
+      }));
 
-      const updatedLinesWithWaypoint = updatedLines.map(
-        (currentLine, currentIndex) => {
-          if (currentIndex === index) {
-            const lastPoint =
-              currentLine.waypoints && currentLine.waypoints.length > 0
-                ? currentLine.waypoints[currentLine.waypoints.length - 1]
-                : currentLine.to;
+      // Calculate the new waypoint position
+      const lastPoint =
+        line.waypoints && line.waypoints.length > 0
+          ? line.waypoints[line.waypoints.length - 1]
+          : line.to;
 
-            const midpoint = {
-              lat: (currentLine.from.lat + lastPoint.lat) / 2,
-              lng: (currentLine.from.lng + lastPoint.lng) / 2,
-            };
+      const midpoint = {
+        lat: (line.from.lat + lastPoint.lat) / 2,
+        lng: (line.from.lng + lastPoint.lng) / 2,
+      };
 
-            const updatedWaypoints = currentLine.waypoints
-              ? [...currentLine.waypoints, midpoint]
-              : [midpoint];
-
-            return { ...currentLine, waypoints: updatedWaypoints };
-          }
-          return currentLine;
-        }
-      );
+      // Update the target line with the new waypoint
+      const updatedLine = {
+        ...line,
+        waypoints: line.waypoints ? [...line.waypoints, midpoint] : [midpoint],
+      };
 
       if (isSavedLine) {
+        updatedSavedPolylines[index] = updatedLine;
         localStorage.setItem(
           "savedPolylines",
-          JSON.stringify(updatedLinesWithWaypoint)
+          JSON.stringify(updatedSavedPolylines)
         );
+        // If showing saved routes, sync fiberLines
+        if (prevState.showSavedRoutes) {
+          updatedFiberLines[index] = updatedLine;
+        }
+      } else {
+        updatedFiberLines[index] = updatedLine;
       }
 
       return {
         ...prevState,
-        ...(isSavedLine
-          ? { savedPolylines: updatedLinesWithWaypoint }
-          : { fiberLines: updatedLinesWithWaypoint }),
+        fiberLines: updatedFiberLines,
+        savedPolylines: isSavedLine
+          ? updatedSavedPolylines
+          : prevState.savedPolylines,
         selectedLineForActions: null,
         lineActionPosition: null,
         exactClickPosition: null,
@@ -1190,12 +1263,32 @@ const MyMapV16 = () => {
     }));
   }, []);
 
+  // const togglePreviousRoutes = () => {
+  //   setMapState((prevState) => ({
+  //     ...prevState,
+  //     showSavedRoutes: !prevState.showSavedRoutes,
+  //     isSavedRoutesEditable: false,
+  //     fiberLines: !prevState.showSavedRoutes ? prevState.savedPolylines : [],
+  //     imageIcons: !prevState.showSavedRoutes ? prevState.savedIcons : [],
+  //     selectedWaypoint: null,
+  //     waypointActionPosition: null,
+  //     selectedWaypointInfo: null,
+  //   }));
+  // };
+
   const togglePreviousRoutes = () => {
     setMapState((prevState) => ({
       ...prevState,
       showSavedRoutes: !prevState.showSavedRoutes,
       isSavedRoutesEditable: false,
-      fiberLines: !prevState.showSavedRoutes ? prevState.savedPolylines : [],
+      fiberLines: !prevState.showSavedRoutes
+        ? prevState.savedPolylines.map((line) => ({
+            ...line,
+            from: { ...line.from },
+            to: { ...line.to },
+            waypoints: line.waypoints ? [...line.waypoints] : [],
+          }))
+        : [],
       imageIcons: !prevState.showSavedRoutes ? prevState.savedIcons : [],
       selectedWaypoint: null,
       waypointActionPosition: null,
@@ -1333,6 +1426,111 @@ const MyMapV16 = () => {
     });
   };
 
+  // const handleSavedPolylineWaypointDragEnd = (polylineId, waypointIndex, e) => {
+  //   if (!mapState.isSavedRoutesEditable) return;
+
+  //   const newLat = e.latLng.lat();
+  //   const newLng = e.latLng.lng();
+  //   const nearestIcon = findNearestIcon(newLat, newLng);
+
+  //   setMapState((prevState) => {
+  //     const updatedSavedPolylines = prevState.savedPolylines.map((polyline) => {
+  //       if (polyline.id === polylineId && polyline.waypoints) {
+  //         if (
+  //           nearestIcon &&
+  //           nearestIcon.type === "Splitter" &&
+  //           nearestIcon.ratioSetTimestamp
+  //         ) {
+  //           const splitNum = getRatioNumber(nearestIcon.splitterRatio);
+  //           const connectedLines = getConnectedLinesCount(nearestIcon);
+
+  //           if (
+  //             connectedLines >= splitNum &&
+  //             !polyline.waypoints.some(
+  //               (wp, idx) =>
+  //                 idx === waypointIndex &&
+  //                 wp.lat === nearestIcon.lat &&
+  //                 wp.lng === nearestIcon.lng
+  //             )
+  //           ) {
+  //             alert(
+  //               `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`
+  //             );
+  //             return polyline;
+  //           }
+
+  //           if (
+  //             !polyline.waypoints.some(
+  //               (wp, idx) =>
+  //                 idx === waypointIndex &&
+  //                 wp.lat === nearestIcon.lat &&
+  //                 wp.lng === nearestIcon.lng
+  //             )
+  //           ) {
+  //             console.log("Saved waypoint connected to splitter:", {
+  //               polylineId,
+  //               waypointIndex,
+  //               splitterId: nearestIcon.id,
+  //               ratio: nearestIcon.splitterRatio,
+  //             });
+  //             const splitter = prevState.imageIcons.find(
+  //               (icon) => icon.id === nearestIcon.id
+  //             );
+  //             const lineNumber = splitter.nextLineNumber || 1;
+  //             const newLineName = `Line ${lineNumber}`;
+  //             return {
+  //               ...polyline,
+  //               waypoints: polyline.waypoints.map((waypoint, index) =>
+  //                 index === waypointIndex
+  //                   ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+  //                   : waypoint
+  //               ),
+  //               name: newLineName,
+  //               createdAt: polyline.createdAt || Date.now(),
+  //             };
+  //           }
+  //         }
+
+  //         return {
+  //           ...polyline,
+  //           waypoints: polyline.waypoints.map((waypoint, index) =>
+  //             index === waypointIndex ? { lat: newLat, lng: newLng } : waypoint
+  //           ),
+  //         };
+  //       }
+  //       return polyline;
+  //     });
+
+  //     const updatedImageIcons =
+  //       nearestIcon && nearestIcon.type === "Splitter"
+  //         ? prevState.imageIcons.map((icon) =>
+  //             icon.id === nearestIcon.id
+  //               ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
+  //               : icon
+  //           )
+  //         : prevState.imageIcons;
+
+  //     localStorage.setItem(
+  //       "savedPolylines",
+  //       JSON.stringify(updatedSavedPolylines)
+  //     );
+
+  //     return {
+  //       ...prevState,
+  //       savedPolylines: updatedSavedPolylines,
+  //       fiberLines: prevState.showSavedRoutes
+  //         ? updatedSavedPolylines
+  //         : prevState.fiberLines,
+  //       imageIcons: updatedImageIcons,
+  //       savedIcons: prevState.savedIcons.map((icon) =>
+  //         icon.id === nearestIcon?.id
+  //           ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
+  //           : icon
+  //       ),
+  //     };
+  //   });
+  // };
+
   const handleSavedPolylineWaypointDragEnd = (polylineId, waypointIndex, e) => {
     if (!mapState.isSavedRoutesEditable) return;
 
@@ -1341,8 +1539,31 @@ const MyMapV16 = () => {
     const nearestIcon = findNearestIcon(newLat, newLng);
 
     setMapState((prevState) => {
-      const updatedSavedPolylines = prevState.savedPolylines.map((polyline) => {
+      // Deep clone savedPolylines and fiberLines
+      const updatedSavedPolylines = prevState.savedPolylines.map(
+        (polyline) => ({
+          ...polyline,
+          from: { ...polyline.from },
+          to: { ...polyline.to },
+          waypoints: polyline.waypoints ? [...polyline.waypoints] : [],
+        })
+      );
+      const updatedFiberLines = prevState.fiberLines.map((polyline) => ({
+        ...polyline,
+        from: { ...polyline.from },
+        to: { ...polyline.to },
+        waypoints: polyline.waypoints ? [...polyline.waypoints] : [],
+      }));
+
+      let polylineUpdated = false;
+      let newLineName = null;
+
+      // Update the specific polyline
+      const newSavedPolylines = updatedSavedPolylines.map((polyline, index) => {
         if (polyline.id === polylineId && polyline.waypoints) {
+          polylineUpdated = true;
+
+          // Check if snapping to a splitter
           if (
             nearestIcon &&
             nearestIcon.type === "Splitter" &&
@@ -1384,13 +1605,28 @@ const MyMapV16 = () => {
                 (icon) => icon.id === nearestIcon.id
               );
               const lineNumber = splitter.nextLineNumber || 1;
-              const newLineName = `Line ${lineNumber}`;
+              newLineName = `Line ${lineNumber}`;
+
+              // Update fiberLines if showing saved routes
+              if (prevState.showSavedRoutes) {
+                updatedFiberLines[index] = {
+                  ...updatedFiberLines[index],
+                  waypoints: updatedFiberLines[index].waypoints.map((wp, idx) =>
+                    idx === waypointIndex
+                      ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+                      : wp
+                  ),
+                  name: newLineName,
+                  createdAt: polyline.createdAt || Date.now(),
+                };
+              }
+
               return {
                 ...polyline,
-                waypoints: polyline.waypoints.map((waypoint, index) =>
-                  index === waypointIndex
+                waypoints: polyline.waypoints.map((wp, idx) =>
+                  idx === waypointIndex
                     ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-                    : waypoint
+                    : wp
                 ),
                 name: newLineName,
                 createdAt: polyline.createdAt || Date.now(),
@@ -1398,16 +1634,31 @@ const MyMapV16 = () => {
             }
           }
 
+          // Update waypoint position
+          if (prevState.showSavedRoutes) {
+            updatedFiberLines[index] = {
+              ...updatedFiberLines[index],
+              waypoints: updatedFiberLines[index].waypoints.map((wp, idx) =>
+                idx === waypointIndex ? { lat: newLat, lng: newLng } : wp
+              ),
+              createdAt: polyline.createdAt || Date.now(),
+            };
+          }
+
           return {
             ...polyline,
-            waypoints: polyline.waypoints.map((waypoint, index) =>
-              index === waypointIndex ? { lat: newLat, lng: newLng } : waypoint
+            waypoints: polyline.waypoints.map((wp, idx) =>
+              idx === waypointIndex ? { lat: newLat, lng: newLng } : wp
             ),
+            createdAt: polyline.createdAt || Date.now(),
           };
         }
         return polyline;
       });
 
+      if (!polylineUpdated) return prevState;
+
+      // Update imageIcons and savedIcons if connected to a splitter
       const updatedImageIcons =
         nearestIcon && nearestIcon.type === "Splitter"
           ? prevState.imageIcons.map((icon) =>
@@ -1417,23 +1668,61 @@ const MyMapV16 = () => {
             )
           : prevState.imageIcons;
 
+      const updatedSavedIcons = prevState.savedIcons.map((icon) =>
+        icon.id === nearestIcon?.id
+          ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
+          : icon
+      );
+
+      // Update any splitters linked to this waypoint
+      const polylineIndex = prevState.savedPolylines.findIndex(
+        (p) => p.id === polylineId
+      );
+      const updatedImageIconsWithSplitters = updatedImageIcons.map((icon) =>
+        icon.type === "Splitter" &&
+        icon.linkedLineIndex !== undefined &&
+        icon.linkedWaypointIndex !== undefined &&
+        icon.isSavedLine &&
+        icon.linkedLineIndex === polylineIndex &&
+        icon.linkedWaypointIndex === waypointIndex
+          ? {
+              ...icon,
+              lat: nearestIcon ? nearestIcon.lat : newLat,
+              lng: nearestIcon ? nearestIcon.lng : newLng,
+            }
+          : icon
+      );
+
+      const updatedSavedIconsWithSplitters = updatedSavedIcons.map((icon) =>
+        icon.type === "Splitter" &&
+        icon.linkedLineIndex !== undefined &&
+        icon.linkedWaypointIndex !== undefined &&
+        icon.isSavedLine &&
+        icon.linkedLineIndex === polylineIndex &&
+        icon.linkedWaypointIndex === waypointIndex
+          ? {
+              ...icon,
+              lat: nearestIcon ? nearestIcon.lat : newLat,
+              lng: nearestIcon ? nearestIcon.lng : newLng,
+            }
+          : icon
+      );
+
+      // Persist to localStorage
+      localStorage.setItem("savedPolylines", JSON.stringify(newSavedPolylines));
       localStorage.setItem(
-        "savedPolylines",
-        JSON.stringify(updatedSavedPolylines)
+        "savedIcons",
+        JSON.stringify(updatedSavedIconsWithSplitters)
       );
 
       return {
         ...prevState,
-        savedPolylines: updatedSavedPolylines,
+        savedPolylines: newSavedPolylines,
         fiberLines: prevState.showSavedRoutes
-          ? updatedSavedPolylines
+          ? updatedFiberLines
           : prevState.fiberLines,
-        imageIcons: updatedImageIcons,
-        savedIcons: prevState.savedIcons.map((icon) =>
-          icon.id === nearestIcon?.id
-            ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
-            : icon
-        ),
+        imageIcons: updatedImageIconsWithSplitters,
+        savedIcons: updatedSavedIconsWithSplitters,
       };
     });
   };
@@ -1463,89 +1752,102 @@ const MyMapV16 = () => {
     );
   };
 
- // Handle map load to store map instance
- const onMapLoad = useCallback((map) => {
-  mapRef.current = map;
-}, []);
+  // Handle map load to store map instance
+  const onMapLoad = useCallback((map) => {
+    mapRef.current = map;
+  }, []);
 
-// Add custom controls when map loads
-useEffect(() => {
-  if (!mapRef.current || !window.google) return;
+  // Add custom controls when map loads
+  useEffect(() => {
+    if (!mapRef.current || !window.google) return;
 
-  // Clear existing controls to prevent duplicates
-  mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].clear();
+    // Clear existing controls to prevent duplicates
+    mapRef.current.controls[
+      window.google.maps.ControlPosition.TOP_CENTER
+    ].clear();
 
-  const controlDiv = document.createElement("div");
-  controlDiv.className = "map-controls";
+    const controlDiv = document.createElement("div");
+    controlDiv.className = "map-controls";
 
-  const buttons = [
-    {
-      imgSrc: "/img/Reset.jpg", // Ensure this file exists in your public/img folder
-      tooltip: "Reset Map",
-      onClick: resetMap,
-    },
-    {
-      imgSrc: "/img/Save.png",
-      tooltip: "Save Route",
-      onClick: saveRoute,
-    },
-    {
-      imgSrc: mapState.showSavedRoutes ? "/img/Eye-close.png" : "/img/Eye.png",
-      tooltip: mapState.showSavedRoutes ? "Hide Previous Routes" : "Show Previous Routes",
-      onClick: togglePreviousRoutes,
-    },
-    ...(mapState.showSavedRoutes
-      ? [
-          {
-            imgSrc: mapState.isSavedRoutesEditable ? "/img/Edit-not.png" : "/img/Edit.png",
-            tooltip: mapState.isSavedRoutesEditable ? "Disable Editing" : "Enable Editing",
-            onClick: toggleSavedRoutesEditability,
-          },
-        ]
-      : []),
-  ];
-  
-  buttons.forEach(({ imgSrc, tooltip, onClick }) => {
-    const button = document.createElement("button");
-    button.className = "map-control-button";
-    if (imgSrc) {
-      const img = document.createElement("img");
-      img.src = imgSrc;
-      img.style.width = "20px";
-      img.style.height = "20px";
-      button.appendChild(img);
-    }
-    button.title = tooltip;
-    button.addEventListener("click", onClick);
-    controlDiv.appendChild(button);
-  });
-  // Add control to TOP_CENTER
-  mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].push(controlDiv);
+    const buttons = [
+      {
+        imgSrc: "/img/Reset.jpg", // Ensure this file exists in your public/img folder
+        tooltip: "Reset Map",
+        onClick: resetMap,
+      },
+      {
+        imgSrc: "/img/Save.png",
+        tooltip: "Save Route",
+        onClick: saveRoute,
+      },
+      {
+        imgSrc: mapState.showSavedRoutes
+          ? "/img/Eye-close.png"
+          : "/img/Eye.png",
+        tooltip: mapState.showSavedRoutes
+          ? "Hide Previous Routes"
+          : "Show Previous Routes",
+        onClick: togglePreviousRoutes,
+      },
+      ...(mapState.showSavedRoutes
+        ? [
+            {
+              imgSrc: mapState.isSavedRoutesEditable
+                ? "/img/Edit-not.png"
+                : "/img/Edit.png",
+              tooltip: mapState.isSavedRoutesEditable
+                ? "Disable Editing"
+                : "Enable Editing",
+              onClick: toggleSavedRoutesEditability,
+            },
+          ]
+        : []),
+    ];
 
-  // Debug log
-  console.log("Controls added:", controlDiv);
+    buttons.forEach(({ imgSrc, tooltip, onClick }) => {
+      const button = document.createElement("button");
+      button.className = "map-control-button";
+      if (imgSrc) {
+        const img = document.createElement("img");
+        img.src = imgSrc;
+        img.style.width = "20px";
+        img.style.height = "20px";
+        button.appendChild(img);
+      }
+      button.title = tooltip;
+      button.addEventListener("click", onClick);
+      controlDiv.appendChild(button);
+    });
+    // Add control to TOP_CENTER
+    mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].push(
+      controlDiv
+    );
 
-  // Cleanup on unmount or state change
-  return () => {
-    if (mapRef.current && window.google) {
-      mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].clear();
-    }
-  };
-}, [
-  mapState.showSavedRoutes,
-  mapState.isSavedRoutesEditable,
-  resetMap,
-  saveRoute,
-  togglePreviousRoutes,
-  toggleSavedRoutesEditability,
-]);
+    // Debug log
+    console.log("Controls added:", controlDiv);
+
+    // Cleanup on unmount or state change
+    return () => {
+      if (mapRef.current && window.google) {
+        mapRef.current.controls[
+          window.google.maps.ControlPosition.TOP_CENTER
+        ].clear();
+      }
+    };
+  }, [
+    mapState.showSavedRoutes,
+    mapState.isSavedRoutesEditable,
+    resetMap,
+    saveRoute,
+    togglePreviousRoutes,
+    toggleSavedRoutesEditability,
+  ]);
 
   if (loadError) return <div>Error loading maps</div>;
   if (!isLoaded) return <div>Loading Maps...</div>;
 
   return (
     <>
-
       <GoogleMap
         mapContainerStyle={containerStyle}
         center={center}
@@ -1554,8 +1856,6 @@ useEffect(() => {
         options={{ styles: mapStyles, disableDefaultUI: false }}
         onLoad={onMapLoad} // Add onLoad handler
       >
-
-        
         {mapState.imageIcons.map((icon) => (
           <MarkerF
             key={icon.id}
@@ -1714,8 +2014,16 @@ useEffect(() => {
                   onClick={(e) => handleLineClick(polyline, index, true, e)}
                 />
 
-                {(polyline.waypoints || []).map((waypoint, waypointIndex) =>
-                  !isWaypointOverlaidBySplitter(waypoint) ? (
+                {(polyline.waypoints || []).map((waypoint, waypointIndex) => {
+                  const isOverlaid = isWaypointOverlaidBySplitter(waypoint);
+                  console.log(
+                    `Rendering waypoint ${waypointIndex} for polyline ${polyline.id}:`,
+                    {
+                      position: waypoint,
+                      isOverlaid,
+                    }
+                  );
+                  return !isOverlaid ? (
                     <MarkerF
                       key={`saved-waypoint-${polyline.id}-${waypointIndex}`}
                       position={waypoint}
@@ -1744,8 +2052,9 @@ useEffect(() => {
                         )
                       }
                     />
-                  ) : null
-                )}
+                  ) : null;
+                })}
+
                 {!isSnappedToIcon(polyline.from.lat, polyline.from.lng) && (
                   <MarkerF
                     key={`saved-start-${polyline.id}`}
@@ -1790,7 +2099,7 @@ useEffect(() => {
                 )}
               </React.Fragment>
             );
-        })}
+          })}
 
         {mapState.selectedWaypoint && mapState.waypointActionPosition && (
           <div
@@ -1860,11 +2169,13 @@ useEffect(() => {
                   <option value="" disabled>
                     Choose a ratio
                   </option>
-                  {getAvailableRatios(mapState.selectedSplitter).map((ratio) => (
-                    <option key={ratio} value={ratio}>
-                      {ratio}
-                    </option>
-                  ))}
+                  {getAvailableRatios(mapState.selectedSplitter).map(
+                    (ratio) => (
+                      <option key={ratio} value={ratio}>
+                        {ratio}
+                      </option>
+                    )
+                  )}
                 </select>
               </div>
               <div className="form-footer">

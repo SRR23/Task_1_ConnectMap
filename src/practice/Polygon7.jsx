@@ -6,7 +6,174 @@ import {
   PolylineF,
   MarkerF,
 } from "@react-google-maps/api";
-import { Edit, Trash, Trash2, Plus, Eye, MoreVertical, Lock, Unlock } from "lucide-react";
+import {
+  Edit,
+  Trash,
+  Trash2,
+  Plus,
+  Eye,
+  MoreVertical,
+  Lock,
+  Unlock,
+} from "lucide-react";
+
+import "reactflow/dist/style.css";
+import ReactFlow, {
+  MiniMap,
+  Controls,
+  Background,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  Handle,
+} from "reactflow";
+
+// Custom Node Component
+// const CustomNode = React.memo(({ data }) => {
+//   return (
+//     <div
+//       style={{
+//         width: 130,
+//         height: 30,
+//         backgroundColor: data.color,
+//         color: "white",
+//         display: "flex",
+//         alignItems: "center",
+//         justifyContent: "center",
+//         borderRadius: 4,
+//         cursor: "pointer",
+//         fontSize: 14,
+//       }}
+//     >
+//       {data.label}
+//       {data.side === "left" && (
+//         <Handle
+//           type="source"
+//           position="right"
+//           id="right"
+//           style={{
+//             right: -5, // Slightly outside node
+//             top: "50%",
+//             transform: "translateY(-50%)",
+//             width: 10,
+//             height: 10,
+//             background: "transparent",
+//           }}
+//         />
+//       )}
+//       {data.side === "right" && (
+//         <Handle
+//           type="target"
+//           position="left"
+//           id="left"
+//           style={{
+//             left: -5,
+//             top: "50%",
+//             transform: "translateY(-50%)",
+//             width: 10,
+//             height: 10,
+//             background: "transparent",
+//           }}
+//         />
+//       )}
+//       {data.side === "temp" && (
+//         <Handle
+//           type="target"
+//           position="left"
+//           id="temp"
+//           style={{
+//             left: -5,
+//             top: "50%",
+//             transform: "translateY(-50%)",
+//             width: 10,
+//             height: 10,
+//             background: "transparent",
+//           }}
+//         />
+//       )}
+//     </div>
+//   );
+// });
+
+const CustomNode = React.memo(({ data }) => {
+  return (
+    <div
+      style={{
+        width: 180, // Increased from 130px
+        height: 40, // Increased from 30px
+        backgroundColor: data.color,
+        color: "white",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 6, // Smoother corners
+        cursor: "pointer",
+        fontSize: 16, // Larger text
+        fontWeight: "bold", // Bolder text
+        padding: "0 12px", // More padding for text
+        boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)", // Subtle shadow
+        transition: "transform 0.2s, box-shadow 0.2s", // Smooth hover
+        ":hover": {
+          transform: "scale(1.05)", // Slight scale on hover
+          boxShadow: "0 4px 8px rgba(0, 0, 0, 0.3)", // Stronger shadow on hover
+        },
+      }}
+    >
+      {data.label}
+      {data.side === "left" && (
+        <Handle
+          type="source"
+          position="right"
+          id="right"
+          style={{
+            right: -6, // Adjusted for larger node
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 12, // Larger handle
+            height: 12,
+            background: "transparent",
+            border: "1px solid #333", // Subtle border for visibility
+          }}
+        />
+      )}
+      {data.side === "right" && (
+        <Handle
+          type="target"
+          position="left"
+          id="left"
+          style={{
+            left: -6, // Adjusted for larger node
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 12,
+            height: 12,
+            background: "transparent",
+            border: "1px solid #333", // Subtle border
+          }}
+        />
+      )}
+      {data.side === "temp" && (
+        <Handle
+          type="target"
+          position="left"
+          id="temp"
+          style={{
+            left: -6,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 12,
+            height: 12,
+            background: "transparent",
+            border: "1px solid #333", // Subtle border
+          }}
+        />
+      )}
+    </div>
+  );
+});
+
+// Define nodeTypes outside the component
+const nodeTypes = { custom: CustomNode };
 
 // const containerStyle = { width: "100%", height: "600px" };
 const center = { lat: 23.685, lng: 90.3563 };
@@ -59,6 +226,14 @@ const Polygon7 = () => {
     ONU: "/img/ONU.png",
   };
 
+  const terminationColors = [
+    { number: 1, value: "#FF0000" }, // Red
+    { number: 2, value: "#0000FF" }, // Blue
+    { number: 3, value: "#00FF00" }, // Green
+    { number: 4, value: "#FFFF00" }, // Yellow
+    { number: 5, value: "#800080" }, // Purple
+  ];
+
   const [mapState, setMapState] = useState({
     drawing: false,
     points: [],
@@ -100,9 +275,28 @@ const Polygon7 = () => {
     splitterInput: "",
     editingLineId: null,
     tempLineName: "",
+    showTerminationModal: false,
+    selectedTermination: null,
+    terminationConnections: [], // Persistent connections: [{ terminationId, leftColor, rightColor }]
+    tempConnection: null, // Temporary line: { leftColor, rightColor } or null
   });
 
   const mapRef = useRef(null);
+  const flowRef = useRef(null); // Ref to track ReactFlow container
+
+  // React Flow state
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [drawingSource, setDrawingSource] = useState(null); // Track source node ID
+
+  // Ensure ReactFlow container is available after mount
+  useEffect(() => {
+    if (mapState.showTerminationModal && flowRef.current) {
+      console.log("ReactFlow container ref:", flowRef.current);
+      const flowEl = flowRef.current.querySelector(".reactflow");
+      console.log("Found .reactflow:", flowEl);
+    }
+  }, [mapState.showTerminationModal]);
 
   const isInteractionAllowed = (isSavedLine) => {
     return (
@@ -130,8 +324,20 @@ const Polygon7 = () => {
     return num;
   };
 
-  const getConnectedLinesCount = (splitter) => {
-    if (!splitter.ratioSetTimestamp) return 0;
+  const getConnectedLinesCount = (icon) => {
+    if (icon.type === "Termination") {
+      return mapState.fiberLines.filter(
+        (line) =>
+          (line.from.lat === icon.lat && line.from.lng === icon.lng) ||
+          (line.to.lat === icon.lat && line.to.lng === icon.lng) ||
+          (line.waypoints &&
+            line.waypoints.some(
+              (wp) => wp.lat === icon.lat && wp.lng === wp.lng
+            ))
+      ).length;
+    }
+
+    if (!icon.ratioSetTimestamp) return 0;
     return mapState.fiberLines.filter(
       (line) =>
         line.createdAt > splitter.ratioSetTimestamp &&
@@ -360,45 +566,53 @@ const Polygon7 = () => {
     const { line, index, isSavedLine } = mapState.selectedLineForActions;
 
     setMapState((prevState) => {
-      const updatedLines = isSavedLine
-        ? prevState.savedPolylines
-        : prevState.fiberLines;
+      // Deep clone the target arrays
+      const updatedFiberLines = prevState.fiberLines.map((l) => ({
+        ...l,
+        waypoints: l.waypoints ? [...l.waypoints] : [],
+      }));
+      const updatedSavedPolylines = prevState.savedPolylines.map((l) => ({
+        ...l,
+        waypoints: l.waypoints ? [...l.waypoints] : [],
+      }));
 
-      const updatedLinesWithWaypoint = updatedLines.map(
-        (currentLine, currentIndex) => {
-          if (currentIndex === index) {
-            const lastPoint =
-              currentLine.waypoints && currentLine.waypoints.length > 0
-                ? currentLine.waypoints[currentLine.waypoints.length - 1]
-                : currentLine.to;
+      // Calculate the new waypoint position
+      const lastPoint =
+        line.waypoints && line.waypoints.length > 0
+          ? line.waypoints[line.waypoints.length - 1]
+          : line.to;
 
-            const midpoint = {
-              lat: (currentLine.from.lat + lastPoint.lat) / 2,
-              lng: (currentLine.from.lng + lastPoint.lng) / 2,
-            };
+      const midpoint = {
+        lat: (line.from.lat + lastPoint.lat) / 2,
+        lng: (line.from.lng + lastPoint.lng) / 2,
+      };
 
-            const updatedWaypoints = currentLine.waypoints
-              ? [...currentLine.waypoints, midpoint]
-              : [midpoint];
-
-            return { ...currentLine, waypoints: updatedWaypoints };
-          }
-          return currentLine;
-        }
-      );
+      // Update the target line with the new waypoint
+      const updatedLine = {
+        ...line,
+        waypoints: line.waypoints ? [...line.waypoints, midpoint] : [midpoint],
+      };
 
       if (isSavedLine) {
+        updatedSavedPolylines[index] = updatedLine;
         localStorage.setItem(
           "savedPolylines",
-          JSON.stringify(updatedLinesWithWaypoint)
+          JSON.stringify(updatedSavedPolylines)
         );
+        // If showing saved routes, sync fiberLines
+        if (prevState.showSavedRoutes) {
+          updatedFiberLines[index] = updatedLine;
+        }
+      } else {
+        updatedFiberLines[index] = updatedLine;
       }
 
       return {
         ...prevState,
-        ...(isSavedLine
-          ? { savedPolylines: updatedLinesWithWaypoint }
-          : { fiberLines: updatedLinesWithWaypoint }),
+        fiberLines: updatedFiberLines,
+        savedPolylines: isSavedLine
+          ? updatedSavedPolylines
+          : prevState.savedPolylines,
         selectedLineForActions: null,
         lineActionPosition: null,
         exactClickPosition: null,
@@ -523,6 +737,20 @@ const Polygon7 = () => {
           editingLineId: null,
           tempLineName: "",
         }));
+      } else if (icon.type === "Termination") {
+        setMapState((prevState) => ({
+          ...prevState,
+          selectedLineForActions: null,
+          lineActionPosition: null,
+          exactClickPosition: null,
+          showModal: false,
+          showTerminationModal: true,
+          selectedTermination: icon,
+          pendingConnection: { leftColor: null, rightColor: null },
+          waypointActionPosition: { x, y },
+        }));
+        initializeNodesAndEdges(icon);
+        setDrawingSource(null);
       } else {
         setMapState((prevState) => ({
           ...prevState,
@@ -872,7 +1100,18 @@ const Polygon7 = () => {
         ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
         : { lat: newLat, lng: newLng };
 
-      if (
+      if (nearestIcon && nearestIcon.type === "Termination") {
+        const connectedLines = getConnectedLinesCount(nearestIcon);
+        if (
+          connectedLines >= 2 &&
+          !isSnappedToIcon(line.from.lat, line.from.lng)
+        ) {
+          alert(
+            "Cannot connect more lines. Termination box allows only 2 connections."
+          );
+          return prevState;
+        }
+      } else if (
         nearestIcon &&
         nearestIcon.type === "Splitter" &&
         nearestIcon.splitterRatio
@@ -941,7 +1180,15 @@ const Polygon7 = () => {
         ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
         : { lat: newLat, lng: newLng };
 
-      if (
+      if (nearestIcon && nearestIcon.type === "Termination") {
+        const connectedLines = getConnectedLinesCount(nearestIcon);
+        if (connectedLines >= 2 && !isSnappedToIcon(line.to.lat, line.to.lng)) {
+          alert(
+            "Cannot connect more lines. Termination box allows only 2 connections."
+          );
+          return prevState;
+        }
+      } else if (
         nearestIcon &&
         nearestIcon.type === "Splitter" &&
         nearestIcon.splitterRatio
@@ -1210,7 +1457,14 @@ const Polygon7 = () => {
       ...prevState,
       showSavedRoutes: !prevState.showSavedRoutes,
       isSavedRoutesEditable: false,
-      fiberLines: !prevState.showSavedRoutes ? prevState.savedPolylines : [],
+      fiberLines: !prevState.showSavedRoutes
+        ? prevState.savedPolylines.map((line) => ({
+            ...line,
+            from: { ...line.from },
+            to: { ...line.to },
+            waypoints: line.waypoints ? [...line.waypoints] : [],
+          }))
+        : [],
       imageIcons: !prevState.showSavedRoutes ? prevState.savedIcons : [],
       selectedWaypoint: null,
       waypointActionPosition: null,
@@ -1240,6 +1494,201 @@ const Polygon7 = () => {
   //     tempLineName: "",
   //   });
   // };
+
+
+  const initializeNodesAndEdges = useCallback(
+    (selectedTermination) => {
+      // Calculate sensible positions
+      const leftX = 50; // Left nodes x position
+      const rightX = 450; // Right nodes x position
+      const verticalSpacing = 50; // Space between nodes vertically
+      const startY = 40; // Starting Y position
+
+      const leftNodes = terminationColors.map((color, index) => ({
+        id: `left-${color.number}`,
+        type: "custom",
+        position: { x: leftX, y: startY + index * verticalSpacing },
+        data: { label: `${color.number}`, color: color.value, side: "left" },
+      }));
+
+      const rightNodes = terminationColors.map((color, index) => ({
+        id: `right-${color.number}`,
+        type: "custom",
+        position: { x: rightX, y: startY + index * verticalSpacing },
+        data: { label: `${color.number}`, color: color.value, side: "right" },
+      }));
+
+      const initialNodes = [...leftNodes, ...rightNodes];
+      setNodes(initialNodes);
+
+      const prevEdges = mapState.terminationConnections
+        .filter((conn) => conn.terminationId === selectedTermination.id)
+        .map((conn, index) => {
+          const leftIndex = terminationColors.findIndex(
+            (c) => c.value === conn.leftColor
+          );
+          const rightIndex = terminationColors.findIndex(
+            (c) => c.value === conn.rightColor
+          );
+          return {
+            id: `edge-${index}`,
+            source: `left-${leftIndex + 1}`,
+            target: `right-${rightIndex + 1}`,
+            sourceHandle: "right",
+            targetHandle: "left",
+            style: { stroke: "black", strokeWidth: 2 },
+          };
+        });
+
+      setEdges(prevEdges);
+    },
+    [mapState.terminationConnections, setNodes, setEdges]
+  );
+
+  const handleNodeClick = useCallback(
+    (event, node) => {
+      
+      if (
+        node.data.side === "left" &&
+        !drawingSource &&
+        !mapState.tempConnection
+      ) {
+        setDrawingSource(node.id);
+        
+      } else if (node.data.side === "right" && drawingSource) {
+        console.log("Connecting:", drawingSource, "to", node.id);
+        const newEdge = {
+          id: `edge-${Date.now()}`,
+          source: drawingSource,
+          target: node.id,
+          sourceHandle: "right",
+          targetHandle: "left",
+          style: { stroke: "black", strokeWidth: 2 },
+        };
+        setEdges((eds) => {
+          const updatedEdges = [
+            ...eds.filter((e) => e.id !== "drawing-edge"),
+            newEdge,
+          ];
+          return updatedEdges;
+        });
+        setMapState((prevState) => ({
+          ...prevState,
+          tempConnection: {
+            source: drawingSource,
+            target: node.id,
+            sourceHandle: "right",
+            targetHandle: "left",
+          },
+        }));
+        setDrawingSource(null);
+        setNodes((nds) => {
+          const updatedNodes = nds.filter((n) => n.id !== "temp");
+          return updatedNodes;
+        });
+      }
+    },
+    [drawingSource, mapState.tempConnection, setEdges, setNodes]
+  );
+
+  const handleTerminationMouseMove = useCallback(
+    (e) => {
+      if (!drawingSource) return;
+      
+      const rect = flowEl.getBoundingClientRect();
+
+      const tempNode = {
+        id: "temp",
+        type: "custom",
+        position: {
+          x: e.clientX - rect.left - 5,
+          y: e.clientY - rect.top - 5,
+        },
+        data: { label: "", color: "transparent", side: "temp" },
+      };
+
+      setNodes((nds) => {
+        const others = nds.filter((n) => n.id !== "temp");
+        const updatedNodes = [...others, tempNode];
+        // console.log("Temp node updated:", tempNode);
+        return updatedNodes;
+      });
+
+      setEdges((eds) => {
+        const others = eds.filter((e) => e.id !== "drawing-edge");
+        const drawingEdge = {
+          id: "drawing-edge",
+          source: drawingSource,
+          sourceHandle: "right",
+          target: "temp",
+          targetHandle: "temp",
+          animated: true,
+          style: { stroke: "black", strokeWidth: 2 },
+        };
+        const updatedEdges = [...others, drawingEdge];
+        // console.log("Drawing edge updated:", drawingEdge);
+        return updatedEdges;
+      });
+    },
+    [drawingSource, setNodes, setEdges]
+  );
+
+  const saveTerminationConnection = useCallback(() => {
+    if (!mapState.tempConnection) {
+      // console.log("No temp connection, closing modal");
+      setMapState((prevState) => ({
+        ...prevState,
+        showTerminationModal: false,
+        selectedTermination: null,
+        tempConnection: null,
+      }));
+      setNodes([]);
+      setEdges([]);
+      setDrawingSource(null);
+      return;
+    }
+
+    const leftNumber = parseInt(mapState.tempConnection.source.split("-")[1]);
+    const rightNumber = parseInt(mapState.tempConnection.target.split("-")[1]);
+    const newConnection = {
+      terminationId: mapState.selectedTermination.id,
+      leftColor: terminationColors[leftNumber - 1].value,
+      rightColor: terminationColors[rightNumber - 1].value,
+    };
+
+    console.log("Saving connection:", newConnection);
+    setMapState((prevState) => ({
+      ...prevState,
+      terminationConnections: [
+        ...prevState.terminationConnections,
+        newConnection,
+      ],
+      showTerminationModal: false,
+      selectedTermination: null,
+      tempConnection: null,
+    }));
+    setNodes([]);
+    setEdges([]);
+    setDrawingSource(null);
+  }, [
+    mapState.tempConnection,
+    mapState.selectedTermination,
+    setNodes,
+    setEdges,
+  ]);
+
+  const closeTerminationModal = useCallback(() => {
+    console.log("Closing termination modal");
+    setMapState((prevState) => ({
+      ...prevState,
+      showTerminationModal: false,
+      selectedTermination: null,
+      tempConnection: null,
+    }));
+    setNodes([]);
+    setEdges([]);
+    setDrawingSource(null);
+  }, [setNodes, setEdges]);
 
   const handleSavedPolylinePointDragEnd = (polylineId, pointType, e) => {
     if (!mapState.isSavedRoutesEditable) return;
@@ -1348,7 +1797,6 @@ const Polygon7 = () => {
     });
   };
 
-
   const handleSavedPolylineWaypointDragEnd = (polylineId, waypointIndex, e) => {
     if (!mapState.isSavedRoutesEditable) return;
 
@@ -1357,8 +1805,31 @@ const Polygon7 = () => {
     const nearestIcon = findNearestIcon(newLat, newLng);
 
     setMapState((prevState) => {
-      const updatedSavedPolylines = prevState.savedPolylines.map((polyline) => {
+      // Deep clone savedPolylines and fiberLines
+      const updatedSavedPolylines = prevState.savedPolylines.map(
+        (polyline) => ({
+          ...polyline,
+          from: { ...polyline.from },
+          to: { ...polyline.to },
+          waypoints: polyline.waypoints ? [...polyline.waypoints] : [],
+        })
+      );
+      const updatedFiberLines = prevState.fiberLines.map((polyline) => ({
+        ...polyline,
+        from: { ...polyline.from },
+        to: { ...polyline.to },
+        waypoints: polyline.waypoints ? [...polyline.waypoints] : [],
+      }));
+
+      let polylineUpdated = false;
+      let newLineName = null;
+
+      // Update the specific polyline
+      const newSavedPolylines = updatedSavedPolylines.map((polyline, index) => {
         if (polyline.id === polylineId && polyline.waypoints) {
+          polylineUpdated = true;
+
+          // Check if snapping to a splitter
           if (
             nearestIcon &&
             nearestIcon.type === "Splitter" &&
@@ -1400,13 +1871,28 @@ const Polygon7 = () => {
                 (icon) => icon.id === nearestIcon.id
               );
               const lineNumber = splitter.nextLineNumber || 1;
-              const newLineName = `Line ${lineNumber}`;
+              newLineName = `Line ${lineNumber}`;
+
+              // Update fiberLines if showing saved routes
+              if (prevState.showSavedRoutes) {
+                updatedFiberLines[index] = {
+                  ...updatedFiberLines[index],
+                  waypoints: updatedFiberLines[index].waypoints.map((wp, idx) =>
+                    idx === waypointIndex
+                      ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+                      : wp
+                  ),
+                  name: newLineName,
+                  createdAt: polyline.createdAt || Date.now(),
+                };
+              }
+
               return {
                 ...polyline,
-                waypoints: polyline.waypoints.map((waypoint, index) =>
-                  index === waypointIndex
+                waypoints: polyline.waypoints.map((wp, idx) =>
+                  idx === waypointIndex
                     ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-                    : waypoint
+                    : wp
                 ),
                 name: newLineName,
                 createdAt: polyline.createdAt || Date.now(),
@@ -1414,16 +1900,31 @@ const Polygon7 = () => {
             }
           }
 
+          // Update waypoint position
+          if (prevState.showSavedRoutes) {
+            updatedFiberLines[index] = {
+              ...updatedFiberLines[index],
+              waypoints: updatedFiberLines[index].waypoints.map((wp, idx) =>
+                idx === waypointIndex ? { lat: newLat, lng: newLng } : wp
+              ),
+              createdAt: polyline.createdAt || Date.now(),
+            };
+          }
+
           return {
             ...polyline,
-            waypoints: polyline.waypoints.map((waypoint, index) =>
-              index === waypointIndex ? { lat: newLat, lng: newLng } : waypoint
+            waypoints: polyline.waypoints.map((wp, idx) =>
+              idx === waypointIndex ? { lat: newLat, lng: newLng } : wp
             ),
+            createdAt: polyline.createdAt || Date.now(),
           };
         }
         return polyline;
       });
 
+      if (!polylineUpdated) return prevState;
+
+      // Update imageIcons and savedIcons if connected to a splitter
       const updatedImageIcons =
         nearestIcon && nearestIcon.type === "Splitter"
           ? prevState.imageIcons.map((icon) =>
@@ -1433,23 +1934,61 @@ const Polygon7 = () => {
             )
           : prevState.imageIcons;
 
+      const updatedSavedIcons = prevState.savedIcons.map((icon) =>
+        icon.id === nearestIcon?.id
+          ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
+          : icon
+      );
+
+      // Update any splitters linked to this waypoint
+      const polylineIndex = prevState.savedPolylines.findIndex(
+        (p) => p.id === polylineId
+      );
+      const updatedImageIconsWithSplitters = updatedImageIcons.map((icon) =>
+        icon.type === "Splitter" &&
+        icon.linkedLineIndex !== undefined &&
+        icon.linkedWaypointIndex !== undefined &&
+        icon.isSavedLine &&
+        icon.linkedLineIndex === polylineIndex &&
+        icon.linkedWaypointIndex === waypointIndex
+          ? {
+              ...icon,
+              lat: nearestIcon ? nearestIcon.lat : newLat,
+              lng: nearestIcon ? nearestIcon.lng : newLng,
+            }
+          : icon
+      );
+
+      const updatedSavedIconsWithSplitters = updatedSavedIcons.map((icon) =>
+        icon.type === "Splitter" &&
+        icon.linkedLineIndex !== undefined &&
+        icon.linkedWaypointIndex !== undefined &&
+        icon.isSavedLine &&
+        icon.linkedLineIndex === polylineIndex &&
+        icon.linkedWaypointIndex === waypointIndex
+          ? {
+              ...icon,
+              lat: nearestIcon ? nearestIcon.lat : newLat,
+              lng: nearestIcon ? nearestIcon.lng : newLng,
+            }
+          : icon
+      );
+
+      // Persist to localStorage
+      localStorage.setItem("savedPolylines", JSON.stringify(newSavedPolylines));
       localStorage.setItem(
-        "savedPolylines",
-        JSON.stringify(updatedSavedPolylines)
+        "savedIcons",
+        JSON.stringify(updatedSavedIconsWithSplitters)
       );
 
       return {
         ...prevState,
-        savedPolylines: updatedSavedPolylines,
+        savedPolylines: newSavedPolylines,
         fiberLines: prevState.showSavedRoutes
-          ? updatedSavedPolylines
+          ? updatedFiberLines
           : prevState.fiberLines,
-        imageIcons: updatedImageIcons,
-        savedIcons: prevState.savedIcons.map((icon) =>
-          icon.id === nearestIcon?.id
-            ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
-            : icon
-        ),
+        imageIcons: updatedImageIconsWithSplitters,
+        savedIcons: updatedSavedIconsWithSplitters,
       };
     });
   };
@@ -2204,8 +2743,16 @@ const Polygon7 = () => {
                     onClick={(e) => handleLineClick(polyline, index, true, e)}
                   />
 
-                  {(polyline.waypoints || []).map((waypoint, waypointIndex) =>
-                    !isWaypointOverlaidBySplitter(waypoint) ? (
+                  {(polyline.waypoints || []).map((waypoint, waypointIndex) => {
+                    const isOverlaid = isWaypointOverlaidBySplitter(waypoint);
+                    console.log(
+                      `Rendering waypoint ${waypointIndex} for polyline ${polyline.id}:`,
+                      {
+                        position: waypoint,
+                        isOverlaid,
+                      }
+                    );
+                    return !isOverlaid ? (
                       <MarkerF
                         key={`saved-waypoint-${polyline.id}-${waypointIndex}`}
                         position={waypoint}
@@ -2234,8 +2781,8 @@ const Polygon7 = () => {
                           )
                         }
                       />
-                    ) : null
-                  )}
+                    ) : null;
+                  })}
                   {!isSnappedToIcon(polyline.from.lat, polyline.from.lng) && (
                     <MarkerF
                       key={`saved-start-${polyline.id}`}
@@ -2415,6 +2962,80 @@ const Polygon7 = () => {
                 </div>
               </div>
               <div className="modal-spike"></div>
+            </div>
+          )}
+
+          {mapState.showTerminationModal && mapState.selectedTermination && (
+            <div
+              className="termination-modal"
+              style={{
+                bottom: "0px", // Anchor to bottom
+                left: "0px", // Align to left
+                width: "100%", // Full map width
+                height: "350px", // Increased height
+              }}
+            >
+              <div
+                className="termination-modal-content"
+                style={{ height: "100%" }}
+              >
+                <div
+                  className="flow-container"
+                  style={{ width: "100%", height: "80%", position: "relative" }} // 80% of 350px = 280px
+                >
+                  {/* Title positioned as an overlay on the left side */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "10px",
+                      left: "10px",
+                      zIndex: 10,
+                      background: "rgba(255, 255, 255, 0.7)", // Semi-transparent background
+                      padding: "5px 8px",
+                      borderRadius: "4px",
+                      fontWeight: "bold",
+                      fontSize: "14px",
+                    }}
+                  >
+                    Termination Box
+                  </div>
+
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onNodeClick={handleNodeClick}
+                    onPaneMouseMove={handleTerminationMouseMove}
+                    nodeTypes={nodeTypes}
+                    fitView
+                    nodesDraggable={false}
+                    nodesConnectable={false}
+                    zoomOnScroll={false}
+                    panOnScroll={false}
+                    panOnDrag={false}
+                    preventScrolling={false}
+                    style={{ width: "100%", height: "100%" }}
+                    proOptions={{ hideAttribution: true }}
+                  >
+                    <Background />
+                  </ReactFlow>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    onClick={saveTerminationConnection}
+                    className="btn btn-save"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={closeTerminationModal}
+                    className="btn btn-close"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
