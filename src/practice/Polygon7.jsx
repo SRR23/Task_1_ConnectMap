@@ -150,9 +150,9 @@ const mapStyles = [
 
 const Polygon7 = () => {
   const iconImages = {
-    BTS: "/img/BTS.png",
-    Termination: "/img/Termination.png",
-    Splitter: "/img/Splitter.png",
+    BTS: "/img/bts.svg",
+    Termination: "/img/termination-box.svg",
+    Splitter: "/img/splitter.svg",
     ONU: "/img/ONU.png",
   };
 
