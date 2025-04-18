@@ -157,11 +157,11 @@ const Polygon7 = () => {
   };
 
   const terminationColors = [
-    { number: 1, value: "#FF0000" }, // Red
-    { number: 2, value: "#0000FF" }, // Blue
-    { number: 3, value: "#00FF00" }, // Green
-    { number: 4, value: "#FFFF00" }, // Yellow
-    { number: 5, value: "#800080" }, // Purple
+    { number: 1, value: "#FF9999" }, // Light Red
+    { number: 2, value: "#9999FF" }, // Light Blue
+    { number: 3, value: "#99FF99" }, // Light Green
+    { number: 4, value: "#FFFF99" }, // Light Yellow
+    { number: 5, value: "#D699D6" }, // Light Purple
   ];
 
   const [mapState, setMapState] = useState({
