@@ -143,7 +143,7 @@ const mapStyles = [
   },
 ];
 
-const MyMapV18 = () => {
+const MyMapV19 = () => {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
   });
@@ -196,6 +196,7 @@ const MyMapV18 = () => {
     selectedTermination: null,
     terminationConnections: [], // Persistent connections: [{ terminationId, leftColor, rightColor }]
     tempConnection: null, // Temporary line: { leftColor, rightColor } or null
+    hasEditedCables: false, // Track if savedPolylines were edited
   });
 
   // New state for device types fetched from backend
@@ -221,18 +222,20 @@ const MyMapV18 = () => {
   }, []);
 
   // Function to create a device in the backend
-  const createDevice = async (device, lat, lng) => {
+  const createDevice = async (device, lat, lng, nextNumber) => {
+    // Generate a unique name by appending the nextNumber
+    const uniqueName = `${device.name}-${nextNumber}`;
     try {
       const payload = {
-        name: device.name,
+        name: uniqueName,
         device_type_id: device.id, // Use id for device_type
         latitude: lat, // Send lat
         longitude: lng, // Send lng
         port_ids: [3], // Default port1 (ID for name="port1")
       };
-  
+
       console.log("Sending payload to devices API:", payload); // Debug payload
-  
+
       const response = await fetch("http://127.0.0.1:8000/api/devices/", {
         method: "POST",
         headers: {
@@ -240,14 +243,14 @@ const MyMapV18 = () => {
         },
         body: JSON.stringify(payload),
       });
-  
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(
           `Failed to create device: ${errorData.message || response.statusText}`
         );
       }
-  
+
       const data = await response.json();
       console.log("Device created:", data); // Debug response
       return data;
@@ -268,7 +271,7 @@ const MyMapV18 = () => {
         }
         const devices = await response.json();
         console.log("Fetched devices:", devices);
-  
+
         const fetchedIcons = devices
           .filter((device) => {
             const hasValidCoords =
@@ -277,7 +280,9 @@ const MyMapV18 = () => {
               !isNaN(device.latitude) &&
               !isNaN(device.longitude);
             if (!hasValidCoords) {
-              console.warn(`Skipping device ${device.name} with invalid coordinates`);
+              console.warn(
+                `Skipping device ${device.name} with invalid coordinates`
+              );
             }
             return hasValidCoords;
           })
@@ -291,7 +296,7 @@ const MyMapV18 = () => {
             name: device.device_type.name === "Splitter" ? "" : null,
             nextLineNumber: device.device_type.name === "Splitter" ? 1 : null,
           }));
-  
+
         setMapState((prevState) => ({
           ...prevState,
           imageIcons: fetchedIcons, // Replace instead of append
@@ -302,9 +307,197 @@ const MyMapV18 = () => {
         alert("Failed to load devices from the server.");
       }
     };
-  
+
     fetchDevices();
   }, []);
+
+  const saveCable = async (line) => {
+    try {
+      // Prepare the path data in the format expected by the backend
+      const path = {
+        from: { lat: line.from.lat, lng: line.from.lng },
+        waypoints: line.waypoints
+          ? line.waypoints.map((wp) => ({ lat: wp.lat, lng: wp.lng }))
+          : [],
+        to: { lat: line.to.lat, lng: line.to.lng },
+      };
+
+      // Prepare the payload for the Cable model
+      const payload = {
+        name: line.name || `Cable-${line.id}`, // Ensure unique name
+        type: "Fiber", // You can make this dynamic if needed
+        path: path,
+      };
+
+      // Check if the cable is an existing one (has ID like cable-<id>)
+      const isExistingCable = line.id && line.id.startsWith("cable-");
+      const cableId = isExistingCable ? line.id.split("-")[1] : null;
+      const url = isExistingCable
+        ? `http://127.0.0.1:8000/api/cables/${cableId}/`
+        : "http://127.0.0.1:8000/api/cables/";
+      const method = isExistingCable ? "PUT" : "POST";
+
+      // Send request to the backend
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `Failed to ${isExistingCable ? "update" : "save"} cable ${line.id}: ${
+            errorData.message || response.statusText
+          }`
+        );
+      }
+
+      const data = await response.json();
+      console.log(`Cable ${isExistingCable ? "updated" : "saved"}:`, data);
+      return data;
+    } catch (error) {
+      console.error(`Error ${line.id ? "updating" : "saving"} cable:`, error);
+      throw error;
+    }
+  };
+
+  useEffect(() => {
+    const fetchCables = async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/cables/", {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(
+            `Failed to fetch cables: ${
+              errorData.message || response.statusText
+            }`
+          );
+        }
+
+        const cables = await response.json();
+        console.log("Fetched cables:", cables);
+
+        const fetchedPolylines = cables
+          .filter((cable) => {
+            const hasValidCoords =
+              cable.path &&
+              cable.path.from &&
+              cable.path.to &&
+              !isNaN(parseFloat(cable.path.from.lat)) &&
+              !isNaN(parseFloat(cable.path.from.lng)) &&
+              !isNaN(parseFloat(cable.path.to.lat)) &&
+              !isNaN(parseFloat(cable.path.to.lng));
+            if (!hasValidCoords) {
+              console.warn(
+                `Skipping cable ${cable.name} with invalid coordinates`
+              );
+            }
+            return hasValidCoords;
+          })
+          .map((cable) => ({
+            id: `cable-${cable.id}`, // Prefix to avoid conflicts
+            name: cable.name || `Cable-${cable.id}`,
+            from: {
+              lat: parseFloat(cable.path.from.lat),
+              lng: parseFloat(cable.path.from.lng),
+            },
+            to: {
+              lat: parseFloat(cable.path.to.lat),
+              lng: parseFloat(cable.path.to.lng),
+            },
+            waypoints: Array.isArray(cable.path.waypoints)
+              ? cable.path.waypoints
+                  .filter(
+                    (wp) =>
+                      !isNaN(parseFloat(wp.lat)) && !isNaN(parseFloat(wp.lng))
+                  )
+                  .map((wp) => ({
+                    lat: parseFloat(wp.lat),
+                    lng: parseFloat(wp.lng),
+                  }))
+              : [],
+            createdAt: Date.now(), // Adjust if backend provides timestamp
+            // strokeColor: "#0000FF", // Match saveRoute
+          }));
+
+        setMapState((prevState) => ({
+          ...prevState,
+          savedPolylines: fetchedPolylines,
+          // fiberLines: prevState.showSavedRoutes ? fetchedPolylines : prevState.fiberLines,
+        }));
+      } catch (error) {
+        console.error("Error fetching cables:", error);
+        alert("Failed to load cables from the server.");
+      }
+    };
+
+    fetchCables();
+  }, []);
+
+  // New function to delete a device
+  const deleteDevice = async (deviceId) => {
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/devices/${deviceId}/`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `Failed to delete device: ${errorData.message || response.statusText}`
+        );
+      }
+
+      console.log(`Device ${deviceId} deleted successfully`);
+    } catch (error) {
+      console.error("Error deleting device:", error);
+      alert(`Failed to delete device: ${error.message}`);
+      throw error;
+    }
+  };
+
+  // New function to delete a cable
+  const deleteCable = async (cableId) => {
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/cables/${cableId}/`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `Failed to delete cable: ${errorData.message || response.statusText}`
+        );
+      }
+
+      console.log(`Cable ${cableId} deleted successfully`);
+    } catch (error) {
+      console.error("Error deleting cable:", error);
+      alert(`Failed to delete cable: ${error.message}`);
+      throw error;
+    }
+  };
 
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -320,11 +513,15 @@ const MyMapV18 = () => {
     }
   }, [mapState.showTerminationModal]);
 
+  // const isInteractionAllowed = (isSavedLine) => {
+  //   return (
+  //     !isSavedLine ||
+  //     (mapState.showSavedRoutes && mapState.isSavedRoutesEditable)
+  //   );
+  // };
+
   const isInteractionAllowed = (isSavedLine) => {
-    return (
-      !isSavedLine ||
-      (mapState.showSavedRoutes && mapState.isSavedRoutesEditable)
-    );
+    return !isSavedLine || mapState.isSavedRoutesEditable;
   };
 
   const findNearestIcon = (lat, lng) => {
@@ -430,10 +627,8 @@ const MyMapV18 = () => {
     const { selectedPoint, nextNumber } = mapState;
     // Fallback URL if icon is invalid
     const validImageUrl =
-      icon && typeof icon === "string"
-        ? icon
-        : "/img/default-icon.png"; // Replace with a valid default icon path
-  
+      icon && typeof icon === "string" ? icon : "/img/default-icon.png"; // Replace with a valid default icon path
+
     // Find the device object from deviceTypes
     const selectedDevice = deviceTypes.find((device) => device.name === type);
     if (!selectedDevice) {
@@ -441,11 +636,16 @@ const MyMapV18 = () => {
       alert(`Error: Device type "${type}" not found.`);
       return;
     }
-  
+
     try {
       // Create device in backend
-      await createDevice(selectedDevice, selectedPoint.lat, selectedPoint.lng);
-  
+      await createDevice(
+        selectedDevice,
+        selectedPoint.lat,
+        selectedPoint.lng,
+        nextNumber
+      );
+
       // Update state after successful creation
       setMapState((prevState) => ({
         ...prevState,
@@ -471,15 +671,36 @@ const MyMapV18 = () => {
     }
   };
 
+  // const handleRightClickOnIcon = (icon, e) => {
+  //   e.domEvent.preventDefault();
+  //   if (mapState.showSavedRoutes && !mapState.isSavedRoutesEditable) return;
+
+  //   setMapState((prevState) => ({
+  //     ...prevState,
+  //     selectedPoint: { ...icon, x: e.domEvent.clientX, y: e.domEvent.clientY },
+  //     rightClickMarker: icon,
+  //     showModal: true,
+  //   }));
+  // };
+
   const handleRightClickOnIcon = (icon, e) => {
     e.domEvent.preventDefault();
     if (mapState.showSavedRoutes && !mapState.isSavedRoutesEditable) return;
+
+    // Check if the icon is saved (from API or savedIcons)
+    const isSavedIcon =
+      icon.id.startsWith("icon-api-") ||
+      mapState.savedIcons.some((savedIcon) => savedIcon.id === icon.id);
+    if (isSavedIcon && !mapState.isSavedRoutesEditable) return;
 
     setMapState((prevState) => ({
       ...prevState,
       selectedPoint: { ...icon, x: e.domEvent.clientX, y: e.domEvent.clientY },
       rightClickMarker: icon,
       showModal: true,
+      selectedWaypoint: icon,
+      selectedWaypointInfo: { isIcon: true, iconId: icon.id },
+      waypointActionPosition: { x: e.domEvent.clientX, y: e.domEvent.clientY },
     }));
   };
 
@@ -687,7 +908,7 @@ const MyMapV18 = () => {
     }
   };
 
-  const removeSelectedWaypoint = () => {
+  const removeSelectedWaypoint = async () => {
     if (
       !mapState.selectedWaypointInfo ||
       !isInteractionAllowed(mapState.selectedWaypointInfo.isSavedLine)
@@ -697,57 +918,105 @@ const MyMapV18 = () => {
     const { lineIndex, waypointIndex, isSavedLine } =
       mapState.selectedWaypointInfo;
 
-    setMapState((prevState) => {
-      const targetArray = isSavedLine
-        ? prevState.savedPolylines
-        : prevState.fiberLines;
-      const updatedLines = targetArray.map((line, idx) => {
-        if (idx === lineIndex && line.waypoints) {
-          const updatedWaypoints = line.waypoints.filter(
-            (_, wIdx) => wIdx !== waypointIndex
-          );
-          return { ...line, waypoints: updatedWaypoints };
+    try {
+      setMapState((prevState) => {
+        const targetArray = isSavedLine
+          ? prevState.savedPolylines
+          : prevState.fiberLines;
+        const updatedLines = targetArray.map((line, idx) => {
+          if (idx === lineIndex && line.waypoints) {
+            const updatedWaypoints = line.waypoints.filter(
+              (_, wIdx) => wIdx !== waypointIndex
+            );
+            return { ...line, waypoints: updatedWaypoints };
+          }
+          return line;
+        });
+
+        const updatedImageIcons = prevState.imageIcons.filter(
+          (icon) =>
+            !(
+              icon.lat === prevState.selectedWaypoint.lat &&
+              icon.lng === prevState.selectedWaypoint.lng
+            )
+        );
+        const updatedSavedIcons = prevState.savedIcons.filter(
+          (icon) =>
+            !(
+              icon.lat === prevState.selectedWaypoint.lat &&
+              icon.lng === prevState.selectedWaypoint.lng
+            )
+        );
+
+        // If it's a saved line, update the cable in the backend
+        if (isSavedLine) {
+          const line = updatedLines[lineIndex];
+          if (line.id && line.id.startsWith("cable-")) {
+            const cableId = line.id.split("-")[1];
+            const payload = {
+              name: line.name || `Cable-${line.id}`,
+              type: "Fiber",
+              path: {
+                from: { lat: line.from.lat, lng: line.from.lng },
+                waypoints: line.waypoints
+                  ? line.waypoints.map((wp) => ({ lat: wp.lat, lng: wp.lng }))
+                  : [],
+                to: { lat: line.to.lat, lng: line.to.lng },
+              },
+            };
+
+            // Send PUT request to update the cable
+            fetch(`http://127.0.0.1:8000/api/cables/${cableId}/`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(payload),
+            })
+              .then((response) => {
+                if (!response.ok) {
+                  response.json().then((errorData) => {
+                    console.error(
+                      `Failed to update cable ${cableId}:`,
+                      errorData.message || response.statusText
+                    );
+                    alert(`Failed to update cable: ${errorData.message}`);
+                  });
+                } else {
+                  console.log(`Cable ${cableId} updated with new waypoints`);
+                }
+              })
+              .catch((error) => {
+                console.error("Error updating cable:", error);
+                alert(`Failed to update cable: ${error.message}`);
+              });
+          }
+
+          localStorage.setItem("savedPolylines", JSON.stringify(updatedLines));
+          localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
         }
-        return line;
+
+        return {
+          ...prevState,
+          ...(isSavedLine
+            ? {
+                savedPolylines: updatedLines,
+                fiberLines: prevState.showSavedRoutes
+                  ? updatedLines
+                  : prevState.fiberLines,
+                savedIcons: updatedSavedIcons,
+              }
+            : { fiberLines: updatedLines }),
+          imageIcons: updatedImageIcons,
+          selectedWaypoint: null,
+          waypointActionPosition: null,
+          selectedWaypointInfo: null,
+        };
       });
-
-      const updatedImageIcons = prevState.imageIcons.filter(
-        (icon) =>
-          !(
-            icon.lat === prevState.selectedWaypoint.lat &&
-            icon.lng === prevState.selectedWaypoint.lng
-          )
-      );
-      const updatedSavedIcons = prevState.savedIcons.filter(
-        (icon) =>
-          !(
-            icon.lat === prevState.selectedWaypoint.lat &&
-            icon.lng === prevState.selectedWaypoint.lng
-          )
-      );
-
-      if (isSavedLine) {
-        localStorage.setItem("savedPolylines", JSON.stringify(updatedLines));
-        localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
-      }
-
-      return {
-        ...prevState,
-        ...(isSavedLine
-          ? {
-              savedPolylines: updatedLines,
-              fiberLines: prevState.showSavedRoutes
-                ? updatedLines
-                : prevState.fiberLines,
-              savedIcons: updatedSavedIcons,
-            }
-          : { fiberLines: updatedLines }),
-        imageIcons: updatedImageIcons,
-        selectedWaypoint: null,
-        waypointActionPosition: null,
-        selectedWaypointInfo: null,
-      };
-    });
+    } catch (error) {
+      console.error("Error removing waypoint:", error);
+      alert(`Failed to remove waypoint: ${error.message}`);
+    }
   };
 
   const handleIconClick = (icon, e) => {
@@ -755,6 +1024,12 @@ const MyMapV18 = () => {
       e.domEvent.preventDefault();
       e.domEvent.stopPropagation();
     }
+
+    // Check if the icon is saved (from API or savedIcons)
+    const isSavedIcon =
+      icon.id.startsWith("icon-api-") ||
+      mapState.savedIcons.some((savedIcon) => savedIcon.id === icon.id);
+    if (isSavedIcon && !mapState.isSavedRoutesEditable) return;
 
     if (mapState.isSavedRoutesEditable || !mapState.showSavedRoutes) {
       const x = e.domEvent.clientX;
@@ -795,7 +1070,7 @@ const MyMapV18 = () => {
           selectedLineForActions: null,
           lineActionPosition: null,
           exactClickPosition: null,
-          showModal: false,
+          showModal: true,
           selectedWaypoint: icon,
           waypointActionPosition: { x, y },
           selectedWaypointInfo: { isIcon: true, iconId: icon.id },
@@ -804,34 +1079,98 @@ const MyMapV18 = () => {
     }
   };
 
-  const removeSelectedIcon = () => {
+  // const handleIconClick = (icon, e) => {
+  //   if (e && e.domEvent) {
+  //     e.domEvent.preventDefault();
+  //     e.domEvent.stopPropagation();
+  //   }
+
+  //   if (mapState.isSavedRoutesEditable || !mapState.showSavedRoutes) {
+  //     const x = e.domEvent.clientX;
+  //     const y = e.domEvent.clientY;
+
+  //     if (icon.type === "Splitter") {
+  //       setMapState((prevState) => ({
+  //         ...prevState,
+  //         selectedLineForActions: null,
+  //         lineActionPosition: null,
+  //         exactClickPosition: null,
+  //         showModal: false,
+  //         selectedSplitter: icon,
+  //         showSplitterModal: true,
+  //         splitterRatio: icon.splitterRatio || "",
+  //         splitterInput: icon.name || "",
+  //         waypointActionPosition: { x, y },
+  //         editingLineId: null,
+  //         tempLineName: "",
+  //       }));
+  //     } else if (icon.type === "Termination") {
+  //       setMapState((prevState) => ({
+  //         ...prevState,
+  //         selectedLineForActions: null,
+  //         lineActionPosition: null,
+  //         exactClickPosition: null,
+  //         showModal: false,
+  //         showTerminationModal: true,
+  //         selectedTermination: icon,
+  //         pendingConnection: { leftColor: null, rightColor: null },
+  //         waypointActionPosition: { x, y },
+  //       }));
+  //       initializeNodesAndEdges(icon);
+  //       setDrawingSource(null);
+  //     } else {
+  //       setMapState((prevState) => ({
+  //         ...prevState,
+  //         selectedLineForActions: null,
+  //         lineActionPosition: null,
+  //         exactClickPosition: null,
+  //         showModal: false,
+  //         selectedWaypoint: icon,
+  //         waypointActionPosition: { x, y },
+  //         selectedWaypointInfo: { isIcon: true, iconId: icon.id },
+  //       }));
+  //     }
+  //   }
+  // };
+
+  const removeSelectedIcon = async () => {
     if (!mapState.selectedWaypointInfo || !mapState.selectedWaypointInfo.isIcon)
       return;
     if (mapState.showSavedRoutes && !mapState.isSavedRoutesEditable) return;
 
     const { iconId } = mapState.selectedWaypointInfo;
 
-    setMapState((prevState) => {
-      const updatedImageIcons = prevState.imageIcons.filter(
-        (icon) => icon.id !== iconId
-      );
-      const updatedSavedIcons = prevState.savedIcons.filter(
-        (icon) => icon.id !== iconId
-      );
-
-      if (prevState.showSavedRoutes) {
-        localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
+    try {
+      // If the icon is from the API, delete it from the backend
+      if (iconId.startsWith("icon-api-")) {
+        const deviceId = iconId.split("-")[2];
+        await deleteDevice(deviceId);
       }
 
-      return {
-        ...prevState,
-        imageIcons: updatedImageIcons,
-        savedIcons: updatedSavedIcons,
-        selectedWaypoint: null,
-        waypointActionPosition: null,
-        selectedWaypointInfo: null,
-      };
-    });
+      setMapState((prevState) => {
+        const updatedImageIcons = prevState.imageIcons.filter(
+          (icon) => icon.id !== iconId
+        );
+        const updatedSavedIcons = prevState.savedIcons.filter(
+          (icon) => icon.id !== iconId
+        );
+
+        if (prevState.showSavedRoutes) {
+          localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
+        }
+
+        return {
+          ...prevState,
+          imageIcons: updatedImageIcons,
+          savedIcons: updatedSavedIcons,
+          selectedWaypoint: null,
+          waypointActionPosition: null,
+          selectedWaypointInfo: null,
+        };
+      });
+    } catch (error) {
+      // Error handled in deleteDevice
+    }
   };
 
   const addSplitterAtWaypoint = () => {
@@ -883,7 +1222,7 @@ const MyMapV18 = () => {
     });
   };
 
-  const removeSelectedLine = () => {
+  const removeSelectedLine = async () => {
     if (
       !mapState.selectedLineForActions ||
       !isInteractionAllowed(mapState.selectedLineForActions.isSavedLine)
@@ -891,49 +1230,64 @@ const MyMapV18 = () => {
       return;
 
     const { index, isSavedLine } = mapState.selectedLineForActions;
+    const line = isSavedLine
+      ? mapState.savedPolylines[index]
+      : mapState.fiberLines[index];
 
-    setMapState((prevState) => {
-      let updatedFiberLines = [...prevState.fiberLines];
-      let updatedSavedPolylines = [...prevState.savedPolylines];
-      let updatedImageIcons = [...prevState.imageIcons];
-      let updatedSavedIcons = [...prevState.savedIcons];
-
-      if (isSavedLine) {
-        updatedSavedPolylines = prevState.savedPolylines.filter(
-          (_, i) => i !== index
-        );
-        localStorage.setItem(
-          "savedPolylines",
-          JSON.stringify(updatedSavedPolylines)
-        );
-      } else {
-        updatedFiberLines = prevState.fiberLines.filter((_, i) => i !== index);
+    try {
+      // If the line is a saved cable, delete it from the backend
+      if (isSavedLine && line.id && line.id.startsWith("cable-")) {
+        const cableId = line.id.split("-")[1];
+        await deleteCable(cableId);
       }
 
-      updatedSavedIcons = updatedImageIcons.map((icon) => ({
-        ...(updatedSavedIcons.find((si) => si.id === icon.id) || {}),
-        ...icon,
-      }));
+      setMapState((prevState) => {
+        let updatedFiberLines = [...prevState.fiberLines];
+        let updatedSavedPolylines = [...prevState.savedPolylines];
+        let updatedImageIcons = [...prevState.imageIcons];
+        let updatedSavedIcons = [...prevState.savedIcons];
 
-      if (isSavedLine) {
-        localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
-      }
+        if (isSavedLine) {
+          updatedSavedPolylines = prevState.savedPolylines.filter(
+            (_, i) => i !== index
+          );
+          localStorage.setItem(
+            "savedPolylines",
+            JSON.stringify(updatedSavedPolylines)
+          );
+        } else {
+          updatedFiberLines = prevState.fiberLines.filter(
+            (_, i) => i !== index
+          );
+        }
 
-      return {
-        ...prevState,
-        savedPolylines: updatedSavedPolylines,
-        fiberLines: isSavedLine
-          ? prevState.showSavedRoutes
-            ? updatedSavedPolylines
-            : prevState.fiberLines
-          : updatedFiberLines,
-        imageIcons: updatedImageIcons,
-        savedIcons: updatedSavedIcons,
-        selectedLineForActions: null,
-        lineActionPosition: null,
-        exactClickPosition: null,
-      };
-    });
+        updatedSavedIcons = updatedImageIcons.map((icon) => ({
+          ...(updatedSavedIcons.find((si) => si.id === icon.id) || {}),
+          ...icon,
+        }));
+
+        if (isSavedLine) {
+          localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
+        }
+
+        return {
+          ...prevState,
+          savedPolylines: updatedSavedPolylines,
+          fiberLines: isSavedLine
+            ? prevState.showSavedRoutes
+              ? updatedSavedPolylines
+              : prevState.fiberLines
+            : updatedFiberLines,
+          imageIcons: updatedImageIcons,
+          savedIcons: updatedSavedIcons,
+          selectedLineForActions: null,
+          lineActionPosition: null,
+          exactClickPosition: null,
+        };
+      });
+    } catch (error) {
+      // Error handled in deleteCable
+    }
   };
 
   const handleMarkerDragEnd = (iconId, e) => {
@@ -1371,95 +1725,82 @@ const MyMapV18 = () => {
     });
   };
 
-  const saveRoute = () => {
-    if (mapState.fiberLines.length > 0) {
-      const polylinesToSave = mapState.fiberLines.map((line) => ({
-        id: line.id || generateUniqueId(),
-        from: { ...line.from },
-        to: { ...line.to },
-        waypoints: line.waypoints ? [...line.waypoints] : [],
-        createdAt: line.createdAt || Date.now(),
-        strokeColor: "#0000FF",
-        name: line.name || "",
-      }));
+  const saveRoute = async () => {
+    try {
+      // Combine fiberLines and savedPolylines (if in edit mode) to save all current cables
+      const cablesToSave = mapState.isSavedRoutesEditable
+        ? [...mapState.savedPolylines] // Save modified savedPolylines
+        : [...mapState.fiberLines]; // Save new fiberLines
 
-      const savedPolylines =
-        JSON.parse(localStorage.getItem("savedPolylines")) || [];
-      const updatedSavedPolylines = [
-        ...savedPolylines.filter(
-          (existing) =>
-            !polylinesToSave.some((newLine) => newLine.id === existing.id)
-        ),
-        ...polylinesToSave,
-      ];
+      if (cablesToSave.length === 0) {
+        alert("No routes to save!");
+        return;
+      }
 
-      localStorage.setItem(
-        "savedPolylines",
-        JSON.stringify(updatedSavedPolylines)
+      // Save or update all cables concurrently
+      const savedCables = await Promise.all(
+        cablesToSave.map((line) => saveCable(line))
       );
+      console.log("All cables processed:", savedCables);
 
+      // Fetch updated cables to refresh savedPolylines
+      const response = await fetch("http://127.0.0.1:8000/api/cables/");
+      if (!response.ok) {
+        throw new Error("Failed to fetch updated cables");
+      }
+      const cables = await response.json();
+      const fetchedPolylines = cables
+        .filter((cable) => {
+          const hasValidCoords =
+            cable.path &&
+            cable.path.from &&
+            cable.path.to &&
+            !isNaN(parseFloat(cable.path.from.lat)) &&
+            !isNaN(parseFloat(cable.path.from.lng)) &&
+            !isNaN(parseFloat(cable.path.to.lat)) &&
+            !isNaN(parseFloat(cable.path.to.lng));
+          return hasValidCoords;
+        })
+        .map((cable) => ({
+          id: `cable-${cable.id}`,
+          name: cable.name || `Cable-${cable.id}`,
+          from: {
+            lat: parseFloat(cable.path.from.lat),
+            lng: parseFloat(cable.path.from.lng),
+          },
+          to: {
+            lat: parseFloat(cable.path.to.lat),
+            lng: parseFloat(cable.path.to.lng),
+          },
+          waypoints: Array.isArray(cable.path.waypoints)
+            ? cable.path.waypoints
+                .filter(
+                  (wp) =>
+                    !isNaN(parseFloat(wp.lat)) && !isNaN(parseFloat(wp.lng))
+                )
+                .map((wp) => ({
+                  lat: parseFloat(wp.lat),
+                  lng: parseFloat(wp.lng),
+                }))
+            : [],
+          createdAt: cable.created_at
+            ? new Date(cable.created_at).getTime()
+            : Date.now(),
+        }));
+
+      // Update state: clear fiberLines and refresh savedPolylines
       setMapState((prevState) => ({
         ...prevState,
-        savedPolylines: updatedSavedPolylines,
-        showSavedRoutes: true,
-        fiberLines: updatedSavedPolylines.map((polyline) => ({
-          ...polyline,
-          strokeColor: "#0000FF",
-        })),
-      }));
-    }
-
-    if (mapState.imageIcons.length > 0) {
-      const iconsToSave = mapState.imageIcons.map((icon, index) => ({
-        id: icon.id || `icon-${Date.now()}-${index}`,
-        lat: icon.lat,
-        lng: icon.lng,
-        type: icon.type,
-        imageUrl: icon.imageUrl,
-        splitterRatio: icon.splitterRatio,
-        ratioSetTimestamp: icon.ratioSetTimestamp,
-        linkedLineIndex: icon.linkedLineIndex,
-        linkedWaypointIndex: icon.linkedWaypointIndex,
-        isSavedLine: icon.isSavedLine,
-        name: icon.name || "",
-        nextLineNumber: icon.nextLineNumber || null,
-        createdAt: new Date().toISOString(),
+        fiberLines: [], // Clear temporary lines
+        savedPolylines: fetchedPolylines, // Update with fetched cables
+        showSavedRoutes: true, // Show saved routes after saving
+        isSavedRoutesEditable: false, // Disable edit mode
       }));
 
-      const savedIcons = JSON.parse(localStorage.getItem("savedIcons")) || [];
-      const updatedSavedIcons = [
-        ...savedIcons.filter(
-          (existing) =>
-            !iconsToSave.some((newIcon) => newIcon.id === existing.id)
-        ),
-        ...iconsToSave,
-      ];
-      localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
-
-      setMapState((prevState) => ({
-        ...prevState,
-        savedIcons: updatedSavedIcons,
-        imageIcons: updatedSavedIcons.map((icon) => ({
-          lat: icon.lat,
-          lng: icon.lng,
-          type: icon.type,
-          imageUrl: icon.imageUrl,
-          id: icon.id,
-          splitterRatio: icon.splitterRatio,
-          ratioSetTimestamp: icon.ratioSetTimestamp,
-          linkedLineIndex: icon.linkedLineIndex,
-          linkedWaypointIndex: icon.linkedWaypointIndex,
-          isSavedLine: icon.isSavedLine,
-          name: icon.name,
-          nextLineNumber: icon.nextLineNumber,
-        })),
-      }));
-    }
-
-    if (mapState.fiberLines.length > 0 || mapState.imageIcons.length > 0) {
-      alert("Polylines and Icons saved successfully!");
-    } else {
-      alert("No routes or icons to save!");
+      alert("Polylines saved successfully!");
+    } catch (error) {
+      console.error("Error saving routes:", error);
+      alert(`Failed to save routes: ${error.message}`);
     }
   };
 
@@ -1968,6 +2309,91 @@ const MyMapV18 = () => {
   }, []);
 
   // Add custom controls when map loads
+  // useEffect(() => {
+  //   if (!mapRef.current || !window.google) return;
+
+  //   // Clear existing controls to prevent duplicates
+  //   mapRef.current.controls[
+  //     window.google.maps.ControlPosition.TOP_CENTER
+  //   ].clear();
+
+  //   const controlDiv = document.createElement("div");
+  //   controlDiv.className = "map-controls";
+
+  //   const buttons = [
+  //     {
+  //       imgSrc: "/img/Reset.jpg", // Ensure this file exists in your public/img folder
+  //       tooltip: "Reset Map",
+  //       onClick: resetMap,
+  //     },
+  //     {
+  //       imgSrc: "/img/Save.png",
+  //       tooltip: "Save Route",
+  //       onClick: saveRoute,
+  //     },
+  //     {
+  //       imgSrc: mapState.showSavedRoutes
+  //         ? "/img/Eye-close.png"
+  //         : "/img/Eye.png",
+  //       tooltip: mapState.showSavedRoutes
+  //         ? "Hide Previous Routes"
+  //         : "Show Previous Routes",
+  //       onClick: togglePreviousRoutes,
+  //     },
+  //     ...(mapState.showSavedRoutes
+  //       ? [
+  //           {
+  //             imgSrc: mapState.isSavedRoutesEditable
+  //               ? "/img/Edit-not.png"
+  //               : "/img/Edit.png",
+  //             tooltip: mapState.isSavedRoutesEditable
+  //               ? "Disable Editing"
+  //               : "Enable Editing",
+  //             onClick: toggleSavedRoutesEditability,
+  //           },
+  //         ]
+  //       : []),
+  //   ];
+
+  //   buttons.forEach(({ imgSrc, tooltip, onClick }) => {
+  //     const button = document.createElement("button");
+  //     button.className = "map-control-button";
+  //     if (imgSrc) {
+  //       const img = document.createElement("img");
+  //       img.src = imgSrc;
+  //       img.style.width = "20px";
+  //       img.style.height = "20px";
+  //       button.appendChild(img);
+  //     }
+  //     button.title = tooltip;
+  //     button.addEventListener("click", onClick);
+  //     controlDiv.appendChild(button);
+  //   });
+  //   // Add control to TOP_CENTER
+  //   mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].push(
+  //     controlDiv
+  //   );
+
+  //   // Debug log
+  //   console.log("Controls added:", controlDiv);
+
+  //   // Cleanup on unmount or state change
+  //   return () => {
+  //     if (mapRef.current && window.google) {
+  //       mapRef.current.controls[
+  //         window.google.maps.ControlPosition.TOP_CENTER
+  //       ].clear();
+  //     }
+  //   };
+  // }, [
+  //   mapState.showSavedRoutes,
+  //   mapState.isSavedRoutesEditable,
+  //   resetMap,
+  //   saveRoute,
+  //   togglePreviousRoutes,
+  //   toggleSavedRoutesEditability,
+  // ]);
+
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
 
@@ -1981,37 +2407,19 @@ const MyMapV18 = () => {
 
     const buttons = [
       {
-        imgSrc: "/img/Reset.jpg", // Ensure this file exists in your public/img folder
-        tooltip: "Reset Map",
-        onClick: resetMap,
-      },
-      {
         imgSrc: "/img/Save.png",
         tooltip: "Save Route",
         onClick: saveRoute,
       },
       {
-        imgSrc: mapState.showSavedRoutes
-          ? "/img/Eye-close.png"
-          : "/img/Eye.png",
-        tooltip: mapState.showSavedRoutes
-          ? "Hide Previous Routes"
-          : "Show Previous Routes",
-        onClick: togglePreviousRoutes,
+        imgSrc: mapState.isSavedRoutesEditable
+          ? "/img/Edit-not.png"
+          : "/img/Edit.png",
+        tooltip: mapState.isSavedRoutesEditable
+          ? "Disable Editing"
+          : "Enable Editing",
+        onClick: toggleSavedRoutesEditability,
       },
-      ...(mapState.showSavedRoutes
-        ? [
-            {
-              imgSrc: mapState.isSavedRoutesEditable
-                ? "/img/Edit-not.png"
-                : "/img/Edit.png",
-              tooltip: mapState.isSavedRoutesEditable
-                ? "Disable Editing"
-                : "Enable Editing",
-              onClick: toggleSavedRoutesEditability,
-            },
-          ]
-        : []),
     ];
 
     buttons.forEach(({ imgSrc, tooltip, onClick }) => {
@@ -2028,6 +2436,7 @@ const MyMapV18 = () => {
       button.addEventListener("click", onClick);
       controlDiv.appendChild(button);
     });
+
     // Add control to TOP_CENTER
     mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].push(
       controlDiv
@@ -2036,7 +2445,7 @@ const MyMapV18 = () => {
     // Debug log
     console.log("Controls added:", controlDiv);
 
-    // Cleanup on unmount or state change
+    // Cleanup on unmount
     return () => {
       if (mapRef.current && window.google) {
         mapRef.current.controls[
@@ -2044,14 +2453,7 @@ const MyMapV18 = () => {
         ].clear();
       }
     };
-  }, [
-    mapState.showSavedRoutes,
-    mapState.isSavedRoutesEditable,
-    resetMap,
-    saveRoute,
-    togglePreviousRoutes,
-    toggleSavedRoutesEditability,
-  ]);
+  }, [mapState.isSavedRoutesEditable, saveRoute, toggleSavedRoutesEditability]);
 
   if (loadError) return <div>Error loading maps</div>;
   if (!isLoaded) return <div>Loading Maps...</div>;
@@ -2205,102 +2607,144 @@ const MyMapV18 = () => {
           );
         })}
 
-        {mapState.showSavedRoutes &&
-          mapState.savedPolylines.map((polyline, index) => {
-            const fullPath = [
-              polyline.from,
-              ...(polyline.waypoints || []),
-              polyline.to,
-            ];
-            return (
-              <React.Fragment key={`saved-polyline-${polyline.id}`}>
-                <PolylineF
-                  path={fullPath}
-                  options={{
-                    strokeColor: "#0000FF",
-                    strokeOpacity: 1.0,
-                    strokeWeight: 2,
-                  }}
-                  onClick={(e) => handleLineClick(polyline, index, true, e)}
-                />
+        {/* Render Saved Polylines (Fetched Cables) */}
+        {mapState.savedPolylines.map((polyline, index) => {
+          const fullPath = [
+            polyline.from,
+            ...(polyline.waypoints || []),
+            polyline.to,
+          ];
+          return (
+            <React.Fragment key={`saved-polyline-${polyline.id}`}>
+              <PolylineF
+                path={fullPath}
+                options={{
+                  strokeColor: "#FF0000",
+                  strokeOpacity: 1.0,
+                  strokeWeight: 2,
+                }}
+                onClick={(e) => handleLineClick(polyline, index, true, e)}
+              />
 
-                {(polyline.waypoints || []).map((waypoint, waypointIndex) =>
-                  !isWaypointOverlaidBySplitter(waypoint) ? (
-                    <MarkerF
-                      key={`saved-waypoint-${polyline.id}-${waypointIndex}`}
-                      position={waypoint}
-                      draggable={mapState.isSavedRoutesEditable}
-                      onDragEnd={
-                        mapState.isSavedRoutesEditable
-                          ? (e) =>
-                              handleSavedPolylineWaypointDragEnd(
-                                polyline.id,
-                                waypointIndex,
-                                e
-                              )
-                          : undefined
+              {/* Line Action Modal for Saved Polylines */}
+              {mapState.selectedLineForActions &&
+                mapState.exactClickPosition &&
+                mapState.selectedLineForActions.index === index &&
+                mapState.selectedLineForActions.isSavedLine &&
+                mapState.isSavedRoutesEditable && (
+                  <div
+                    className="line-action-modal"
+                    style={{
+                      top: `${mapState.exactClickPosition.y - 95}px`,
+                      left: `${mapState.exactClickPosition.x}px`,
+                      transform: "translateX(-50%)",
+                    }}
+                  >
+                    <div className="line-action-item" onClick={addWaypoint}>
+                      <Plus size={20} className="text-gray-600" />
+                      <span className="line-action-tooltip">Add Waypoint</span>
+                    </div>
+                    <div
+                      className="line-action-item"
+                      onClick={removeSelectedLine}
+                    >
+                      <Trash2 size={20} className="text-red-500" />
+                      <span className="line-action-tooltip">Delete Line</span>
+                    </div>
+                    <div
+                      className="line-action-item"
+                      onClick={() =>
+                        setMapState((prev) => ({
+                          ...prev,
+                          selectedLineForActions: null,
+                          lineActionPosition: null,
+                          exactClickPosition: null,
+                        }))
                       }
-                      icon={{
-                        url: "/img/location.jpg",
-                        scaledSize: new google.maps.Size(15, 15),
-                      }}
-                      onClick={(e) =>
-                        handleWaypointClick(
-                          index,
-                          waypointIndex,
-                          true,
-                          waypoint,
-                          e
-                        )
-                      }
-                    />
-                  ) : null
+                    >
+                      <span className="line-action-close">×</span>
+                      <span className="line-action-tooltip">Close</span>
+                    </div>
+                    <div className="modal-spike"></div>
+                  </div>
                 )}
-                {!isSnappedToIcon(polyline.from.lat, polyline.from.lng) && (
+
+              {/* Waypoint Markers */}
+              {(polyline.waypoints || []).map((waypoint, waypointIndex) =>
+                !isWaypointOverlaidBySplitter(waypoint) ? (
                   <MarkerF
-                    key={`saved-start-${polyline.id}`}
-                    position={polyline.from}
+                    key={`saved-waypoint-${polyline.id}-${waypointIndex}`}
+                    position={waypoint}
                     draggable={mapState.isSavedRoutesEditable}
                     onDragEnd={
                       mapState.isSavedRoutesEditable
                         ? (e) =>
-                            handleSavedPolylinePointDragEnd(
+                            handleSavedPolylineWaypointDragEnd(
                               polyline.id,
-                              "from",
+                              waypointIndex,
                               e
                             )
                         : undefined
                     }
                     icon={{
                       url: "/img/location.jpg",
-                      scaledSize: new google.maps.Size(20, 20),
+                      scaledSize: new google.maps.Size(15, 15),
                     }}
-                  />
-                )}
-                {!isSnappedToIcon(polyline.to.lat, polyline.to.lng) && (
-                  <MarkerF
-                    key={`saved-end-${polyline.id}`}
-                    position={polyline.to}
-                    draggable={mapState.isSavedRoutesEditable}
-                    onDragEnd={
-                      mapState.isSavedRoutesEditable
-                        ? (e) =>
-                            handleSavedPolylinePointDragEnd(
-                              polyline.id,
-                              "to",
-                              e
-                            )
-                        : undefined
+                    onClick={(e) =>
+                      handleWaypointClick(
+                        index,
+                        waypointIndex,
+                        true,
+                        waypoint,
+                        e
+                      )
                     }
-                    icon={{
-                      url: "/img/location.jpg",
-                      scaledSize: new google.maps.Size(20, 20),
-                    }}
                   />
-                )}
-              </React.Fragment>
-            );
-          })}
+                ) : null
+              )}
+
+              {/* Start and End Markers */}
+              {!isSnappedToIcon(polyline.from.lat, polyline.from.lng) && (
+                <MarkerF
+                  key={`saved-start-${polyline.id}`}
+                  position={polyline.from}
+                  draggable={mapState.isSavedRoutesEditable}
+                  onDragEnd={
+                    mapState.isSavedRoutesEditable
+                      ? (e) =>
+                          handleSavedPolylinePointDragEnd(
+                            polyline.id,
+                            "from",
+                            e
+                          )
+                      : undefined
+                  }
+                  icon={{
+                    url: "/img/location.jpg",
+                    scaledSize: new google.maps.Size(20, 20),
+                  }}
+                />
+              )}
+              {!isSnappedToIcon(polyline.to.lat, polyline.to.lng) && (
+                <MarkerF
+                  key={`saved-end-${polyline.id}`}
+                  position={polyline.to}
+                  draggable={mapState.isSavedRoutesEditable}
+                  onDragEnd={
+                    mapState.isSavedRoutesEditable
+                      ? (e) =>
+                          handleSavedPolylinePointDragEnd(polyline.id, "to", e)
+                      : undefined
+                  }
+                  icon={{
+                    url: "/img/location.jpg",
+                    scaledSize: new google.maps.Size(20, 20),
+                  }}
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
 
         {mapState.selectedWaypoint && mapState.waypointActionPosition && (
           <div
@@ -2534,4 +2978,4 @@ const MyMapV18 = () => {
   );
 };
 
-export default MyMapV18;
+export default MyMapV19;
