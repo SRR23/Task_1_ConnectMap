@@ -197,6 +197,7 @@ const MyMapV19 = () => {
     terminationConnections: [], // Persistent connections: [{ terminationId, leftColor, rightColor }]
     tempConnection: null, // Temporary line: { leftColor, rightColor } or null
     hasEditedCables: false, // Track if savedPolylines were edited
+    updatedDevices: [], // New property to track devices with updated coordinates
   });
 
   // New state for device types fetched from backend
@@ -226,37 +227,123 @@ const MyMapV19 = () => {
     // Generate a unique name by appending the nextNumber
     const uniqueName = `${device.name}-${nextNumber}`;
     try {
-      const payload = {
+      // Step 1: Create the device in the devices API
+      const devicePayload = {
         name: uniqueName,
         device_type_id: device.id, // Use id for device_type
         latitude: lat, // Send lat
         longitude: lng, // Send lng
-        port_ids: [3], // Default port1 (ID for name="port1")
+        // Removed port_ids since Device no longer has a ports ManyToManyField
       };
-
-      console.log("Sending payload to devices API:", payload); // Debug payload
-
-      const response = await fetch("http://127.0.0.1:8000/api/devices/", {
+  
+      console.log("Sending payload to devices API:", devicePayload);
+  
+      const deviceResponse = await fetch("http://127.0.0.1:8000/api/devices/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(devicePayload),
+      });
+  
+      if (!deviceResponse.ok) {
+        const errorData = await deviceResponse.json();
+        throw new Error(
+          `Failed to create device: ${errorData.message || deviceResponse.statusText}`
+        );
+      }
+  
+      const deviceData = await deviceResponse.json();
+      console.log("Device created:", deviceData);
+  
+      // Step 2: Create default ports for the device
+      const createdDeviceId = deviceData.id;
+      const defaultPorts = [
+        { name: `Port1-${uniqueName}`, position: 1 }, // Ensure unique port name
+        // Add more default ports if needed, e.g., { name: `Port2-${uniqueName}`, position: 2 }
+      ];
+  
+      for (const port of defaultPorts) {
+        const portPayload = {
+          name: port.name,
+          position: port.position,
+          device_id: createdDeviceId, // Associate with the new device
+        };
+  
+        console.log("Sending payload to ports API:", portPayload);
+  
+        const portResponse = await fetch("http://127.0.0.1:8000/api/ports/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(portPayload),
+        });
+  
+        if (!portResponse.ok) {
+          const errorData = await portResponse.json();
+          throw new Error(
+            `Failed to create port: ${errorData.message || portResponse.statusText}`
+          );
+        }
+  
+        const portData = await portResponse.json();
+        console.log("Port created:", portData);
+      }
+  
+      // Step 3: Create OLT or ONU based on device type
+      const deviceTypeMap = {
+        OLT: {
+          endpoint: "http://127.0.0.1:8000/api/olts/",
+          payload: {
+            name: uniqueName,
+            device_id: createdDeviceId,
+            hostname: "",
+            community: "",
+          },
+        },
+        ONU: {
+          endpoint: "http://127.0.0.1:8000/api/onus/",
+          payload: {
+            name: uniqueName,
+            device_id: createdDeviceId,
+          },
+        },
+      };
+  
+      const deviceType = device.name.toUpperCase();
+  
+      if (!deviceTypeMap[deviceType]) {
+        console.warn(`No additional POST request defined for device type: ${deviceType}`);
+        return deviceData;
+      }
+  
+      const { endpoint, payload } = deviceTypeMap[deviceType];
+  
+      console.log(`Sending payload to ${deviceType} API:`, payload);
+  
+      const typeResponse = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
+  
+      if (!typeResponse.ok) {
+        const errorData = await typeResponse.json();
         throw new Error(
-          `Failed to create device: ${errorData.message || response.statusText}`
+          `Failed to create ${deviceType}: ${errorData.message || typeResponse.statusText}`
         );
       }
-
-      const data = await response.json();
-      console.log("Device created:", data); // Debug response
-      return data;
+  
+      const typeData = await typeResponse.json();
+      console.log(`${deviceType} created:`, typeData);
+  
+      return deviceData;
     } catch (error) {
-      console.error("Error creating device:", error);
-      alert(`Failed to create device: ${error.message}`);
+      console.error("Error creating device or related entities:", error);
+      alert(`Failed to create device or related entities: ${error.message}`);
       throw error;
     }
   };
@@ -311,6 +398,61 @@ const MyMapV19 = () => {
     fetchDevices();
   }, []);
 
+  const updateDevice = async (deviceId, lat, lng) => {
+    try {
+      // Fetch the current device data to get existing fields
+      const fetchResponse = await fetch(
+        `http://127.0.0.1:8000/api/devices/${deviceId}/`
+      );
+      if (!fetchResponse.ok) {
+        const errorData = await fetchResponse.json();
+        throw new Error(
+          `Failed to fetch device: ${
+            errorData.message || fetchResponse.statusText
+          }`
+        );
+      }
+      const deviceData = await fetchResponse.json();
+
+      // Prepare the payload with all required fields
+      const payload = {
+        name: deviceData.name, // Preserve existing name
+        device_type_id: deviceData.device_type.id, // Preserve device_type_id
+        latitude: lat, // Update latitude
+        longitude: lng, // Update longitude
+        port_ids: deviceData.ports.map((port) => port.id) || [3], // Preserve or default port_ids
+      };
+
+      console.log("Updating device with payload:", payload); // Debug payload
+
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/devices/${deviceId}/`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `Failed to update device: ${errorData.message || response.statusText}`
+        );
+      }
+
+      const data = await response.json();
+      console.log(`Device ${deviceId} updated:`, data);
+      return data;
+    } catch (error) {
+      console.error("Error updating device:", error);
+      alert(`Failed to update device: ${error.message}`);
+      throw error;
+    }
+  };
+
   const saveCable = async (line) => {
     try {
       // Prepare the path data in the format expected by the backend
@@ -324,8 +466,8 @@ const MyMapV19 = () => {
 
       // Prepare the payload for the Cable model
       const payload = {
-        name: line.name || `Cable-${line.id}`, // Ensure unique name
-        type: "Fiber", // You can make this dynamic if needed
+        name: line.name || `Cable-${line.id || Date.now()}`, // Ensure unique name
+        type: "Fiber", // Matches Cable model
         path: path,
       };
 
@@ -337,8 +479,8 @@ const MyMapV19 = () => {
         : "http://127.0.0.1:8000/api/cables/";
       const method = isExistingCable ? "PUT" : "POST";
 
-      // Send request to the backend
-      const response = await fetch(url, {
+      // Send request to save or update the cable
+      const cableResponse = await fetch(url, {
         method: method,
         headers: {
           "Content-Type": "application/json",
@@ -346,20 +488,56 @@ const MyMapV19 = () => {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
+      if (!cableResponse.ok) {
+        const errorData = await cableResponse.json();
         throw new Error(
           `Failed to ${isExistingCable ? "update" : "save"} cable ${line.id}: ${
-            errorData.message || response.statusText
+            errorData.message || cableResponse.statusText
           }`
         );
       }
 
-      const data = await response.json();
-      console.log(`Cable ${isExistingCable ? "updated" : "saved"}:`, data);
-      return data;
+      const cableData = await cableResponse.json();
+      console.log(`Cable ${isExistingCable ? "updated" : "saved"}:`, cableData);
+
+      // Prepare the payload for the InterFace model
+      const interfacePayload = {
+        name: `Interface-${cableData.id}-${Date.now()}`, // Ensure unique name
+        start: line.startPortId || 3, // Use provided startPortId or default to 3
+        end: line.endPortId || 3, // Use provided endPortId or default to 3
+        cable_id: cableData.id, // Cable ID
+      };
+
+      // Send POST request to create the InterFace
+      const interfaceResponse = await fetch(
+        "http://127.0.0.1:8000/api/interfaces/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(interfacePayload),
+        }
+      );
+
+      if (!interfaceResponse.ok) {
+        const errorData = await interfaceResponse.json();
+        throw new Error(
+          `Failed to save interface for cable ${cableData.id}: ${
+            errorData.message || interfaceResponse.statusText
+          }`
+        );
+      }
+
+      const interfaceData = await interfaceResponse.json();
+      console.log("Interface saved:", interfaceData);
+
+      return { cable: cableData, interface: interfaceData };
     } catch (error) {
-      console.error(`Error ${line.id ? "updating" : "saving"} cable:`, error);
+      console.error(
+        `Error ${line.id ? "updating" : "saving"} cable or interface:`,
+        error
+      );
       throw error;
     }
   };
@@ -595,7 +773,6 @@ const MyMapV19 = () => {
   const handleMapRightClick = useCallback(
     (e) => {
       e.domEvent.preventDefault();
-      if (mapState.showSavedRoutes && !mapState.isSavedRoutesEditable) return;
 
       const clickedPoint = {
         lat: e.latLng.lat(),
@@ -671,28 +848,20 @@ const MyMapV19 = () => {
     }
   };
 
-  // const handleRightClickOnIcon = (icon, e) => {
-  //   e.domEvent.preventDefault();
-  //   if (mapState.showSavedRoutes && !mapState.isSavedRoutesEditable) return;
-
-  //   setMapState((prevState) => ({
-  //     ...prevState,
-  //     selectedPoint: { ...icon, x: e.domEvent.clientX, y: e.domEvent.clientY },
-  //     rightClickMarker: icon,
-  //     showModal: true,
-  //   }));
-  // };
-
   const handleRightClickOnIcon = (icon, e) => {
-    e.domEvent.preventDefault();
-    if (mapState.showSavedRoutes && !mapState.isSavedRoutesEditable) return;
-
+    if (e && e.domEvent) {
+      // Check for right-click (mouse button 2)
+      if (e.domEvent.button !== 2) return; // Ignore non-right-clicks
+      e.domEvent.preventDefault();
+      e.domEvent.stopPropagation();
+    }
+  
     // Check if the icon is saved (from API or savedIcons)
     const isSavedIcon =
       icon.id.startsWith("icon-api-") ||
       mapState.savedIcons.some((savedIcon) => savedIcon.id === icon.id);
     if (isSavedIcon && !mapState.isSavedRoutesEditable) return;
-
+  
     setMapState((prevState) => ({
       ...prevState,
       selectedPoint: { ...icon, x: e.domEvent.clientX, y: e.domEvent.clientY },
@@ -1021,20 +1190,22 @@ const MyMapV19 = () => {
 
   const handleIconClick = (icon, e) => {
     if (e && e.domEvent) {
+      // Check for left-click (mouse button 0)
+      if (e.domEvent.button !== 0) return; // Ignore non-left-clicks
       e.domEvent.preventDefault();
       e.domEvent.stopPropagation();
     }
-
+  
     // Check if the icon is saved (from API or savedIcons)
     const isSavedIcon =
       icon.id.startsWith("icon-api-") ||
       mapState.savedIcons.some((savedIcon) => savedIcon.id === icon.id);
     if (isSavedIcon && !mapState.isSavedRoutesEditable) return;
-
+  
     if (mapState.isSavedRoutesEditable || !mapState.showSavedRoutes) {
       const x = e.domEvent.clientX;
       const y = e.domEvent.clientY;
-
+  
       if (icon.type === "Splitter") {
         setMapState((prevState) => ({
           ...prevState,
@@ -1070,7 +1241,7 @@ const MyMapV19 = () => {
           selectedLineForActions: null,
           lineActionPosition: null,
           exactClickPosition: null,
-          showModal: true,
+          // showModal: true,
           selectedWaypoint: icon,
           waypointActionPosition: { x, y },
           selectedWaypointInfo: { isIcon: true, iconId: icon.id },
@@ -1084,6 +1255,12 @@ const MyMapV19 = () => {
   //     e.domEvent.preventDefault();
   //     e.domEvent.stopPropagation();
   //   }
+
+  //   // Check if the icon is saved (from API or savedIcons)
+  //   const isSavedIcon =
+  //     icon.id.startsWith("icon-api-") ||
+  //     mapState.savedIcons.some((savedIcon) => savedIcon.id === icon.id);
+  //   if (isSavedIcon && !mapState.isSavedRoutesEditable) return;
 
   //   if (mapState.isSavedRoutesEditable || !mapState.showSavedRoutes) {
   //     const x = e.domEvent.clientX;
@@ -1124,7 +1301,7 @@ const MyMapV19 = () => {
   //         selectedLineForActions: null,
   //         lineActionPosition: null,
   //         exactClickPosition: null,
-  //         showModal: false,
+  //         showModal: true,
   //         selectedWaypoint: icon,
   //         waypointActionPosition: { x, y },
   //         selectedWaypointInfo: { isIcon: true, iconId: icon.id },
@@ -1133,6 +1310,7 @@ const MyMapV19 = () => {
   //   }
   // };
 
+  
   const removeSelectedIcon = async () => {
     if (!mapState.selectedWaypointInfo || !mapState.selectedWaypointInfo.isIcon)
       return;
@@ -1305,6 +1483,31 @@ const MyMapV19 = () => {
       );
 
       let updatedSavedIcons = [...prevState.savedIcons];
+      let updatedDevices = [...prevState.updatedDevices];
+
+      // If the icon is from the API, track it for update
+      if (iconId.startsWith("icon-api-")) {
+        const deviceId = iconId.split("-")[2];
+        const existingUpdateIndex = updatedDevices.findIndex(
+          (device) => device.deviceId === deviceId
+        );
+        if (existingUpdateIndex !== -1) {
+          // Update existing entry
+          updatedDevices[existingUpdateIndex] = {
+            deviceId,
+            lat: newLat,
+            lng: newLng,
+          };
+        } else {
+          // Add new entry
+          updatedDevices.push({
+            deviceId,
+            lat: newLat,
+            lng: newLng,
+          });
+        }
+      }
+
       if (prevState.showSavedRoutes) {
         updatedSavedIcons = prevState.savedIcons.map((icon) =>
           icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
@@ -1387,9 +1590,111 @@ const MyMapV19 = () => {
         savedIcons: updatedSavedIcons,
         fiberLines: updatedFiberLines,
         savedPolylines: updatedSavedPolylines,
+        updatedDevices, // Store updated devices
       };
     });
   };
+
+  // const handleMarkerDragEnd = (iconId, e) => {
+  //   if (mapState.showSavedRoutes && !mapState.isSavedRoutesEditable) return;
+
+  //   const newLat = e.latLng.lat();
+  //   const newLng = e.latLng.lng();
+
+  //   setMapState((prevState) => {
+  //     const draggedIcon = prevState.imageIcons.find(
+  //       (icon) => icon.id === iconId
+  //     );
+  //     const updatedImageIcons = prevState.imageIcons.map((icon) =>
+  //       icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
+  //     );
+
+  //     let updatedSavedIcons = [...prevState.savedIcons];
+  //     if (prevState.showSavedRoutes) {
+  //       updatedSavedIcons = prevState.savedIcons.map((icon) =>
+  //         icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
+  //       );
+  //       localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
+  //     }
+
+  //     let updatedFiberLines = [...prevState.fiberLines];
+  //     let updatedSavedPolylines = [...prevState.savedPolylines];
+
+  //     if (
+  //       draggedIcon.type === "Splitter" &&
+  //       draggedIcon.linkedLineIndex !== undefined &&
+  //       draggedIcon.linkedWaypointIndex !== undefined
+  //     ) {
+  //       const targetArray = draggedIcon.isSavedLine
+  //         ? updatedSavedPolylines
+  //         : updatedFiberLines;
+  //       targetArray[draggedIcon.linkedLineIndex] = {
+  //         ...targetArray[draggedIcon.linkedLineIndex],
+  //         waypoints: targetArray[draggedIcon.linkedLineIndex].waypoints.map(
+  //           (wp, idx) =>
+  //             idx === draggedIcon.linkedWaypointIndex
+  //               ? { lat: newLat, lng: newLng }
+  //               : wp
+  //         ),
+  //       };
+  //       if (draggedIcon.isSavedLine) {
+  //         localStorage.setItem(
+  //           "savedPolylines",
+  //           JSON.stringify(updatedSavedPolylines)
+  //         );
+  //       }
+  //     }
+
+  //     const updateLines = (lines) =>
+  //       lines.map((line) => {
+  //         let updatedLine = { ...line };
+
+  //         if (
+  //           isSnappedToIcon(line.from.lat, line.from.lng) &&
+  //           line.from.lat === draggedIcon.lat &&
+  //           line.from.lng === draggedIcon.lng
+  //         ) {
+  //           updatedLine.from = { lat: newLat, lng: newLng };
+  //         }
+
+  //         if (
+  //           isSnappedToIcon(line.to.lat, line.to.lng) &&
+  //           line.to.lat === draggedIcon.lat &&
+  //           line.to.lng === draggedIcon.lng
+  //         ) {
+  //           updatedLine.to = { lat: newLat, lng: newLng };
+  //         }
+
+  //         if (line.waypoints) {
+  //           updatedLine.waypoints = line.waypoints.map((wp) =>
+  //             wp.lat === draggedIcon.lat && wp.lng === draggedIcon.lng
+  //               ? { lat: newLat, lng: newLng }
+  //               : wp
+  //           );
+  //         }
+
+  //         return updatedLine;
+  //       });
+
+  //     updatedFiberLines = updateLines(updatedFiberLines);
+  //     updatedSavedPolylines = updateLines(updatedSavedPolylines);
+
+  //     if (prevState.showSavedRoutes) {
+  //       localStorage.setItem(
+  //         "savedPolylines",
+  //         JSON.stringify(updatedSavedPolylines)
+  //       );
+  //     }
+
+  //     return {
+  //       ...prevState,
+  //       imageIcons: updatedImageIcons,
+  //       savedIcons: updatedSavedIcons,
+  //       fiberLines: updatedFiberLines,
+  //       savedPolylines: updatedSavedPolylines,
+  //     };
+  //   });
+  // };
 
   const generateUniqueId = () => {
     return `line-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -1732,16 +2037,49 @@ const MyMapV19 = () => {
         ? [...mapState.savedPolylines] // Save modified savedPolylines
         : [...mapState.fiberLines]; // Save new fiberLines
 
-      if (cablesToSave.length === 0) {
-        alert("No routes to save!");
-        return;
+      // Save updated devices (if any)
+      const updatedDevices = mapState.updatedDevices;
+      if (updatedDevices.length > 0) {
+        const deviceUpdateResults = await Promise.all(
+          updatedDevices.map(async (device) => {
+            try {
+              await updateDevice(device.deviceId, device.lat, device.lng);
+              return { deviceId: device.deviceId, success: true };
+            } catch (error) {
+              console.error(
+                `Failed to update device ${device.deviceId}:`,
+                error
+              );
+              return { deviceId: device.deviceId, success: false, error };
+            }
+          })
+        );
+
+        // Log any device update failures
+        const failedUpdates = deviceUpdateResults.filter(
+          (result) => !result.success
+        );
+        if (failedUpdates.length > 0) {
+          console.warn("Some device updates failed:", failedUpdates);
+          alert(
+            `Some devices failed to update: ${failedUpdates
+              .map((f) => `Device ${f.deviceId}: ${f.error.message}`)
+              .join(", ")}`
+          );
+        } else {
+          console.log("All devices updated successfully:", deviceUpdateResults);
+        }
       }
 
       // Save or update all cables concurrently
-      const savedCables = await Promise.all(
-        cablesToSave.map((line) => saveCable(line))
-      );
-      console.log("All cables processed:", savedCables);
+      if (cablesToSave.length > 0) {
+        const savedCables = await Promise.all(
+          cablesToSave.map((line) => saveCable(line))
+        );
+        console.log("All cables processed:", savedCables);
+      } else {
+        console.log("No cables to save.");
+      }
 
       // Fetch updated cables to refresh savedPolylines
       const response = await fetch("http://127.0.0.1:8000/api/cables/");
@@ -1788,21 +2126,101 @@ const MyMapV19 = () => {
             : Date.now(),
         }));
 
-      // Update state: clear fiberLines and refresh savedPolylines
+      // Update state: clear fiberLines, updatedDevices, and refresh savedPolylines
       setMapState((prevState) => ({
         ...prevState,
         fiberLines: [], // Clear temporary lines
         savedPolylines: fetchedPolylines, // Update with fetched cables
         showSavedRoutes: true, // Show saved routes after saving
         isSavedRoutesEditable: false, // Disable edit mode
+        updatedDevices: [], // Clear updated devices
       }));
 
-      alert("Polylines saved successfully!");
+      alert("Polylines and devices saved successfully!");
     } catch (error) {
-      console.error("Error saving routes:", error);
-      alert(`Failed to save routes: ${error.message}`);
+      console.error("Error saving routes or devices:", error);
+      alert(`Failed to save routes or devices: ${error.message}`);
     }
   };
+
+  // const saveRoute = async () => {
+  //   try {
+  //     // Combine fiberLines and savedPolylines (if in edit mode) to save all current cables
+  //     const cablesToSave = mapState.isSavedRoutesEditable
+  //       ? [...mapState.savedPolylines] // Save modified savedPolylines
+  //       : [...mapState.fiberLines]; // Save new fiberLines
+
+  //     if (cablesToSave.length === 0) {
+  //       alert("No routes to save!");
+  //       return;
+  //     }
+
+  //     // Save or update all cables concurrently
+  //     const savedCables = await Promise.all(
+  //       cablesToSave.map((line) => saveCable(line))
+  //     );
+  //     console.log("All cables processed:", savedCables);
+
+  //     // Fetch updated cables to refresh savedPolylines
+  //     const response = await fetch("http://127.0.0.1:8000/api/cables/");
+  //     if (!response.ok) {
+  //       throw new Error("Failed to fetch updated cables");
+  //     }
+  //     const cables = await response.json();
+  //     const fetchedPolylines = cables
+  //       .filter((cable) => {
+  //         const hasValidCoords =
+  //           cable.path &&
+  //           cable.path.from &&
+  //           cable.path.to &&
+  //           !isNaN(parseFloat(cable.path.from.lat)) &&
+  //           !isNaN(parseFloat(cable.path.from.lng)) &&
+  //           !isNaN(parseFloat(cable.path.to.lat)) &&
+  //           !isNaN(parseFloat(cable.path.to.lng));
+  //         return hasValidCoords;
+  //       })
+  //       .map((cable) => ({
+  //         id: `cable-${cable.id}`,
+  //         name: cable.name || `Cable-${cable.id}`,
+  //         from: {
+  //           lat: parseFloat(cable.path.from.lat),
+  //           lng: parseFloat(cable.path.from.lng),
+  //         },
+  //         to: {
+  //           lat: parseFloat(cable.path.to.lat),
+  //           lng: parseFloat(cable.path.to.lng),
+  //         },
+  //         waypoints: Array.isArray(cable.path.waypoints)
+  //           ? cable.path.waypoints
+  //               .filter(
+  //                 (wp) =>
+  //                   !isNaN(parseFloat(wp.lat)) && !isNaN(parseFloat(wp.lng))
+  //               )
+  //               .map((wp) => ({
+  //                 lat: parseFloat(wp.lat),
+  //                 lng: parseFloat(wp.lng),
+  //               }))
+  //           : [],
+  //         createdAt: cable.created_at
+  //           ? new Date(cable.created_at).getTime()
+  //           : Date.now(),
+  //       }));
+
+  //     // Update state: clear fiberLines and refresh savedPolylines
+  //     setMapState((prevState) => ({
+  //       ...prevState,
+  //       fiberLines: [], // Clear temporary lines
+  //       savedPolylines: fetchedPolylines, // Update with fetched cables
+  //       showSavedRoutes: true, // Show saved routes after saving
+  //       isSavedRoutesEditable: false, // Disable edit mode
+  //     }));
+
+  //     alert("Polylines saved successfully!");
+  //   } catch (error) {
+  //     console.error("Error saving routes:", error);
+  //     alert(`Failed to save routes: ${error.message}`);
+  //   }
+  // };
 
   useEffect(() => {
     const savedPolylines =
@@ -2308,92 +2726,6 @@ const MyMapV19 = () => {
     mapRef.current = map;
   }, []);
 
-  // Add custom controls when map loads
-  // useEffect(() => {
-  //   if (!mapRef.current || !window.google) return;
-
-  //   // Clear existing controls to prevent duplicates
-  //   mapRef.current.controls[
-  //     window.google.maps.ControlPosition.TOP_CENTER
-  //   ].clear();
-
-  //   const controlDiv = document.createElement("div");
-  //   controlDiv.className = "map-controls";
-
-  //   const buttons = [
-  //     {
-  //       imgSrc: "/img/Reset.jpg", // Ensure this file exists in your public/img folder
-  //       tooltip: "Reset Map",
-  //       onClick: resetMap,
-  //     },
-  //     {
-  //       imgSrc: "/img/Save.png",
-  //       tooltip: "Save Route",
-  //       onClick: saveRoute,
-  //     },
-  //     {
-  //       imgSrc: mapState.showSavedRoutes
-  //         ? "/img/Eye-close.png"
-  //         : "/img/Eye.png",
-  //       tooltip: mapState.showSavedRoutes
-  //         ? "Hide Previous Routes"
-  //         : "Show Previous Routes",
-  //       onClick: togglePreviousRoutes,
-  //     },
-  //     ...(mapState.showSavedRoutes
-  //       ? [
-  //           {
-  //             imgSrc: mapState.isSavedRoutesEditable
-  //               ? "/img/Edit-not.png"
-  //               : "/img/Edit.png",
-  //             tooltip: mapState.isSavedRoutesEditable
-  //               ? "Disable Editing"
-  //               : "Enable Editing",
-  //             onClick: toggleSavedRoutesEditability,
-  //           },
-  //         ]
-  //       : []),
-  //   ];
-
-  //   buttons.forEach(({ imgSrc, tooltip, onClick }) => {
-  //     const button = document.createElement("button");
-  //     button.className = "map-control-button";
-  //     if (imgSrc) {
-  //       const img = document.createElement("img");
-  //       img.src = imgSrc;
-  //       img.style.width = "20px";
-  //       img.style.height = "20px";
-  //       button.appendChild(img);
-  //     }
-  //     button.title = tooltip;
-  //     button.addEventListener("click", onClick);
-  //     controlDiv.appendChild(button);
-  //   });
-  //   // Add control to TOP_CENTER
-  //   mapRef.current.controls[window.google.maps.ControlPosition.TOP_CENTER].push(
-  //     controlDiv
-  //   );
-
-  //   // Debug log
-  //   console.log("Controls added:", controlDiv);
-
-  //   // Cleanup on unmount or state change
-  //   return () => {
-  //     if (mapRef.current && window.google) {
-  //       mapRef.current.controls[
-  //         window.google.maps.ControlPosition.TOP_CENTER
-  //       ].clear();
-  //     }
-  //   };
-  // }, [
-  //   mapState.showSavedRoutes,
-  //   mapState.isSavedRoutesEditable,
-  //   resetMap,
-  //   saveRoute,
-  //   togglePreviousRoutes,
-  //   toggleSavedRoutesEditability,
-  // ]);
-
   useEffect(() => {
     if (!mapRef.current || !window.google) return;
 
@@ -2416,7 +2748,7 @@ const MyMapV19 = () => {
           ? "/img/Edit-not.png"
           : "/img/Edit.png",
         tooltip: mapState.isSavedRoutesEditable
-          ? "Disable Editing"
+          ? "Save Before Disable Editing"
           : "Enable Editing",
         onClick: toggleSavedRoutesEditability,
       },
@@ -2468,23 +2800,34 @@ const MyMapV19 = () => {
         options={{ styles: mapStyles, disableDefaultUI: false }}
         onLoad={onMapLoad} // Add onLoad handler
       >
-        {mapState.imageIcons.map((icon) => (
-          <MarkerF
-            key={icon.id}
-            position={{ lat: icon.lat, lng: icon.lng }}
-            draggable={
-              mapState.isSavedRoutesEditable || !mapState.showSavedRoutes
-            }
-            icon={{
-              url: icon.imageUrl || "/img/default-icon.png", // Fallback,
-              scaledSize: new google.maps.Size(30, 30),
-              anchor: new google.maps.Point(15, 15),
-            }}
-            onDragEnd={(e) => handleMarkerDragEnd(icon.id, e)}
-            onRightClick={(e) => handleRightClickOnIcon(icon, e)}
-            onClick={(e) => handleIconClick(icon, e)}
-          />
-        ))}
+
+        {mapState.imageIcons.map((icon) => {
+          // Check if the icon is saved (from API or savedIcons)
+          const isSavedIcon =
+            icon.id.startsWith("icon-api-") ||
+            mapState.savedIcons.some((savedIcon) => savedIcon.id === icon.id);
+
+          // Only allow dragging if edit mode is enabled for saved icons; non-saved icons are always draggable
+          const isDraggable = isSavedIcon
+            ? mapState.isSavedRoutesEditable
+            : true;
+
+          return (
+            <MarkerF
+              key={icon.id}
+              position={{ lat: icon.lat, lng: icon.lng }}
+              draggable={isDraggable}
+              icon={{
+                url: icon.imageUrl || "/img/default-icon.png", // Fallback
+                scaledSize: new google.maps.Size(30, 30),
+                anchor: new google.maps.Point(15, 15),
+              }}
+              onDragEnd={(e) => handleMarkerDragEnd(icon.id, e)}
+              onRightClick={(e) => handleRightClickOnIcon(icon, e)}
+              onClick={(e) => handleIconClick(icon, e)}
+            />
+          );
+        })}
 
         {mapState.rightClickMarker && (
           <MarkerF
