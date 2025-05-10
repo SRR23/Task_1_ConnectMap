@@ -222,22 +222,16 @@ const MyMapV19 = () => {
     fetchDeviceTypes();
   }, []);
 
-  // Function to create a device in the backend
   const createDevice = async (device, lat, lng, nextNumber) => {
-    // Generate a unique name by appending the nextNumber
     const uniqueName = `${device.name}-${nextNumber}`;
     try {
-      // Step 1: Create the device in the devices API
       const devicePayload = {
         name: uniqueName,
-        device_type_id: device.id, // Use id for device_type
-        latitude: lat, // Send lat
-        longitude: lng, // Send lng
-        // Removed port_ids since Device no longer has a ports ManyToManyField
+        device_type_id: device.id,
+        latitude: lat,
+        longitude: lng,
       };
-  
-      console.log("Sending payload to devices API:", devicePayload);
-  
+
       const deviceResponse = await fetch("http://127.0.0.1:8000/api/devices/", {
         method: "POST",
         headers: {
@@ -245,33 +239,30 @@ const MyMapV19 = () => {
         },
         body: JSON.stringify(devicePayload),
       });
-  
+
       if (!deviceResponse.ok) {
         const errorData = await deviceResponse.json();
         throw new Error(
-          `Failed to create device: ${errorData.message || deviceResponse.statusText}`
+          `Failed to create device: ${
+            errorData.message || deviceResponse.statusText
+          }`
         );
       }
-  
+
       const deviceData = await deviceResponse.json();
-      console.log("Device created:", deviceData);
-  
-      // Step 2: Create default ports for the device
       const createdDeviceId = deviceData.id;
-      const defaultPorts = [
-        { name: `Port1-${uniqueName}`, position: 1 }, // Ensure unique port name
-        // Add more default ports if needed, e.g., { name: `Port2-${uniqueName}`, position: 2 }
-      ];
-  
+
+      // Create default ports
+      const defaultPorts = [{ name: `Port1-${uniqueName}`, position: 1 }];
+      const createdPortIds = [];
+
       for (const port of defaultPorts) {
         const portPayload = {
           name: port.name,
           position: port.position,
-          device_id: createdDeviceId, // Associate with the new device
+          device_id: createdDeviceId,
         };
-  
-        console.log("Sending payload to ports API:", portPayload);
-  
+
         const portResponse = await fetch("http://127.0.0.1:8000/api/ports/", {
           method: "POST",
           headers: {
@@ -279,19 +270,21 @@ const MyMapV19 = () => {
           },
           body: JSON.stringify(portPayload),
         });
-  
+
         if (!portResponse.ok) {
           const errorData = await portResponse.json();
           throw new Error(
-            `Failed to create port: ${errorData.message || portResponse.statusText}`
+            `Failed to create port: ${
+              errorData.message || portResponse.statusText
+            }`
           );
         }
-  
+
         const portData = await portResponse.json();
-        console.log("Port created:", portData);
+        createdPortIds.push(portData.id);
       }
-  
-      // Step 3: Create OLT or ONU based on device type
+
+      // Handle OLT or ONU creation (unchanged)
       const deviceTypeMap = {
         OLT: {
           endpoint: "http://127.0.0.1:8000/api/olts/",
@@ -310,37 +303,29 @@ const MyMapV19 = () => {
           },
         },
       };
-  
+
       const deviceType = device.name.toUpperCase();
-  
-      if (!deviceTypeMap[deviceType]) {
-        console.warn(`No additional POST request defined for device type: ${deviceType}`);
-        return deviceData;
+      if (deviceTypeMap[deviceType]) {
+        const { endpoint, payload } = deviceTypeMap[deviceType];
+        const typeResponse = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!typeResponse.ok) {
+          const errorData = await typeResponse.json();
+          throw new Error(
+            `Failed to create ${deviceType}: ${
+              errorData.message || typeResponse.statusText
+            }`
+          );
+        }
       }
-  
-      const { endpoint, payload } = deviceTypeMap[deviceType];
-  
-      console.log(`Sending payload to ${deviceType} API:`, payload);
-  
-      const typeResponse = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-  
-      if (!typeResponse.ok) {
-        const errorData = await typeResponse.json();
-        throw new Error(
-          `Failed to create ${deviceType}: ${errorData.message || typeResponse.statusText}`
-        );
-      }
-  
-      const typeData = await typeResponse.json();
-      console.log(`${deviceType} created:`, typeData);
-  
-      return deviceData;
+
+      return { ...deviceData, portIds: createdPortIds };
     } catch (error) {
       console.error("Error creating device or related entities:", error);
       alert(`Failed to create device or related entities: ${error.message}`);
@@ -349,6 +334,7 @@ const MyMapV19 = () => {
   };
 
   // Fetch devices from the backend and update state
+
   useEffect(() => {
     const fetchDevices = async () => {
       try {
@@ -357,7 +343,6 @@ const MyMapV19 = () => {
           throw new Error(`Failed to fetch devices: ${response.statusText}`);
         }
         const devices = await response.json();
-        console.log("Fetched devices:", devices);
 
         const fetchedIcons = devices
           .filter((device) => {
@@ -377,16 +362,18 @@ const MyMapV19 = () => {
             lat: device.latitude,
             lng: device.longitude,
             type: device.device_type.name,
-            id: `icon-api-${device.id}`, // No timestamp needed if replacing
+            id: `icon-api-${device.id}`,
             imageUrl: device.device_type.icon || "/img/default-icon.png",
             splitterRatio: device.device_type.name === "Splitter" ? "" : null,
             name: device.device_type.name === "Splitter" ? "" : null,
             nextLineNumber: device.device_type.name === "Splitter" ? 1 : null,
+            deviceId: device.id,
+            portIds: device.ports.map((port) => port.id), // Include port IDs
           }));
 
         setMapState((prevState) => ({
           ...prevState,
-          imageIcons: fetchedIcons, // Replace instead of append
+          imageIcons: fetchedIcons,
           nextNumber: fetchedIcons.length + 1,
         }));
       } catch (error) {
@@ -455,7 +442,6 @@ const MyMapV19 = () => {
 
   const saveCable = async (line) => {
     try {
-      // Prepare the path data in the format expected by the backend
       const path = {
         from: { lat: line.from.lat, lng: line.from.lng },
         waypoints: line.waypoints
@@ -464,14 +450,12 @@ const MyMapV19 = () => {
         to: { lat: line.to.lat, lng: line.to.lng },
       };
 
-      // Prepare the payload for the Cable model
       const payload = {
-        name: line.name || `Cable-${line.id || Date.now()}`, // Ensure unique name
-        type: "Fiber", // Matches Cable model
+        name: line.name || `Cable-${line.id || Date.now()}`,
+        type: "Fiber",
         path: path,
       };
 
-      // Check if the cable is an existing one (has ID like cable-<id>)
       const isExistingCable = line.id && line.id.startsWith("cable-");
       const cableId = isExistingCable ? line.id.split("-")[1] : null;
       const url = isExistingCable
@@ -479,7 +463,6 @@ const MyMapV19 = () => {
         : "http://127.0.0.1:8000/api/cables/";
       const method = isExistingCable ? "PUT" : "POST";
 
-      // Send request to save or update the cable
       const cableResponse = await fetch(url, {
         method: method,
         headers: {
@@ -500,15 +483,43 @@ const MyMapV19 = () => {
       const cableData = await cableResponse.json();
       console.log(`Cable ${isExistingCable ? "updated" : "saved"}:`, cableData);
 
-      // Prepare the payload for the InterFace model
+      // Validate port IDs
+      if (!line.startPortId || !line.endPortId) {
+        // console.warn(`Missing port IDs for cable ${cableData.id}:`, {
+        //   startPortId: line.startPortId,
+        //   endPortId: line.endPortId,
+        // });
+
+        // Optionally, fetch or create ports for the devices
+        const startDeviceId = line.startDeviceId;
+        const endDeviceId = line.endDeviceId;
+
+        if (startDeviceId && !line.startPortId) {
+          const port = await createOrFetchPort(startDeviceId, cableData.id);
+          line.startPortId = port.id;
+        }
+        if (endDeviceId && !line.endPortId) {
+          const port = await createOrFetchPort(endDeviceId, cableData.id);
+          line.endPortId = port.id;
+        }
+
+        // If still no valid port IDs, throw an error
+        // if (!line.startPortId || !line.endPortId) {
+        //   throw new Error(
+        //     `Cannot save interface for cable ${cableData.id}: Missing valid port IDs`
+        //   );
+        // }
+      }
+
       const interfacePayload = {
-        name: `Interface-${cableData.id}-${Date.now()}`, // Ensure unique name
-        start: line.startPortId || 3, // Use provided startPortId or default to 3
-        end: line.endPortId || 3, // Use provided endPortId or default to 3
-        cable_id: cableData.id, // Cable ID
+        name: `Interface-${cableData.id}-${Date.now()}`,
+        start: line.startPortId,
+        end: line.endPortId,
+        cable_id: cableData.id,
       };
 
-      // Send POST request to create the InterFace
+      console.log("Interface payload:", interfacePayload); // Debug payload
+
       const interfaceResponse = await fetch(
         "http://127.0.0.1:8000/api/interfaces/",
         {
@@ -520,14 +531,14 @@ const MyMapV19 = () => {
         }
       );
 
-      if (!interfaceResponse.ok) {
-        const errorData = await interfaceResponse.json();
-        throw new Error(
-          `Failed to save interface for cable ${cableData.id}: ${
-            errorData.message || interfaceResponse.statusText
-          }`
-        );
-      }
+      // if (!interfaceResponse.ok) {
+      //   const errorData = await interfaceResponse.json();
+      //   throw new Error(
+      //     `Failed to save interface for cable ${cableData.id}: ${
+      //       errorData.message || interfaceResponse.statusText
+      //     }`
+      //   );
+      // }
 
       const interfaceData = await interfaceResponse.json();
       console.log("Interface saved:", interfaceData);
@@ -691,13 +702,6 @@ const MyMapV19 = () => {
     }
   }, [mapState.showTerminationModal]);
 
-  // const isInteractionAllowed = (isSavedLine) => {
-  //   return (
-  //     !isSavedLine ||
-  //     (mapState.showSavedRoutes && mapState.isSavedRoutesEditable)
-  //   );
-  // };
-
   const isInteractionAllowed = (isSavedLine) => {
     return !isSavedLine || mapState.isSavedRoutesEditable;
   };
@@ -747,29 +751,6 @@ const MyMapV19 = () => {
     ).length;
   };
 
-  const getConnectedLines = (splitter) => {
-    if (!splitter.ratioSetTimestamp) return [];
-    return mapState.fiberLines.filter(
-      (line) =>
-        line.createdAt > splitter.ratioSetTimestamp &&
-        ((line.from.lat === splitter.lat && line.from.lng === splitter.lng) ||
-          (line.to.lat === splitter.lat && line.to.lng === splitter.lng) ||
-          (line.waypoints &&
-            line.waypoints.some(
-              (wp) => wp.lat === splitter.lat && wp.lng === splitter.lng
-            )))
-    );
-  };
-
-  const getAvailableRatios = (splitter) => {
-    const ratios = ["1:2", "1:4", "1:8", "1:16", "1:32"];
-    const connectedCount = getConnectedLinesCount(splitter);
-    return ratios.filter((ratio) => {
-      const ratioNum = getRatioNumber(ratio);
-      return ratioNum >= connectedCount;
-    });
-  };
-
   const handleMapRightClick = useCallback(
     (e) => {
       e.domEvent.preventDefault();
@@ -802,12 +783,10 @@ const MyMapV19 = () => {
   // Modify it for API call to get image URL
   const handleSelection = async (type, icon) => {
     const { selectedPoint, nextNumber } = mapState;
-    // Fallback URL if icon is invalid
     const validImageUrl =
-      icon && typeof icon === "string" ? icon : "/img/default-icon.png"; // Replace with a valid default icon path
-
-    // Find the device object from deviceTypes
+      icon && typeof icon === "string" ? icon : "/img/default-icon.png";
     const selectedDevice = deviceTypes.find((device) => device.name === type);
+
     if (!selectedDevice) {
       console.error(`Device type "${type}" not found in deviceTypes`);
       alert(`Error: Device type "${type}" not found.`);
@@ -815,15 +794,13 @@ const MyMapV19 = () => {
     }
 
     try {
-      // Create device in backend
-      await createDevice(
+      const deviceData = await createDevice(
         selectedDevice,
         selectedPoint.lat,
         selectedPoint.lng,
         nextNumber
       );
 
-      // Update state after successful creation
       setMapState((prevState) => ({
         ...prevState,
         selectedType: type,
@@ -833,18 +810,20 @@ const MyMapV19 = () => {
           {
             ...selectedPoint,
             type,
-            id: `icon-${nextNumber}`,
-            imageUrl: validImageUrl, // Store as imageUrl for consistency
+            id: `icon-api-${deviceData.id}`,
+            imageUrl: validImageUrl,
             splitterRatio: type === "Splitter" ? "" : null,
             name: type === "Splitter" ? "" : null,
             nextLineNumber: type === "Splitter" ? 1 : null,
+            deviceId: deviceData.id,
+            portIds: deviceData.portIds || [], // Store port IDs
           },
         ],
         nextNumber: nextNumber + 1,
         rightClickMarker: null,
       }));
     } catch (error) {
-      // Error is already handled in createDevice
+      // Error handled in createDevice
     }
   };
 
@@ -855,13 +834,13 @@ const MyMapV19 = () => {
       e.domEvent.preventDefault();
       e.domEvent.stopPropagation();
     }
-  
+
     // Check if the icon is saved (from API or savedIcons)
     const isSavedIcon =
       icon.id.startsWith("icon-api-") ||
       mapState.savedIcons.some((savedIcon) => savedIcon.id === icon.id);
     if (isSavedIcon && !mapState.isSavedRoutesEditable) return;
-  
+
     setMapState((prevState) => ({
       ...prevState,
       selectedPoint: { ...icon, x: e.domEvent.clientX, y: e.domEvent.clientY },
@@ -902,93 +881,6 @@ const MyMapV19 = () => {
         waypointActionPosition: null,
         selectedWaypointInfo: null,
       }));
-    }
-  };
-
-  const removeConnectedLine = (lineId) => {
-    setMapState((prevState) => {
-      const updatedFiberLines = prevState.fiberLines.filter(
-        (line) => line.id !== lineId
-      );
-      const updatedSavedPolylines = prevState.savedPolylines.filter(
-        (line) => line.id !== lineId
-      );
-      const connectedLines = getConnectedLines(
-        prevState.selectedSplitter
-      ).filter((line) => line.id !== lineId);
-      const updatedImageIcons = prevState.imageIcons.map((icon) =>
-        icon.id === prevState.selectedSplitter?.id &&
-        connectedLines.length === 0
-          ? { ...icon, nextLineNumber: 1 }
-          : icon
-      );
-      const updatedSavedIcons = prevState.savedIcons.map((icon) =>
-        icon.id === prevState.selectedSplitter?.id &&
-        connectedLines.length === 0
-          ? { ...icon, nextLineNumber: 1 }
-          : icon
-      );
-      if (prevState.showSavedRoutes) {
-        localStorage.setItem(
-          "savedPolylines",
-          JSON.stringify(updatedSavedPolylines)
-        );
-        localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
-      }
-      return {
-        ...prevState,
-        fiberLines: updatedFiberLines,
-        savedPolylines: updatedSavedPolylines,
-        imageIcons: updatedImageIcons,
-        savedIcons: updatedSavedIcons,
-        editingLineId: null,
-        tempLineName: "",
-      };
-    });
-  };
-
-  const handleEditLine = (lineId, currentName) => {
-    setMapState((prevState) => ({
-      ...prevState,
-      editingLineId: lineId,
-      tempLineName: currentName || "",
-    }));
-  };
-
-  const handleLineNameChange = (e) => {
-    setMapState((prevState) => ({
-      ...prevState,
-      tempLineName: e.target.value,
-    }));
-  };
-
-  const handleSave = () => {
-    if (mapState.editingLineId) {
-      setMapState((prevState) => {
-        const updatedFiberLines = prevState.fiberLines.map((line) =>
-          line.id === prevState.editingLineId
-            ? { ...line, name: prevState.tempLineName }
-            : line
-        );
-        const updatedSavedPolylines = prevState.savedPolylines.map((line) =>
-          line.id === prevState.editingLineId
-            ? { ...line, name: prevState.tempLineName }
-            : line
-        );
-        if (prevState.showSavedRoutes) {
-          localStorage.setItem(
-            "savedPolylines",
-            JSON.stringify(updatedSavedPolylines)
-          );
-        }
-        return {
-          ...prevState,
-          fiberLines: updatedFiberLines,
-          savedPolylines: updatedSavedPolylines,
-          editingLineId: null,
-          tempLineName: "",
-        };
-      });
     }
   };
 
@@ -1195,17 +1087,17 @@ const MyMapV19 = () => {
       e.domEvent.preventDefault();
       e.domEvent.stopPropagation();
     }
-  
+
     // Check if the icon is saved (from API or savedIcons)
     const isSavedIcon =
       icon.id.startsWith("icon-api-") ||
       mapState.savedIcons.some((savedIcon) => savedIcon.id === icon.id);
     if (isSavedIcon && !mapState.isSavedRoutesEditable) return;
-  
+
     if (mapState.isSavedRoutesEditable || !mapState.showSavedRoutes) {
       const x = e.domEvent.clientX;
       const y = e.domEvent.clientY;
-  
+
       if (icon.type === "Splitter") {
         setMapState((prevState) => ({
           ...prevState,
@@ -1250,67 +1142,6 @@ const MyMapV19 = () => {
     }
   };
 
-  // const handleIconClick = (icon, e) => {
-  //   if (e && e.domEvent) {
-  //     e.domEvent.preventDefault();
-  //     e.domEvent.stopPropagation();
-  //   }
-
-  //   // Check if the icon is saved (from API or savedIcons)
-  //   const isSavedIcon =
-  //     icon.id.startsWith("icon-api-") ||
-  //     mapState.savedIcons.some((savedIcon) => savedIcon.id === icon.id);
-  //   if (isSavedIcon && !mapState.isSavedRoutesEditable) return;
-
-  //   if (mapState.isSavedRoutesEditable || !mapState.showSavedRoutes) {
-  //     const x = e.domEvent.clientX;
-  //     const y = e.domEvent.clientY;
-
-  //     if (icon.type === "Splitter") {
-  //       setMapState((prevState) => ({
-  //         ...prevState,
-  //         selectedLineForActions: null,
-  //         lineActionPosition: null,
-  //         exactClickPosition: null,
-  //         showModal: false,
-  //         selectedSplitter: icon,
-  //         showSplitterModal: true,
-  //         splitterRatio: icon.splitterRatio || "",
-  //         splitterInput: icon.name || "",
-  //         waypointActionPosition: { x, y },
-  //         editingLineId: null,
-  //         tempLineName: "",
-  //       }));
-  //     } else if (icon.type === "Termination") {
-  //       setMapState((prevState) => ({
-  //         ...prevState,
-  //         selectedLineForActions: null,
-  //         lineActionPosition: null,
-  //         exactClickPosition: null,
-  //         showModal: false,
-  //         showTerminationModal: true,
-  //         selectedTermination: icon,
-  //         pendingConnection: { leftColor: null, rightColor: null },
-  //         waypointActionPosition: { x, y },
-  //       }));
-  //       initializeNodesAndEdges(icon);
-  //       setDrawingSource(null);
-  //     } else {
-  //       setMapState((prevState) => ({
-  //         ...prevState,
-  //         selectedLineForActions: null,
-  //         lineActionPosition: null,
-  //         exactClickPosition: null,
-  //         showModal: true,
-  //         selectedWaypoint: icon,
-  //         waypointActionPosition: { x, y },
-  //         selectedWaypointInfo: { isIcon: true, iconId: icon.id },
-  //       }));
-  //     }
-  //   }
-  // };
-
-  
   const removeSelectedIcon = async () => {
     if (!mapState.selectedWaypointInfo || !mapState.selectedWaypointInfo.isIcon)
       return;
@@ -1595,175 +1426,18 @@ const MyMapV19 = () => {
     });
   };
 
-  // const handleMarkerDragEnd = (iconId, e) => {
-  //   if (mapState.showSavedRoutes && !mapState.isSavedRoutesEditable) return;
-
-  //   const newLat = e.latLng.lat();
-  //   const newLng = e.latLng.lng();
-
-  //   setMapState((prevState) => {
-  //     const draggedIcon = prevState.imageIcons.find(
-  //       (icon) => icon.id === iconId
-  //     );
-  //     const updatedImageIcons = prevState.imageIcons.map((icon) =>
-  //       icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
-  //     );
-
-  //     let updatedSavedIcons = [...prevState.savedIcons];
-  //     if (prevState.showSavedRoutes) {
-  //       updatedSavedIcons = prevState.savedIcons.map((icon) =>
-  //         icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
-  //       );
-  //       localStorage.setItem("savedIcons", JSON.stringify(updatedSavedIcons));
-  //     }
-
-  //     let updatedFiberLines = [...prevState.fiberLines];
-  //     let updatedSavedPolylines = [...prevState.savedPolylines];
-
-  //     if (
-  //       draggedIcon.type === "Splitter" &&
-  //       draggedIcon.linkedLineIndex !== undefined &&
-  //       draggedIcon.linkedWaypointIndex !== undefined
-  //     ) {
-  //       const targetArray = draggedIcon.isSavedLine
-  //         ? updatedSavedPolylines
-  //         : updatedFiberLines;
-  //       targetArray[draggedIcon.linkedLineIndex] = {
-  //         ...targetArray[draggedIcon.linkedLineIndex],
-  //         waypoints: targetArray[draggedIcon.linkedLineIndex].waypoints.map(
-  //           (wp, idx) =>
-  //             idx === draggedIcon.linkedWaypointIndex
-  //               ? { lat: newLat, lng: newLng }
-  //               : wp
-  //         ),
-  //       };
-  //       if (draggedIcon.isSavedLine) {
-  //         localStorage.setItem(
-  //           "savedPolylines",
-  //           JSON.stringify(updatedSavedPolylines)
-  //         );
-  //       }
-  //     }
-
-  //     const updateLines = (lines) =>
-  //       lines.map((line) => {
-  //         let updatedLine = { ...line };
-
-  //         if (
-  //           isSnappedToIcon(line.from.lat, line.from.lng) &&
-  //           line.from.lat === draggedIcon.lat &&
-  //           line.from.lng === draggedIcon.lng
-  //         ) {
-  //           updatedLine.from = { lat: newLat, lng: newLng };
-  //         }
-
-  //         if (
-  //           isSnappedToIcon(line.to.lat, line.to.lng) &&
-  //           line.to.lat === draggedIcon.lat &&
-  //           line.to.lng === draggedIcon.lng
-  //         ) {
-  //           updatedLine.to = { lat: newLat, lng: newLng };
-  //         }
-
-  //         if (line.waypoints) {
-  //           updatedLine.waypoints = line.waypoints.map((wp) =>
-  //             wp.lat === draggedIcon.lat && wp.lng === draggedIcon.lng
-  //               ? { lat: newLat, lng: newLng }
-  //               : wp
-  //           );
-  //         }
-
-  //         return updatedLine;
-  //       });
-
-  //     updatedFiberLines = updateLines(updatedFiberLines);
-  //     updatedSavedPolylines = updateLines(updatedSavedPolylines);
-
-  //     if (prevState.showSavedRoutes) {
-  //       localStorage.setItem(
-  //         "savedPolylines",
-  //         JSON.stringify(updatedSavedPolylines)
-  //       );
-  //     }
-
-  //     return {
-  //       ...prevState,
-  //       imageIcons: updatedImageIcons,
-  //       savedIcons: updatedSavedIcons,
-  //       fiberLines: updatedFiberLines,
-  //       savedPolylines: updatedSavedPolylines,
-  //     };
-  //   });
-  // };
-
   const generateUniqueId = () => {
     return `line-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  };
-
-  const handleSplitterRatioChange = (e) => {
-    const newRatio = e.target.value;
-    if (newRatio === "") return;
-
-    const connectedLines = getConnectedLinesCount(mapState.selectedSplitter);
-    const newRatioNum = getRatioNumber(newRatio);
-
-    if (newRatioNum < connectedLines) {
-      alert(
-        `Cannot select ${newRatio}. It must be at least equal to the number of connected lines (${connectedLines}).`
-      );
-      return;
-    }
-
-    const timestamp = mapState.selectedSplitter.ratioSetTimestamp || Date.now();
-    setMapState((prevState) => ({
-      ...prevState,
-      splitterRatio: newRatio,
-      imageIcons: prevState.imageIcons.map((icon) =>
-        icon.id === prevState.selectedSplitter?.id
-          ? { ...icon, splitterRatio: newRatio, ratioSetTimestamp: timestamp }
-          : icon
-      ),
-      savedIcons: prevState.savedIcons.map((icon) =>
-        icon.id === prevState.selectedSplitter?.id
-          ? { ...icon, splitterRatio: newRatio, ratioSetTimestamp: timestamp }
-          : icon
-      ),
-    }));
-  };
-
-  const closeSplitterModal = () => {
-    setMapState((prevState) => ({
-      ...prevState,
-      showSplitterModal: false,
-      selectedSplitter: null,
-      splitterInput: "",
-      editingLineId: null,
-      tempLineName: "",
-    }));
-  };
-
-  const handleSplitterInputChange = (e) => {
-    const newName = e.target.value;
-    setMapState((prevState) => ({
-      ...prevState,
-      splitterInput: newName,
-      imageIcons: prevState.imageIcons.map((icon) =>
-        icon.id === prevState.selectedSplitter?.id
-          ? { ...icon, name: newName }
-          : icon
-      ),
-      savedIcons: prevState.savedIcons.map((icon) =>
-        icon.id === prevState.selectedSplitter?.id
-          ? { ...icon, name: newName }
-          : icon
-      ),
-    }));
   };
 
   const addFiberLine = () => {
     const { rightClickMarker } = mapState;
     if (!rightClickMarker) return;
 
+    const nearestIcon = findNearestIcon(
+      rightClickMarker.lat,
+      rightClickMarker.lng
+    );
     const newFiberLine = {
       id: generateUniqueId(),
       from: { lat: rightClickMarker.lat, lng: rightClickMarker.lng },
@@ -1774,6 +1448,13 @@ const MyMapV19 = () => {
       waypoints: [],
       createdAt: Date.now(),
       name: "",
+      startDeviceId: nearestIcon ? nearestIcon.deviceId : null,
+      startPortId:
+        nearestIcon && nearestIcon.portIds.length > 0
+          ? nearestIcon.portIds[0]
+          : null,
+      endDeviceId: null,
+      endPortId: null,
     };
 
     setMapState((prevState) => ({
@@ -1827,11 +1508,6 @@ const MyMapV19 = () => {
         }
 
         if (!isSnappedToIcon(line.from.lat, line.from.lng)) {
-          console.log("Line start connected to splitter:", {
-            lineId: line.id,
-            splitterId: nearestIcon.id,
-            ratio: nearestIcon.splitterRatio,
-          });
           const splitter = prevState.imageIcons.find(
             (icon) => icon.id === nearestIcon.id
           );
@@ -1842,6 +1518,9 @@ const MyMapV19 = () => {
             from: newFrom,
             name: newLineName,
             createdAt: Date.now(),
+            startDeviceId: nearestIcon.deviceId,
+            startPortId:
+              nearestIcon.portIds.length > 0 ? nearestIcon.portIds[0] : null,
           };
           const updatedImageIcons = prevState.imageIcons.map((icon) =>
             icon.id === nearestIcon.id
@@ -1860,6 +1539,11 @@ const MyMapV19 = () => {
         ...line,
         from: newFrom,
         createdAt: line.createdAt || Date.now(),
+        startDeviceId: nearestIcon ? nearestIcon.deviceId : null,
+        startPortId:
+          nearestIcon && nearestIcon.portIds.length > 0
+            ? nearestIcon.portIds[0]
+            : null,
       };
       return { ...prevState, fiberLines: updatedLines };
     });
@@ -1904,11 +1588,6 @@ const MyMapV19 = () => {
         }
 
         if (!isSnappedToIcon(line.to.lat, line.to.lng)) {
-          console.log("Line end connected to splitter:", {
-            lineId: line.id,
-            splitterId: nearestIcon.id,
-            ratio: nearestIcon.splitterRatio,
-          });
           const splitter = prevState.imageIcons.find(
             (icon) => icon.id === nearestIcon.id
           );
@@ -1919,6 +1598,9 @@ const MyMapV19 = () => {
             to: newTo,
             name: newLineName,
             createdAt: Date.now(),
+            endDeviceId: nearestIcon.deviceId,
+            endPortId:
+              nearestIcon.portIds.length > 0 ? nearestIcon.portIds[0] : null,
           };
           const updatedImageIcons = prevState.imageIcons.map((icon) =>
             icon.id === nearestIcon.id
@@ -1937,6 +1619,11 @@ const MyMapV19 = () => {
         ...line,
         to: newTo,
         createdAt: line.createdAt || Date.now(),
+        endDeviceId: nearestIcon ? nearestIcon.deviceId : null,
+        endPortId:
+          nearestIcon && nearestIcon.portIds.length > 0
+            ? nearestIcon.portIds[0]
+            : null,
       };
       return { ...prevState, fiberLines: updatedLines };
     });
@@ -2032,12 +1719,10 @@ const MyMapV19 = () => {
 
   const saveRoute = async () => {
     try {
-      // Combine fiberLines and savedPolylines (if in edit mode) to save all current cables
       const cablesToSave = mapState.isSavedRoutesEditable
-        ? [...mapState.savedPolylines] // Save modified savedPolylines
-        : [...mapState.fiberLines]; // Save new fiberLines
+        ? [...mapState.savedPolylines]
+        : [...mapState.fiberLines];
 
-      // Save updated devices (if any)
       const updatedDevices = mapState.updatedDevices;
       if (updatedDevices.length > 0) {
         const deviceUpdateResults = await Promise.all(
@@ -2055,7 +1740,6 @@ const MyMapV19 = () => {
           })
         );
 
-        // Log any device update failures
         const failedUpdates = deviceUpdateResults.filter(
           (result) => !result.success
         );
@@ -2066,22 +1750,24 @@ const MyMapV19 = () => {
               .map((f) => `Device ${f.deviceId}: ${f.error.message}`)
               .join(", ")}`
           );
-        } else {
-          console.log("All devices updated successfully:", deviceUpdateResults);
         }
       }
 
-      // Save or update all cables concurrently
       if (cablesToSave.length > 0) {
         const savedCables = await Promise.all(
-          cablesToSave.map((line) => saveCable(line))
+          cablesToSave.map((line) =>
+            saveCable({
+              ...line,
+              startPortId: line.startPortId || line.fromPortId, // Handle both fiberLines and savedPolylines
+              endPortId: line.endPortId || line.toPortId,
+            })
+          )
         );
         console.log("All cables processed:", savedCables);
       } else {
         console.log("No cables to save.");
       }
 
-      // Fetch updated cables to refresh savedPolylines
       const response = await fetch("http://127.0.0.1:8000/api/cables/");
       if (!response.ok) {
         throw new Error("Failed to fetch updated cables");
@@ -2124,16 +1810,16 @@ const MyMapV19 = () => {
           createdAt: cable.created_at
             ? new Date(cable.created_at).getTime()
             : Date.now(),
+          // Note: Port IDs are not fetched from cables; they are managed via interfaces
         }));
 
-      // Update state: clear fiberLines, updatedDevices, and refresh savedPolylines
       setMapState((prevState) => ({
         ...prevState,
-        fiberLines: [], // Clear temporary lines
-        savedPolylines: fetchedPolylines, // Update with fetched cables
-        showSavedRoutes: true, // Show saved routes after saving
-        isSavedRoutesEditable: false, // Disable edit mode
-        updatedDevices: [], // Clear updated devices
+        fiberLines: [],
+        savedPolylines: fetchedPolylines,
+        showSavedRoutes: true,
+        isSavedRoutesEditable: false,
+        updatedDevices: [],
       }));
 
       alert("Polylines and devices saved successfully!");
@@ -2142,85 +1828,6 @@ const MyMapV19 = () => {
       alert(`Failed to save routes or devices: ${error.message}`);
     }
   };
-
-  // const saveRoute = async () => {
-  //   try {
-  //     // Combine fiberLines and savedPolylines (if in edit mode) to save all current cables
-  //     const cablesToSave = mapState.isSavedRoutesEditable
-  //       ? [...mapState.savedPolylines] // Save modified savedPolylines
-  //       : [...mapState.fiberLines]; // Save new fiberLines
-
-  //     if (cablesToSave.length === 0) {
-  //       alert("No routes to save!");
-  //       return;
-  //     }
-
-  //     // Save or update all cables concurrently
-  //     const savedCables = await Promise.all(
-  //       cablesToSave.map((line) => saveCable(line))
-  //     );
-  //     console.log("All cables processed:", savedCables);
-
-  //     // Fetch updated cables to refresh savedPolylines
-  //     const response = await fetch("http://127.0.0.1:8000/api/cables/");
-  //     if (!response.ok) {
-  //       throw new Error("Failed to fetch updated cables");
-  //     }
-  //     const cables = await response.json();
-  //     const fetchedPolylines = cables
-  //       .filter((cable) => {
-  //         const hasValidCoords =
-  //           cable.path &&
-  //           cable.path.from &&
-  //           cable.path.to &&
-  //           !isNaN(parseFloat(cable.path.from.lat)) &&
-  //           !isNaN(parseFloat(cable.path.from.lng)) &&
-  //           !isNaN(parseFloat(cable.path.to.lat)) &&
-  //           !isNaN(parseFloat(cable.path.to.lng));
-  //         return hasValidCoords;
-  //       })
-  //       .map((cable) => ({
-  //         id: `cable-${cable.id}`,
-  //         name: cable.name || `Cable-${cable.id}`,
-  //         from: {
-  //           lat: parseFloat(cable.path.from.lat),
-  //           lng: parseFloat(cable.path.from.lng),
-  //         },
-  //         to: {
-  //           lat: parseFloat(cable.path.to.lat),
-  //           lng: parseFloat(cable.path.to.lng),
-  //         },
-  //         waypoints: Array.isArray(cable.path.waypoints)
-  //           ? cable.path.waypoints
-  //               .filter(
-  //                 (wp) =>
-  //                   !isNaN(parseFloat(wp.lat)) && !isNaN(parseFloat(wp.lng))
-  //               )
-  //               .map((wp) => ({
-  //                 lat: parseFloat(wp.lat),
-  //                 lng: parseFloat(wp.lng),
-  //               }))
-  //           : [],
-  //         createdAt: cable.created_at
-  //           ? new Date(cable.created_at).getTime()
-  //           : Date.now(),
-  //       }));
-
-  //     // Update state: clear fiberLines and refresh savedPolylines
-  //     setMapState((prevState) => ({
-  //       ...prevState,
-  //       fiberLines: [], // Clear temporary lines
-  //       savedPolylines: fetchedPolylines, // Update with fetched cables
-  //       showSavedRoutes: true, // Show saved routes after saving
-  //       isSavedRoutesEditable: false, // Disable edit mode
-  //     }));
-
-  //     alert("Polylines saved successfully!");
-  //   } catch (error) {
-  //     console.error("Error saving routes:", error);
-  //     alert(`Failed to save routes: ${error.message}`);
-  //   }
-  // };
 
   useEffect(() => {
     const savedPolylines =
@@ -2249,41 +1856,28 @@ const MyMapV19 = () => {
     }));
   }, []);
 
-  const togglePreviousRoutes = () => {
-    setMapState((prevState) => ({
-      ...prevState,
-      showSavedRoutes: !prevState.showSavedRoutes,
-      isSavedRoutesEditable: false,
-      fiberLines: !prevState.showSavedRoutes ? prevState.savedPolylines : [],
-      imageIcons: !prevState.showSavedRoutes ? prevState.savedIcons : [],
-      selectedWaypoint: null,
-      waypointActionPosition: null,
-      selectedWaypointInfo: null,
-    }));
-  };
-
-  const resetMap = () => {
-    setMapState({
-      savedRoutes: mapState.savedRoutes,
-      showSavedRoutes: false,
-      nextNumber: 1,
-      selectedType: null,
-      showModal: false,
-      selectedPoint: null,
-      rightClickMarker: null,
-      fiberLines: [],
-      imageIcons: [],
-      selectedWaypoint: null,
-      waypointActionPosition: null,
-      selectedWaypointInfo: null,
-      showSplitterModal: false,
-      selectedSplitter: null,
-      splitterRatio: "",
-      splitterInput: "",
-      editingLineId: null,
-      tempLineName: "",
-    });
-  };
+  // const resetMap = () => {
+  //   setMapState({
+  //     savedRoutes: mapState.savedRoutes,
+  //     showSavedRoutes: false,
+  //     nextNumber: 1,
+  //     selectedType: null,
+  //     showModal: false,
+  //     selectedPoint: null,
+  //     rightClickMarker: null,
+  //     fiberLines: [],
+  //     imageIcons: [],
+  //     selectedWaypoint: null,
+  //     waypointActionPosition: null,
+  //     selectedWaypointInfo: null,
+  //     showSplitterModal: false,
+  //     selectedSplitter: null,
+  //     splitterRatio: "",
+  //     splitterInput: "",
+  //     editingLineId: null,
+  //     tempLineName: "",
+  //   });
+  // };
 
   const initializeNodesAndEdges = useCallback(
     (selectedTermination) => {
@@ -2331,159 +1925,6 @@ const MyMapV19 = () => {
     [mapState.terminationConnections, setNodes, setEdges]
   );
 
-  const handleNodeClick = useCallback(
-    (event, node) => {
-      // console.log("Node clicked:", node.id, node.data);
-      if (
-        node.data.side === "left" &&
-        !drawingSource &&
-        !mapState.tempConnection
-      ) {
-        setDrawingSource(node.id);
-        // console.log("Drawing source set to:", node.id);
-      } else if (node.data.side === "right" && drawingSource) {
-        console.log("Connecting:", drawingSource, "to", node.id);
-        const newEdge = {
-          id: `edge-${Date.now()}`,
-          source: drawingSource,
-          target: node.id,
-          sourceHandle: "right",
-          targetHandle: "left",
-          style: { stroke: "black", strokeWidth: 2 },
-        };
-        setEdges((eds) => {
-          const updatedEdges = [
-            ...eds.filter((e) => e.id !== "drawing-edge"),
-            newEdge,
-          ];
-          // console.log("Edges updated:", updatedEdges);
-          return updatedEdges;
-        });
-        setMapState((prevState) => ({
-          ...prevState,
-          tempConnection: {
-            source: drawingSource,
-            target: node.id,
-            sourceHandle: "right",
-            targetHandle: "left",
-          },
-        }));
-        setDrawingSource(null);
-        setNodes((nds) => {
-          const updatedNodes = nds.filter((n) => n.id !== "temp");
-          // console.log("Nodes updated (temp removed):", updatedNodes);
-          return updatedNodes;
-        });
-      }
-    },
-    [drawingSource, mapState.tempConnection, setEdges, setNodes]
-  );
-
-  const handleMouseMove = useCallback(
-    (e) => {
-      if (!drawingSource) return;
-      // console.log("Mouse move detected, drawingSource:", drawingSource);
-      // const flowEl = flowRef.current?.querySelector(".reactflow");
-      // if (!flowEl) {
-      //   console.warn("React Flow container not found");
-      //   return;
-      // }
-      const rect = flowEl.getBoundingClientRect();
-      // console.log("Flow container rect:", rect);
-
-      const tempNode = {
-        id: "temp",
-        type: "custom",
-        position: {
-          x: e.clientX - rect.left - 5,
-          y: e.clientY - rect.top - 5,
-        },
-        data: { label: "", color: "transparent", side: "temp" },
-      };
-
-      setNodes((nds) => {
-        const others = nds.filter((n) => n.id !== "temp");
-        const updatedNodes = [...others, tempNode];
-        // console.log("Temp node updated:", tempNode);
-        return updatedNodes;
-      });
-
-      setEdges((eds) => {
-        const others = eds.filter((e) => e.id !== "drawing-edge");
-        const drawingEdge = {
-          id: "drawing-edge",
-          source: drawingSource,
-          sourceHandle: "right",
-          target: "temp",
-          targetHandle: "temp",
-          animated: true,
-          style: { stroke: "black", strokeWidth: 2 },
-        };
-        const updatedEdges = [...others, drawingEdge];
-        // console.log("Drawing edge updated:", drawingEdge);
-        return updatedEdges;
-      });
-    },
-    [drawingSource, setNodes, setEdges]
-  );
-
-  const saveTerminationConnection = useCallback(() => {
-    if (!mapState.tempConnection) {
-      // console.log("No temp connection, closing modal");
-      setMapState((prevState) => ({
-        ...prevState,
-        showTerminationModal: false,
-        selectedTermination: null,
-        tempConnection: null,
-      }));
-      setNodes([]);
-      setEdges([]);
-      setDrawingSource(null);
-      return;
-    }
-
-    const leftNumber = parseInt(mapState.tempConnection.source.split("-")[1]);
-    const rightNumber = parseInt(mapState.tempConnection.target.split("-")[1]);
-    const newConnection = {
-      terminationId: mapState.selectedTermination.id,
-      leftColor: terminationColors[leftNumber - 1].value,
-      rightColor: terminationColors[rightNumber - 1].value,
-    };
-
-    console.log("Saving connection:", newConnection);
-    setMapState((prevState) => ({
-      ...prevState,
-      terminationConnections: [
-        ...prevState.terminationConnections,
-        newConnection,
-      ],
-      showTerminationModal: false,
-      selectedTermination: null,
-      tempConnection: null,
-    }));
-    setNodes([]);
-    setEdges([]);
-    setDrawingSource(null);
-  }, [
-    mapState.tempConnection,
-    mapState.selectedTermination,
-    setNodes,
-    setEdges,
-  ]);
-
-  const closeTerminationModal = useCallback(() => {
-    console.log("Closing termination modal");
-    setMapState((prevState) => ({
-      ...prevState,
-      showTerminationModal: false,
-      selectedTermination: null,
-      tempConnection: null,
-    }));
-    setNodes([]);
-    setEdges([]);
-    setDrawingSource(null);
-  }, [setNodes, setEdges]);
-
   const handleSavedPolylinePointDragEnd = (polylineId, pointType, e) => {
     if (!mapState.isSavedRoutesEditable) return;
 
@@ -2526,14 +1967,6 @@ const MyMapV19 = () => {
             if (
               !isSnappedToIcon(polyline[pointType].lat, polyline[pointType].lng)
             ) {
-              console.log(
-                `Saved polyline ${pointType} connected to splitter:`,
-                {
-                  polylineId,
-                  splitterId: nearestIcon.id,
-                  ratio: nearestIcon.splitterRatio,
-                }
-              );
               const splitter = prevState.imageIcons.find(
                 (icon) => icon.id === nearestIcon.id
               );
@@ -2548,6 +1981,11 @@ const MyMapV19 = () => {
                 },
                 name: newLineName,
                 createdAt: polyline.createdAt || Date.now(),
+                [`${pointType}DeviceId`]: nearestIcon.deviceId,
+                [`${pointType}PortId`]:
+                  nearestIcon.portIds.length > 0
+                    ? nearestIcon.portIds[0]
+                    : null,
               };
             }
           }
@@ -2557,6 +1995,11 @@ const MyMapV19 = () => {
             ...polyline,
             [pointType]: { lat: newLat, lng: newLng },
             createdAt: polyline.createdAt || Date.now(),
+            [`${pointType}DeviceId`]: nearestIcon ? nearestIcon.deviceId : null,
+            [`${pointType}PortId`]:
+              nearestIcon && nearestIcon.portIds.length > 0
+                ? nearestIcon.portIds[0]
+                : null,
           };
         }
         return polyline;
@@ -2800,7 +2243,6 @@ const MyMapV19 = () => {
         options={{ styles: mapStyles, disableDefaultUI: false }}
         onLoad={onMapLoad} // Add onLoad handler
       >
-
         {mapState.imageIcons.map((icon) => {
           // Check if the icon is saved (from API or savedIcons)
           const isSavedIcon =
@@ -3117,161 +2559,6 @@ const MyMapV19 = () => {
             <div className="line-action-item" onClick={closeWaypointActions}>
               <span className="close-icon">×</span>
               <span className="line-action-tooltip">Close</span>
-            </div>
-            <div className="modal-spike"></div>
-          </div>
-        )}
-
-        {mapState.showSplitterModal && mapState.selectedSplitter && (
-          <div
-            className="splitter-modal"
-            style={{
-              top: `${mapState.waypointActionPosition.y - 270}px`,
-              left: `${mapState.waypointActionPosition.x - 245}px`,
-            }}
-          >
-            <div className="splitter-form">
-              <div className="form-group">
-                <label htmlFor="splitter-name" className="form-label">
-                  Splitter Name
-                </label>
-                <input
-                  id="splitter-name"
-                  type="text"
-                  value={mapState.splitterInput}
-                  onChange={handleSplitterInputChange}
-                  placeholder="Enter splitter name"
-                  className="form-input"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="splitter-ratio" className="form-label">
-                  Splitter Ratio
-                </label>
-                <select
-                  id="splitter-ratio"
-                  value={mapState.splitterRatio}
-                  onChange={handleSplitterRatioChange}
-                  className="form-select"
-                >
-                  <option value="" disabled>
-                    Choose a ratio
-                  </option>
-                  {getAvailableRatios(mapState.selectedSplitter).map(
-                    (ratio) => (
-                      <option key={ratio} value={ratio}>
-                        {ratio}
-                      </option>
-                    )
-                  )}
-                </select>
-              </div>
-              <div className="form-footer">
-                <button onClick={handleSave} className="btn btn-save">
-                  Save
-                </button>
-                <button onClick={closeSplitterModal} className="btn btn-close">
-                  Close
-                </button>
-              </div>
-            </div>
-
-            <div className="connected-lines-panel">
-              <h4 className="panel-heading">Connected Lines</h4>
-              <div className="connected-lines-list">
-                {getConnectedLines(mapState.selectedSplitter).length > 0 ? (
-                  getConnectedLines(mapState.selectedSplitter).map((line) => (
-                    <div key={line.id} className="line-item">
-                      {mapState.editingLineId === line.id ? (
-                        <input
-                          type="text"
-                          value={mapState.tempLineName}
-                          onChange={handleLineNameChange}
-                          className="form-input"
-                        />
-                      ) : (
-                        <span className="line-name">
-                          {line.name || "Unnamed Line"}
-                        </span>
-                      )}
-                      <div>
-                        <button
-                          onClick={() => handleEditLine(line.id, line.name)}
-                          className="btn btn-edit"
-                        >
-                          <Edit size={16} color="#007bff" />
-                        </button>
-                        <button
-                          onClick={() => removeConnectedLine(line.id)}
-                          className="btn btn-delete"
-                        >
-                          <Trash2 size={16} color="#dc3545" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="no-lines-message">No connected lines</p>
-                )}
-              </div>
-            </div>
-            <div className="modal-spike"></div>
-          </div>
-        )}
-
-        {mapState.showTerminationModal && mapState.selectedTermination && (
-          <div
-            className="termination-modal"
-            style={{
-              top: `${mapState.waypointActionPosition.y - 200}px`,
-              left: `${mapState.waypointActionPosition.x - 350}px`,
-              width: "400px",
-              height: "300px",
-            }}
-          >
-            <div
-              className="termination-modal-content"
-              style={{ height: "100%" }}
-            >
-              <div
-                className="flow-container"
-                style={{ width: "100%", height: "80%" }}
-              >
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onNodeClick={handleNodeClick}
-                  onPaneMouseMove={handleMouseMove}
-                  nodeTypes={nodeTypes}
-                  fitView
-                  nodesDraggable={false}
-                  nodesConnectable={false}
-                  zoomOnScroll={false}
-                  panOnScroll={false}
-                  panOnDrag={false}
-                  preventScrolling={false}
-                  style={{ width: "100%", height: "100%" }}
-                  proOptions={{ hideAttribution: true }} // Hide attribution as previously resolved
-                >
-                  <Background />
-                </ReactFlow>
-              </div>
-              <div className="modal-footer">
-                <button
-                  onClick={saveTerminationConnection}
-                  className="btn btn-save"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={closeTerminationModal}
-                  className="btn btn-close"
-                >
-                  Close
-                </button>
-              </div>
             </div>
             <div className="modal-spike"></div>
           </div>
