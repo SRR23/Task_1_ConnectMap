@@ -225,8 +225,14 @@ const MyMapV19 = () => {
     tempCable: null,
     startPortId: null,
     endPortId: null,
-    showSaveCableModal: false,
     allPorts: [], // Initialize as empty array
+
+    showFiberForm: false, // New state for fiber form modal
+    fiberFormData: {
+      name: "",
+      type: "Fiber", // Default type or allow selection
+    },
+    cableSaveAttempted: false, // New flag to prevent duplicate saves
   });
 
   // New state for device types fetched from backend
@@ -253,483 +259,64 @@ const MyMapV19 = () => {
 
     fetchDeviceTypes();
   }, []);
+  
 
-  // Fetch devices and ports
-  // useEffect(() => {
-  //   const fetchDevices = async () => {
-  //     try {
-  //       const response = await fetch("http://127.0.0.1:8000/api/devices/");
-  //       if (!response.ok) {
-  //         throw new Error(`Failed to fetch devices: ${response.statusText}`);
-  //       }
-  //       const devices = await response.json();
-  //       console.log("Fetched devices:", devices);
-  //       const device105 = devices.find((device) => device.id === 105);
-  //       console.log("Device 105 full data:", device105);
-  //       console.log("Device 105 ports:", device105?.ports);
-  //       const fetchedIcons = devices
-  //         .filter((device) => {
-  //           const hasValidCoords =
-  //             device.latitude != null &&
-  //             device.longitude != null &&
-  //             !isNaN(device.latitude) &&
-  //             !isNaN(device.longitude);
-  //           if (!hasValidCoords) {
-  //             console.warn(
-  //               `Skipping device ${device.name} with invalid coordinates`
-  //             );
-  //           }
-  //           return hasValidCoords;
-  //         })
-  //         .map((device) => ({
-  //           lat: device.latitude,
-  //           lng: device.longitude,
-  //           type: device.device_type.name,
-  //           id: `icon-api-${device.id}`,
-  //           imageUrl: device.device_type.icon || "/img/default-icon.png",
-  //           splitterRatio: device.device_type.name === "Splitter" ? "" : null,
-  //           name: device.device_type.name === "Splitter" ? "" : null,
-  //           nextLineNumber: device.device_type.name === "Splitter" ? 1 : null,
-  //           deviceId: device.id,
-  //           portIds: device.ports.map((port) => port.id),
-  //         }));
-  //       setMapState((prevState) => ({
-  //         ...prevState,
-  //         imageIcons: fetchedIcons,
-  //         nextNumber: fetchedIcons.length + 1,
-  //       }));
-  //     } catch (error) {
-  //       console.error("Error fetching devices:", error);
-  //       alert("Failed to load devices from the server.");
-  //     }
-  //   };
+const saveCableToInterface = async (cable) => {
+  try {
+    const payload = {
+      start: {
+        device_id: cable.startDeviceId,
+        port_id: cable.startPortId,
+      },
+      end: {
+        device_id: cable.endDeviceId,
+        port_id: cable.endPortId,
+      },
+      cable: {
+        name: cable.name || `Cable-${Date.now()}`,
+        type: cable.type.toLowerCase(),
+        path: {
+          coords: [
+            [cable.from.lat, cable.from.lng],
+            ...(cable.waypoints || []).map((wp) => [wp.lat, wp.lng]),
+            [cable.to.lat, cable.to.lng],
+          ],
+        },
+      },
+    };
 
-  //   const fetchPorts = async () => {
-  //     try {
-  //       const response = await fetch("http://127.0.0.1:8000/api/ports/");
-  //       if (!response.ok) throw new Error("Failed to fetch ports");
-  //       const ports = await response.json();
-  //       setAllPorts(ports);
-  //       console.log("Fetched ports:", ports);
-  //     } catch (error) {
-  //       console.error("Error fetching ports:", error);
-  //       setAllPorts([]); // Set to empty array on error
-  //     }
-  //   };
-  //   fetchDevices();
-  //   fetchPorts();
-  // }, []);
+    console.log("Sending POST to /api/v1/interface with payload:", JSON.stringify(payload, null, 2));
 
-  // useEffect(() => {
-  //   const fetchDevices = async () => {
-  //     try {
-  //       const response = await fetch("http://127.0.0.1:8000/api/devices/");
-  //       if (!response.ok) {
-  //         throw new Error(`Failed to fetch devices: ${response.statusText}`);
-  //       }
-  //       const devices = await response.json();
-  //       console.log("Fetched devices:", devices);
-  //       const oltDevices = devices.filter(
-  //         (device) => device.device_type.name === "OLT"
-  //       );
-  //       console.log(
-  //         "OLT devices with ports:",
-  //         oltDevices.map((d) => ({
-  //           id: d.id,
-  //           name: d.name,
-  //           portIds: d.ports.map((p) => p.id),
-  //           ports: d.ports,
-  //         }))
-  //       );
-  //       const fetchedIcons = devices
-  //         .filter((device) => {
-  //           const hasValidCoords =
-  //             device.latitude != null &&
-  //             device.longitude != null &&
-  //             !isNaN(device.latitude) &&
-  //             !isNaN(device.longitude);
-  //           if (!hasValidCoords) {
-  //             console.warn(
-  //               `Skipping device ${device.name} with invalid coordinates`
-  //             );
-  //           }
-  //           return hasValidCoords;
-  //         })
-  //         .map((device) => ({
-  //           lat: device.latitude,
-  //           lng: device.longitude,
-  //           type: device.device_type.name,
-  //           id: `icon-api-${device.id}`,
-  //           imageUrl: device.device_type.icon || "/img/default-icon.png",
-  //           splitterRatio: device.device_type.name === "Splitter" ? "" : null,
-  //           name: device.device_type.name === "Splitter" ? "" : null,
-  //           nextLineNumber: device.device_type.name === "Splitter" ? 1 : null,
-  //           deviceId: device.id,
-  //           portIds: device.ports.map((port) => port.id),
-  //         }));
-  //       console.log(
-  //         "imageIcons for OLT:",
-  //         fetchedIcons.filter((icon) => icon.type === "OLT")
-  //       );
-  //       setMapState((prevState) => ({
-  //         ...prevState,
-  //         imageIcons: fetchedIcons,
-  //         nextNumber: fetchedIcons.length + 1,
-  //       }));
-  //     } catch (error) {
-  //       console.error("Error fetching devices:", error);
-  //       alert("Failed to load devices from the server.");
-  //     }
-  //   };
+    const response = await fetch("http://127.0.0.1:8000/api/v1/interface", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-  //   const fetchPorts = async () => {
-  //     try {
-  //       const response = await fetch("http://127.0.0.1:8000/api/ports/");
-  //       if (!response.ok) throw new Error("Failed to fetch ports");
-  //       const ports = await response.json();
-  //       console.log("Fetched ports:", ports);
-  //       const oltPorts = ports.filter((port) =>
-  //         [38, 39, 40, 41].includes(port.id)
-  //       );
-  //       console.log("OLT ports (IDs 38-41):", oltPorts);
-  //       setMapState((prevState) => ({
-  //         ...prevState,
-  //         allPorts: ports,
-  //       }));
-  //     } catch (error) {
-  //       console.error("Error fetching ports:", error);
-  //       setMapState((prevState) => ({
-  //         ...prevState,
-  //         allPorts: [],
-  //       }));
-  //       alert("Failed to load ports from the server.");
-  //     }
-  //   };
-  //   fetchDevices();
-  //   fetchPorts();
-  // }, []);
+    const responseText = await response.text();
+    console.log("Raw response:", responseText);
 
-  // const updateDevice = async (deviceId, lat, lng) => {
-  //   try {
-  //     // Fetch the current device data to get existing fields
-  //     const fetchResponse = await fetch(
-  //       `http://127.0.0.1:8000/api/devices/${deviceId}/`
-  //     );
-  //     if (!fetchResponse.ok) {
-  //       const errorData = await fetchResponse.json();
-  //       throw new Error(
-  //         `Failed to fetch device: ${
-  //           errorData.message || fetchResponse.statusText
-  //         }`
-  //       );
-  //     }
-  //     const deviceData = await fetchResponse.json();
+    if (!response.ok) {
+      throw new Error(`Failed to save cable: ${response.status} ${response.statusText} - ${responseText}`);
+    }
 
-  //     // Prepare the payload with all required fields
-  //     const payload = {
-  //       name: deviceData.name, // Preserve existing name
-  //       device_type_id: deviceData.device_type.id, // Preserve device_type_id
-  //       latitude: lat, // Update latitude
-  //       longitude: lng, // Update longitude
-  //       port_ids: deviceData.ports.map((port) => port.id) || [3], // Preserve or default port_ids
-  //     };
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (error) {
+      throw new Error(`Invalid JSON response: ${responseText}`);
+    }
 
-  //     console.log("Updating device with payload:", payload); // Debug payload
-
-  //     const response = await fetch(
-  //       `http://127.0.0.1:8000/api/devices/${deviceId}/`,
-  //       {
-  //         method: "PUT",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //         },
-  //         body: JSON.stringify(payload),
-  //       }
-  //     );
-
-  //     if (!response.ok) {
-  //       const errorData = await response.json();
-  //       throw new Error(
-  //         `Failed to update device: ${errorData.message || response.statusText}`
-  //       );
-  //     }
-
-  //     const data = await response.json();
-  //     console.log(`Device ${deviceId} updated:`, data);
-  //     return data;
-  //   } catch (error) {
-  //     console.error("Error updating device:", error);
-  //     alert(`Failed to update device: ${error.message}`);
-  //     throw error;
-  //   }
-  // };
-
-  // const saveCable = async (line) => {
-  //   try {
-  //     // Validate required fields
-  //     if (!line.from || !line.to) {
-  //       throw new Error("Cable must have both start and end points");
-  //     }
-
-  //     // Validate ports if connected to devices
-  //     if (line.startDeviceId && !line.startPortId) {
-  //       throw new Error(
-  //         "Start port must be selected when connected to a device"
-  //       );
-  //     }
-  //     if (line.endDeviceId && !line.endPortId) {
-  //       throw new Error("End port must be selected when connected to a device");
-  //     }
-
-  //     // Prepare the path data
-  //     const path = {
-  //       from: { lat: line.from.lat, lng: line.from.lng },
-  //       to: { lat: line.to.lat, lng: line.to.lng },
-  //       waypoints: line.waypoints
-  //         ? line.waypoints.map((wp) => ({ lat: wp.lat, lng: wp.lng }))
-  //         : [],
-  //     };
-
-  //     // Prepare the payload
-  //     const payload = {
-  //       name: line.name || `Cable-${line.id || Date.now()}`,
-  //       type: "Fiber",
-  //       path: path,
-  //       start_port_id: line.startPortId ? parseInt(line.startPortId) : null,
-  //       end_port_id: line.endPortId ? parseInt(line.endPortId) : null,
-  //       start_device_id: line.startDeviceId
-  //         ? parseInt(line.startDeviceId)
-  //         : null,
-  //       end_device_id: line.endDeviceId ? parseInt(line.endDeviceId) : null,
-  //     };
-
-  //     // Determine if we're updating an existing cable or creating a new one
-  //     const isExisting = line.id && line.id.startsWith("cable-");
-  //     const url = isExisting
-  //       ? `http://127.0.0.1:8000/api/cables/${line.id.split("-")[1]}/`
-  //       : "http://127.0.0.1:8000/api/cables/";
-  //     const method = isExisting ? "PUT" : "POST";
-
-  //     // Save/update the cable
-  //     const response = await fetch(url, {
-  //       method,
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify(payload),
-  //     });
-
-  //     if (!response.ok) {
-  //       const errorData = await response.json();
-  //       throw new Error(
-  //         errorData.message ||
-  //           `Failed to ${isExisting ? "update" : "create"} cable`
-  //       );
-  //     }
-
-  //     const cableData = await response.json();
-
-  //     // Create interface if both ports are specified
-  //     if (line.startPortId && line.endPortId) {
-  //       const interfacePayload = {
-  //         name: `Interface-${cableData.id}-${Date.now()}`, // Add required name field
-  //         start: parseInt(line.startPortId), // Use 'start' instead of 'start_port_id'
-  //         end: parseInt(line.endPortId), // Use 'end' instead of 'end_port_id'
-  //         cable_id: cableData.id,
-  //       };
-
-  //       const interfaceResponse = await fetch(
-  //         "http://127.0.0.1:8000/api/interfaces/",
-  //         {
-  //           method: "POST",
-  //           headers: {
-  //             "Content-Type": "application/json",
-  //           },
-  //           body: JSON.stringify(interfacePayload),
-  //         }
-  //       );
-
-  //       if (!interfaceResponse.ok) {
-  //         const errorData = await interfaceResponse.json();
-  //         throw new Error(
-  //           errorData.message || "Failed to create interface connection"
-  //         );
-  //       }
-  //     }
-
-  //     // Update state to move the cable to savedPolylines and clear fiberLines
-  //     setMapState((prevState) => ({
-  //       ...prevState,
-  //       fiberLines: prevState.fiberLines.filter((l) => l.id !== line.id),
-  //       savedPolylines: [
-  //         ...prevState.savedPolylines,
-  //         {
-  //           id: `cable-${cableData.id}`,
-  //           name: cableData.name,
-  //           from: path.from,
-  //           to: path.to,
-  //           waypoints: path.waypoints,
-  //           startPortId: line.startPortId,
-  //           endPortId: line.endPortId,
-  //           startPortName: line.startPortName,
-  //           endPortName: line.endPortName,
-  //           startDeviceId: line.startDeviceId,
-  //           endDeviceId: line.endDeviceId,
-  //           createdAt: Date.now(),
-  //         },
-  //       ],
-  //       showSaveCableModal: false,
-  //       tempCable: null,
-  //       startPortId: null,
-  //       endPortId: null,
-  //       startPortName: null,
-  //       endPortName: null,
-  //       startDeviceId: null,
-  //       endDeviceId: null,
-  //     }));
-
-  //     return cableData;
-  //   } catch (error) {
-  //     console.error("Error saving cable:", error);
-  //     alert(`Failed to save cable: ${error.message}`);
-  //     throw error;
-  //   }
-  // };
-
-  // useEffect(() => {
-  //   const fetchCables = async () => {
-  //     try {
-  //       const response = await fetch("http://127.0.0.1:8000/api/cables/", {
-  //         method: "GET",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //         },
-  //       });
-
-  //       if (!response.ok) {
-  //         const errorData = await response.json();
-  //         throw new Error(
-  //           `Failed to fetch cables: ${
-  //             errorData.message || response.statusText
-  //           }`
-  //         );
-  //       }
-
-  //       const cables = await response.json();
-  //       console.log("Fetched cables:", cables);
-
-  //       const fetchedPolylines = cables
-  //         .filter((cable) => {
-  //           const hasValidCoords =
-  //             cable.path &&
-  //             cable.path.from &&
-  //             cable.path.to &&
-  //             !isNaN(parseFloat(cable.path.from.lat)) &&
-  //             !isNaN(parseFloat(cable.path.from.lng)) &&
-  //             !isNaN(parseFloat(cable.path.to.lat)) &&
-  //             !isNaN(parseFloat(cable.path.to.lng));
-  //           if (!hasValidCoords) {
-  //             console.warn(
-  //               `Skipping cable ${cable.name} with invalid coordinates`
-  //             );
-  //           }
-  //           return hasValidCoords;
-  //         })
-  //         .map((cable) => ({
-  //           id: `cable-${cable.id}`, // Prefix to avoid conflicts
-  //           name: cable.name || `Cable-${cable.id}`,
-  //           from: {
-  //             lat: parseFloat(cable.path.from.lat),
-  //             lng: parseFloat(cable.path.from.lng),
-  //           },
-  //           to: {
-  //             lat: parseFloat(cable.path.to.lat),
-  //             lng: parseFloat(cable.path.to.lng),
-  //           },
-  //           waypoints: Array.isArray(cable.path.waypoints)
-  //             ? cable.path.waypoints
-  //                 .filter(
-  //                   (wp) =>
-  //                     !isNaN(parseFloat(wp.lat)) && !isNaN(parseFloat(wp.lng))
-  //                 )
-  //                 .map((wp) => ({
-  //                   lat: parseFloat(wp.lat),
-  //                   lng: parseFloat(wp.lng),
-  //                 }))
-  //             : [],
-  //           createdAt: Date.now(), // Adjust if backend provides timestamp
-  //           // strokeColor: "#0000FF", // Match saveRoute
-  //         }));
-
-  //       setMapState((prevState) => ({
-  //         ...prevState,
-  //         savedPolylines: fetchedPolylines,
-  //         // fiberLines: prevState.showSavedRoutes ? fetchedPolylines : prevState.fiberLines,
-  //       }));
-  //     } catch (error) {
-  //       console.error("Error fetching cables:", error);
-  //       alert("Failed to load cables from the server.");
-  //     }
-  //   };
-
-  //   fetchCables();
-  // }, []);
-
-  // New function to delete a device
-  // const deleteDevice = async (deviceId) => {
-  //   try {
-  //     const response = await fetch(
-  //       `http://127.0.0.1:8000/api/devices/${deviceId}/`,
-  //       {
-  //         method: "DELETE",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //         },
-  //       }
-  //     );
-
-  //     if (!response.ok) {
-  //       const errorData = await response.json();
-  //       throw new Error(
-  //         `Failed to delete device: ${errorData.message || response.statusText}`
-  //       );
-  //     }
-
-  //     console.log(`Device ${deviceId} deleted successfully`);
-  //   } catch (error) {
-  //     console.error("Error deleting device:", error);
-  //     alert(`Failed to delete device: ${error.message}`);
-  //     throw error;
-  //   }
-  // };
-
-  // New function to delete a cable
-  // const deleteCable = async (cableId) => {
-  //   try {
-  //     const response = await fetch(
-  //       `http://127.0.0.1:8000/api/cables/${cableId}/`,
-  //       {
-  //         method: "DELETE",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //         },
-  //       }
-  //     );
-
-  //     if (!response.ok) {
-  //       const errorData = await response.json();
-  //       throw new Error(
-  //         `Failed to delete cable: ${errorData.message || response.statusText}`
-  //       );
-  //     }
-
-  //     console.log(`Cable ${cableId} deleted successfully`);
-  //   } catch (error) {
-  //     console.error("Error deleting cable:", error);
-  //     alert(`Failed to delete cable: ${error.message}`);
-  //     throw error;
-  //   }
-  // };
+    console.log("Cable saved successfully:", responseData);
+    return responseData;
+  } catch (error) {
+    console.error("Error saving cable to interface:", error);
+    throw error;
+  }
+};
 
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -829,497 +416,263 @@ const MyMapV19 = () => {
     ]
   );
 
-  // const handleSelection = (type, icon) => {
-  //   const { selectedPoint, nextNumber } = mapState;
-  //   console.log(
-  //     "handleSelection called with type:",
-  //     type,
-  //     "at point:",
-  //     selectedPoint
-  //   );
-
-  //   if (!selectedPoint) {
-  //     console.error("No selected point for device or fiber creation");
-  //     alert("Error: No point selected for creation.");
-  //     return;
-  //   }
-
-  //   const validImageUrl =
-  //     icon && typeof icon === "string" ? icon : "/img/default-icon.png";
-  //   const selectedDevice = deviceTypes.find((device) => device.name === type);
-
-  //   if (type === "Add Fiber") {
-  //     console.log("Adding fiber line at:", selectedPoint);
-  //     const newLine = {
-  //       id: `fiber-${Date.now()}`,
-  //       from: { lat: selectedPoint.lat, lng: selectedPoint.lng },
-  //       to: {
-  //         lat: selectedPoint.lat + 0.001,
-  //         lng: selectedPoint.lng + 0.001,
-  //       },
-  //       waypoints: [],
-  //       createdAt: Date.now(),
-  //       startDeviceId: null,
-  //       endDeviceId: null,
-  //       startPortId: null,
-  //       endPortId: null,
-  //       startPortName: null,
-  //       endPortName: null,
-  //     };
-  //     setMapState((prevState) => ({
-  //       ...prevState,
-  //       fiberLines: [...prevState.fiberLines, newLine],
-  //       showModal: false,
-  //       rightClickMarker: null,
-  //       selectedPoint: null,
-  //     }));
-  //   } else if (selectedDevice) {
-  //     if (type === "OLT" || type === "ONU") {
-  //       console.log(`Showing device form for ${type}`);
-  //       setMapState((prevState) => ({
-  //         ...prevState,
-  //         showModal: false,
-  //         rightClickMarker: null,
-  //         showDeviceForm: true,
-  //         deviceFormData: {
-  //           device: selectedDevice,
-  //           lat: selectedPoint.lat,
-  //           lng: selectedPoint.lng,
-  //           nextNumber,
-  //           type,
-  //           imageUrl: validImageUrl,
-  //         },
-  //         deviceForm: {
-  //           deviceName: `${type}-${nextNumber}`,
-  //           description: "",
-  //           deviceModelId: "",
-  //           ports: [
-  //             { name: `Port 1-${type}-${nextNumber}`, position: 1 },
-  //             { name: `Port 2-${type}-${nextNumber}`, position: 2 },
-  //           ],
-  //           name: `${selectedPoint.lat.toFixed(2)}-${type}`,
-  //           hostname: type === "OLT" ? "192.168.1.1" : "",
-  //           community: type === "OLT" ? "public" : "",
-  //         },
-  //       }));
-  //     } else {
-  //       console.log(`Creating device of type ${type}`);
-  //     }
-  //   } else {
-  //     console.error(`Device type "${type}" not found in deviceTypes`);
-  //     alert(`Error: Device type "${type}" not found.`);
-  //     setMapState((prevState) => ({
-  //       ...prevState,
-  //       showModal: false,
-  //       rightClickMarker: null,
-  //       selectedPoint: null,
-  //     }));
-  //   }
-  // };
-
   const handleSelection = (type, icon) => {
-  const { selectedPoint, nextNumber } = mapState;
-  console.log("handleSelection called with type:", type, "at point:", selectedPoint);
+    const { selectedPoint, nextNumber } = mapState;
+    console.log(
+      "handleSelection called with type:",
+      type,
+      "at point:",
+      selectedPoint
+    );
 
-  if (!selectedPoint) {
-    console.error("No selected point for device or fiber creation");
-    alert("Error: No point selected for creation.");
-    return;
-  }
+    if (!selectedPoint) {
+      console.error("No selected point for device or fiber creation");
+      alert("Error: No point selected for creation.");
+      return;
+    }
 
-  // Fix imageUrl to use full backend URL or local fallback
-  const validImageUrl =
-    icon && typeof icon === "string"
-      ? icon.startsWith("/media/")
-        ? `http://127.0.0.1:8000${icon}`
-        : icon
-      : "/img/default-icon.png";
-  console.log("Valid Image URL:", validImageUrl);
+    // Fix imageUrl to use full backend URL or local fallback
+    const validImageUrl =
+      icon && typeof icon === "string"
+        ? icon.startsWith("/media/")
+          ? `http://127.0.0.1:8000${icon}`
+          : icon
+        : "/img/default-icon.png";
+    console.log("Valid Image URL:", validImageUrl);
 
-  const selectedDevice = deviceTypes.find((device) => device.name === type);
+    const selectedDevice = deviceTypes.find((device) => device.name === type);
 
-  if (type === "Add Fiber") {
-    console.log("Adding fiber line at:", selectedPoint);
-    const newLine = {
-      id: `fiber-${Date.now()}`,
-      from: { lat: selectedPoint.lat, lng: selectedPoint.lng },
-      to: {
-        lat: selectedPoint.lat + 0.001,
-        lng: selectedPoint.lng + 0.001,
-      },
-      waypoints: [],
-      createdAt: Date.now(),
-      startDeviceId: null,
-      endDeviceId: null,
-      startPortId: null,
-      endPortId: null,
-      startPortName: null,
-      endPortName: null,
-    };
-    setMapState((prevState) => ({
-      ...prevState,
-      fiberLines: [...prevState.fiberLines, newLine],
-      showModal: false,
-      rightClickMarker: null,
-      selectedPoint: null,
-    }));
-  } else if (selectedDevice) {
-    if (type === "OLT" || type === "ONU") {
-      console.log(`Showing device form for ${type}`);
+    if (type === "Add Fiber") {
+      console.log("Adding fiber line at:", selectedPoint);
+      // const newLine = {
+      //   id: `fiber-${Date.now()}`,
+      //   from: { lat: selectedPoint.lat, lng: selectedPoint.lng },
+      //   to: {
+      //     lat: selectedPoint.lat + 0.001,
+      //     lng: selectedPoint.lng + 0.001,
+      //   },
+      //   waypoints: [],
+      //   createdAt: Date.now(),
+      //   startDeviceId: null,
+      //   endDeviceId: null,
+      //   startPortId: null,
+      //   endPortId: null,
+      //   startPortName: null,
+      //   endPortName: null,
+      // };
+      setMapState((prevState) => ({
+        ...prevState,
+        // fiberLines: [...prevState.fiberLines, newLine],
+        showModal: false,
+        rightClickMarker: selectedPoint, // Preserve rightClickMarker
+        // selectedPoint: null,
+        showFiberForm: true,
+        fiberFormData: {
+          name: "",
+          type: "Fiber",
+        },
+      }));
+    } else if (selectedDevice) {
+      if (type === "OLT" || type === "ONU") {
+        console.log(`Showing device form for ${type}`);
+        setMapState((prevState) => ({
+          ...prevState,
+          showModal: false,
+          rightClickMarker: null,
+          showDeviceForm: true,
+          deviceFormData: {
+            device: selectedDevice,
+            lat: selectedPoint.lat,
+            lng: selectedPoint.lng,
+            nextNumber,
+            type,
+            imageUrl: validImageUrl, // Use corrected URL
+          },
+          deviceForm: {
+            deviceName: `${type}-${nextNumber}`,
+            description: "",
+            deviceModelId: "",
+            ports: [
+              { name: `Port 1-${type}-${nextNumber}`, position: 1 },
+              { name: `Port 2-${type}-${nextNumber}`, position: 2 },
+            ],
+            name: `${selectedPoint.lat.toFixed(2)}-${type}`,
+            hostname: type === "OLT" ? "192.168.1.1" : "",
+            community: type === "OLT" ? "public" : "",
+          },
+        }));
+      } else {
+        console.log(`Creating device of type ${type}`);
+      }
+    } else {
+      console.error(`Device type "${type}" not found in deviceTypes`);
+      alert(`Error: Device type "${type}" not found.`);
       setMapState((prevState) => ({
         ...prevState,
         showModal: false,
         rightClickMarker: null,
-        showDeviceForm: true,
-        deviceFormData: {
-          device: selectedDevice,
-          lat: selectedPoint.lat,
-          lng: selectedPoint.lng,
-          nextNumber,
-          type,
-          imageUrl: validImageUrl, // Use corrected URL
-        },
-        deviceForm: {
-          deviceName: `${type}-${nextNumber}`,
-          description: "",
-          deviceModelId: "",
-          ports: [
-            { name: `Port 1-${type}-${nextNumber}`, position: 1 },
-            { name: `Port 2-${type}-${nextNumber}`, position: 2 },
-          ],
-          name: `${selectedPoint.lat.toFixed(2)}-${type}`,
-          hostname: type === "OLT" ? "192.168.1.1" : "",
-          community: type === "OLT" ? "public" : "",
-        },
+        selectedPoint: null,
       }));
-    } else {
-      console.log(`Creating device of type ${type}`);
     }
-  } else {
-    console.error(`Device type "${type}" not found in deviceTypes`);
-    alert(`Error: Device type "${type}" not found.`);
-    setMapState((prevState) => ({
-      ...prevState,
-      showModal: false,
-      rightClickMarker: null,
-      selectedPoint: null,
-    }));
-  }
-};
-
-  // const handleDeviceFormSubmit = async (e) => {
-  //   e.preventDefault();
-  //   const { deviceFormData, deviceForm, nextNumber } = mapState;
-  //   if (!deviceFormData) {
-  //     console.error("No deviceFormData available");
-  //     alert("Error: Device form data is missing.");
-  //     return;
-  //   }
-
-  //   // Validate form inputs
-  //   if (!deviceForm.deviceName.trim()) {
-  //     alert("Device name is required.");
-  //     return;
-  //   }
-  //   if (!deviceForm.description.trim()) {
-  //     alert("Description is required.");
-  //     return;
-  //   }
-  //   if (!deviceForm.deviceModelId) {
-  //     alert("Device model ID is required.");
-  //     return;
-  //   }
-  //   if (deviceForm.ports.some((port) => !port.name.trim())) {
-  //     alert("All port names are required.");
-  //     return;
-  //   }
-  //   if (!deviceForm.name.trim()) {
-  //     alert(`${deviceFormData.type} name is required.`);
-  //     return;
-  //   }
-  //   if (deviceFormData.type === "OLT") {
-  //     if (!deviceForm.hostname.trim()) {
-  //       alert("Hostname is required for OLT.");
-  //       return;
-  //     }
-  //     if (!deviceForm.community.trim()) {
-  //       alert("Community is required for OLT.");
-  //       return;
-  //     }
-  //   }
-
-  //   try {
-  //     const payload = {
-  //       device: {
-  //         name: deviceForm.deviceName,
-  //         description: deviceForm.description,
-  //         device_type_id: deviceFormData.device.id,
-  //         device_model_id: parseInt(deviceForm.deviceModelId),
-  //         latitude: deviceFormData.lat,
-  //         longitude: deviceFormData.lng,
-  //         ports: deviceForm.ports.map((port) => ({
-  //           name: port.name,
-  //           position: port.position,
-  //         })),
-  //       },
-  //       name: deviceForm.name,
-  //       ...(deviceFormData.type === "OLT" && {
-  //         hostname: deviceForm.hostname,
-  //         community: deviceForm.community,
-  //       }),
-  //     };
-
-  //     const endpoint =
-  //       deviceFormData.type === "OLT"
-  //         ? "http://127.0.0.1:8000/api/v1/olt"
-  //         : "http://127.0.0.1:8000/api/v1/onu";
-
-  //     console.log("Sending payload to", endpoint, ":", payload);
-
-  //     const response = await fetch(endpoint, {
-  //       method: "POST",
-  //       headers: { "Content-Type": "application/json" },
-  //       body: JSON.stringify(payload),
-  //     });
-
-  //     if (!response.ok) {
-  //       const errorData = await response.json();
-  //       throw new Error(
-  //         `Failed to create ${deviceFormData.type}: ${
-  //           errorData.message || response.statusText
-  //         }`
-  //       );
-  //     }
-
-  //     const deviceData = await response.json();
-  //     console.log("API response:", {
-  //       deviceData,
-  //       createdDeviceId: deviceData.device_id,
-  //       createdPortIds: deviceData.ports
-  //         ? deviceData.ports.map((port) => port.id)
-  //         : [],
-  //     });
-
-  //     const createdDeviceId = deviceData.device_id;
-  //     const createdPortIds = deviceData.ports
-  //       ? deviceData.ports.map((port) => port.id)
-  //       : [];
-
-  //     setMapState((prevState) => {
-  //       if (
-  //         isNaN(deviceFormData.lat) ||
-  //         isNaN(deviceFormData.lng) ||
-  //         deviceFormData.lat === null ||
-  //         deviceFormData.lng === null
-  //       ) {
-  //         console.error("Invalid coordinates:", {
-  //           lat: deviceFormData.lat,
-  //           lng: deviceFormData.lng,
-  //         });
-  //         alert("Error: Invalid coordinates for device placement.");
-  //         return prevState;
-  //       }
-
-  //       const newIcon = {
-  //         lat: deviceFormData.lat,
-  //         lng: deviceFormData.lng,
-  //         type: deviceFormData.type,
-  //         id: `icon-api-${createdDeviceId}`,
-  //         imageUrl: deviceFormData.imageUrl || "/img/default-icon.png",
-  //         splitterRatio: null,
-  //         name: null,
-  //         nextLineNumber: null,
-  //         deviceId: createdDeviceId,
-  //         portIds: createdPortIds,
-  //       };
-
-  //       const newState = {
-  //         ...prevState,
-  //         showDeviceForm: false,
-  //         deviceFormData: null,
-  //         deviceForm: {
-  //           deviceName: "",
-  //           description: "",
-  //           deviceModelId: "",
-  //           ports: [
-  //             { name: "", position: 1 },
-  //             { name: "", position: 2 },
-  //           ],
-  //           name: "",
-  //           hostname: "",
-  //           community: "",
-  //         },
-  //         imageIcons: [...prevState.imageIcons, newIcon],
-  //         nextNumber: nextNumber + 1,
-  //         rightClickMarker: null,
-  //       };
-
-  //       console.log("New imageIcons:", newState.imageIcons);
-  //       return newState;
-  //     });
-  //   } catch (error) {
-  //     console.error(`Error creating ${deviceFormData.type}:`, error);
-  //     alert(`Failed to create ${deviceFormData.type}: ${error.message}`);
-  //   }
-  // };
+  };
 
   const handleDeviceFormSubmit = async (e) => {
-  e.preventDefault();
-  const { deviceFormData, deviceForm, nextNumber } = mapState;
-  if (!deviceFormData) {
-    console.error("No deviceFormData available");
-    alert("Error: Device form data is missing.");
-    return;
-  }
-
-  // Validate form inputs
-  if (!deviceForm.deviceName.trim()) {
-    alert("Device name is required.");
-    return;
-  }
-  if (!deviceForm.description.trim()) {
-    alert("Description is required.");
-    return;
-  }
-  if (!deviceForm.deviceModelId) {
-    alert("Device model ID is required.");
-    return;
-  }
-  if (deviceForm.ports.some((port) => !port.name.trim())) {
-    alert("All port names are required.");
-    return;
-  }
-  if (!deviceForm.name.trim()) {
-    alert(`${deviceFormData.type} name is required.`);
-    return;
-  }
-  if (deviceFormData.type === "OLT") {
-    if (!deviceForm.hostname.trim()) {
-      alert("Hostname is required for OLT.");
+    e.preventDefault();
+    const { deviceFormData, deviceForm, nextNumber } = mapState;
+    if (!deviceFormData) {
+      console.error("No deviceFormData available");
+      alert("Error: Device form data is missing.");
       return;
     }
-    if (!deviceForm.community.trim()) {
-      alert("Community is required for OLT.");
+
+    // Validate form inputs
+    if (!deviceForm.deviceName.trim()) {
+      alert("Device name is required.");
       return;
     }
-  }
-
-  try {
-    const payload = {
-      device: {
-        name: deviceForm.deviceName,
-        description: deviceForm.description,
-        device_type_id: deviceFormData.device.id,
-        device_model_id: parseInt(deviceForm.deviceModelId),
-        latitude: deviceFormData.lat,
-        longitude: deviceFormData.lng,
-        ports: deviceForm.ports.map((port) => ({
-          name: port.name,
-          position: port.position,
-        })),
-      },
-      name: deviceForm.name,
-      ...(deviceFormData.type === "OLT" && {
-        hostname: deviceForm.hostname,
-        community: deviceForm.community,
-      }),
-    };
-
-    const endpoint =
-      deviceFormData.type === "OLT"
-        ? "http://127.0.0.1:8000/api/v1/olt"
-        : "http://127.0.0.1:8000/api/v1/onu";
-
-    console.log("Sending payload to", endpoint, ":", payload);
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `Failed to create ${deviceFormData.type}: ${
-          errorData.message || response.statusText
-        }`
-      );
+    if (!deviceForm.description.trim()) {
+      alert("Description is required.");
+      return;
+    }
+    if (!deviceForm.deviceModelId) {
+      alert("Device model ID is required.");
+      return;
+    }
+    if (deviceForm.ports.some((port) => !port.name.trim())) {
+      alert("All port names are required.");
+      return;
+    }
+    if (!deviceForm.name.trim()) {
+      alert(`${deviceFormData.type} name is required.`);
+      return;
+    }
+    if (deviceFormData.type === "OLT") {
+      if (!deviceForm.hostname.trim()) {
+        alert("Hostname is required for OLT.");
+        return;
+      }
+      if (!deviceForm.community.trim()) {
+        alert("Community is required for OLT.");
+        return;
+      }
     }
 
-    const deviceData = await response.json();
-    console.log("API response:", {
-      deviceData,
-      createdDeviceId: deviceData.device_id,
-      createdPortIds: deviceData.ports
-        ? deviceData.ports.map((port) => port.id)
-        : [],
-    });
+    try {
+      const payload = {
+        device: {
+          name: deviceForm.deviceName,
+          description: deviceForm.description,
+          device_type_id: deviceFormData.device.id,
+          device_model_id: parseInt(deviceForm.deviceModelId),
+          latitude: deviceFormData.lat,
+          longitude: deviceFormData.lng,
+          ports: deviceForm.ports.map((port) => ({
+            name: port.name,
+            position: port.position,
+          })),
+        },
+        name: deviceForm.name,
+        ...(deviceFormData.type === "OLT" && {
+          hostname: deviceForm.hostname,
+          community: deviceForm.community,
+        }),
+      };
 
-    const createdDeviceId = deviceData.device_id;
-    const createdPortIds = deviceData.ports
-      ? deviceData.ports.map((port) => port.id)
-      : [];
+      const endpoint =
+        deviceFormData.type === "OLT"
+          ? "http://127.0.0.1:8000/api/v1/olt"
+          : "http://127.0.0.1:8000/api/v1/onu";
 
-    setMapState((prevState) => {
-      if (
-        isNaN(deviceFormData.lat) ||
-        isNaN(deviceFormData.lng) ||
-        deviceFormData.lat === null ||
-        deviceFormData.lng === null
-      ) {
-        console.error("Invalid coordinates:", {
-          lat: deviceFormData.lat,
-          lng: deviceFormData.lng,
-        });
-        alert("Error: Invalid coordinates for device placement.");
-        return prevState;
+      console.log("Sending payload to", endpoint, ":", payload);
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `Failed to create ${deviceFormData.type}: ${
+            errorData.message || response.statusText
+          }`
+        );
       }
 
-      const newIcon = {
-        lat: deviceFormData.lat,
-        lng: deviceFormData.lng,
-        type: deviceFormData.type,
-        id: `icon-api-${createdDeviceId}`,
-        imageUrl: deviceFormData.imageUrl || "/img/default-icon.png",
-        splitterRatio: null,
-        name: null,
-        nextLineNumber: null,
-        deviceId: createdDeviceId,
-        portIds: createdPortIds,
-      };
+      const deviceData = await response.json();
+      console.log("API response:", {
+        deviceData,
+        createdDeviceId: deviceData.device_id,
+        createdPortIds: deviceData.ports
+          ? deviceData.ports.map((port) => port.id)
+          : [],
+      });
 
-      console.log("New Icon:", newIcon);
+      const createdDeviceId = deviceData.device_id;
+      const createdPortIds = deviceData.ports
+        ? deviceData.ports.map((port) => port.id)
+        : [];
 
-      const newState = {
-        ...prevState,
-        showDeviceForm: false,
-        deviceFormData: null,
-        deviceForm: {
-          deviceName: "",
-          description: "",
-          deviceModelId: "",
-          ports: [
-            { name: "", position: 1 },
-            { name: "", position: 2 },
-          ],
-          name: "",
-          hostname: "",
-          community: "",
-        },
-        imageIcons: [...prevState.imageIcons, newIcon],
-        nextNumber: nextNumber + 1,
-        rightClickMarker: null,
-      };
+      setMapState((prevState) => {
+        if (
+          isNaN(deviceFormData.lat) ||
+          isNaN(deviceFormData.lng) ||
+          deviceFormData.lat === null ||
+          deviceFormData.lng === null
+        ) {
+          console.error("Invalid coordinates:", {
+            lat: deviceFormData.lat,
+            lng: deviceFormData.lng,
+          });
+          alert("Error: Invalid coordinates for device placement.");
+          return prevState;
+        }
 
-      console.log("New imageIcons:", newState.imageIcons);
-      return newState;
-    });
-  } catch (error) {
-    console.error(`Error creating ${deviceFormData.type}:`, error);
-    alert(`Failed to create ${deviceFormData.type}: ${error.message}`);
-  }
-};
+        const newIcon = {
+          lat: deviceFormData.lat,
+          lng: deviceFormData.lng,
+          type: deviceFormData.type,
+          id: `icon-api-${createdDeviceId}`,
+          imageUrl: deviceFormData.imageUrl || "/img/default-icon.png",
+          splitterRatio: null,
+          name: null,
+          nextLineNumber: null,
+          deviceId: createdDeviceId,
+          portIds: createdPortIds,
+        };
+
+        console.log("New Icon:", newIcon);
+
+        const newState = {
+          ...prevState,
+          showDeviceForm: false,
+          deviceFormData: null,
+          deviceForm: {
+            deviceName: "",
+            description: "",
+            deviceModelId: "",
+            ports: [
+              { name: "", position: 1 },
+              { name: "", position: 2 },
+            ],
+            name: "",
+            hostname: "",
+            community: "",
+          },
+          imageIcons: [...prevState.imageIcons, newIcon],
+          nextNumber: nextNumber + 1,
+          rightClickMarker: null,
+        };
+
+        console.log("New imageIcons:", newState.imageIcons);
+        return newState;
+      });
+    } catch (error) {
+      console.error(`Error creating ${deviceFormData.type}:`, error);
+      alert(`Failed to create ${deviceFormData.type}: ${error.message}`);
+    }
+  };
 
   const handleDeviceFormInputChange = (field, value) => {
     setMapState((prevState) => ({
@@ -1382,7 +735,6 @@ const MyMapV19 = () => {
     });
   };
 
-  // Fetch devices on component mount
   // useEffect(() => {
   //   const fetchDevices = async () => {
   //     try {
@@ -1396,7 +748,6 @@ const MyMapV19 = () => {
   //       const devices = await response.json();
   //       console.log("API Response - Devices:", devices);
 
-  //       // Map devices to imageIcons format
   //       const fetchedIcons = devices
   //         .filter((device) => {
   //           const hasValidCoords =
@@ -1417,7 +768,9 @@ const MyMapV19 = () => {
   //             lng: device.longitude,
   //             type: device.device_type.name,
   //             id: `icon-api-${device.id}`,
-  //             imageUrl: device.device_type.icon || "/img/default-icon.png",
+  //             imageUrl: device.device_type.icon
+  //               ? `http://127.0.0.1:8000${device.device_type.icon}`
+  //               : "/img/default-icon.png",
   //             splitterRatio: device.device_type.name === "Splitter" ? "" : null,
   //             name: device.device_type.name === "Splitter" ? "" : null,
   //             nextLineNumber: device.device_type.name === "Splitter" ? 1 : null,
@@ -1448,118 +801,276 @@ const MyMapV19 = () => {
   // }, []);
 
   useEffect(() => {
-  const fetchDevices = async () => {
-    try {
-      console.log("Fetching devices from http://127.0.0.1:8000/api/v1/devices");
-      const response = await fetch("http://127.0.0.1:8000/api/v1/devices");
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const devices = await response.json();
-      console.log("API Response - Devices:", devices);
+    const fetchDevices = async () => {
+      try {
+        console.log(
+          "Fetching devices from http://127.0.0.1:8000/api/v1/devices"
+        );
+        const response = await fetch("http://127.0.0.1:8000/api/v1/devices");
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        const devices = await response.json();
+        console.log("API Response - Devices:", devices);
 
-      const fetchedIcons = devices
-        .filter((device) => {
-          const hasValidCoords =
-            device.latitude != null &&
-            device.longitude != null &&
-            !isNaN(device.latitude) &&
-            !isNaN(device.longitude);
-          if (!hasValidCoords) {
-            console.warn(
-              `Skipping device ${device.name} with invalid coordinates: lat=${device.latitude}, lng=${device.longitude}`
-            );
-          }
-          return hasValidCoords;
-        })
-        .map((device) => {
-          const icon = {
-            lat: device.latitude,
-            lng: device.longitude,
-            type: device.device_type.name,
-            id: `icon-api-${device.id}`,
-            imageUrl: device.device_type.icon
-              ? `http://127.0.0.1:8000${device.device_type.icon}`
-              : "/img/default-icon.png",
-            splitterRatio: device.device_type.name === "Splitter" ? "" : null,
-            name: device.device_type.name === "Splitter" ? "" : null,
-            nextLineNumber: device.device_type.name === "Splitter" ? 1 : null,
-            deviceId: device.id,
-            portIds: device.port_device.map((port) => port.id),
+        // Extract ports from port_device
+        const allPorts = devices.flatMap((device) =>
+          device.port_device.map((port) => ({
+            id: port.id,
+            name: port.name,
+            position: port.position,
+            device_id: device.id, // Optional: store device_id for reference
+          }))
+        );
+        console.log("Extracted allPorts:", allPorts);
+
+        const fetchedIcons = devices
+          .filter((device) => {
+            const hasValidCoords =
+              device.latitude != null &&
+              device.longitude != null &&
+              !isNaN(device.latitude) &&
+              !isNaN(device.longitude);
+            if (!hasValidCoords) {
+              console.warn(
+                `Skipping device ${device.name} with invalid coordinates: lat=${device.latitude}, lng=${device.longitude}`
+              );
+            }
+            return hasValidCoords;
+          })
+          .map((device) => {
+            const icon = {
+              lat: device.latitude,
+              lng: device.longitude,
+              type: device.device_type.name,
+              id: `icon-api-${device.id}`,
+              imageUrl: device.device_type.icon
+                ? `http://127.0.0.1:8000${device.device_type.icon}`
+                : "/img/default-icon.png",
+              splitterRatio: device.device_type.name === "Splitter" ? "" : null,
+              name: device.device_type.name === "Splitter" ? "" : null,
+              nextLineNumber: device.device_type.name === "Splitter" ? 1 : null,
+              deviceId: device.id,
+              portIds: device.port_device.map((port) => port.id),
+            };
+            console.log("Mapped Icon:", icon);
+            return icon;
+          });
+
+        console.log("Fetched Icons for imageIcons:", fetchedIcons);
+
+        setMapState((prevState) => {
+          console.log("Updating imageIcons and allPorts state with:", {
+            fetchedIcons,
+            allPorts,
+          });
+          return {
+            ...prevState,
+            imageIcons: fetchedIcons,
+            allPorts, // Set allPorts here
+            nextNumber: fetchedIcons.length + 1,
           };
-          console.log("Mapped Icon:", icon);
-          return icon;
         });
+      } catch (error) {
+        console.error("Error fetching devices:", error.message);
+        alert("Failed to load devices from the server: " + error.message);
+      }
+    };
 
-      console.log("Fetched Icons for imageIcons:", fetchedIcons);
-
-      setMapState((prevState) => {
-        console.log("Updating imageIcons state with:", fetchedIcons);
-        return {
-          ...prevState,
-          imageIcons: fetchedIcons,
-          nextNumber: fetchedIcons.length + 1,
-        };
-      });
-    } catch (error) {
-      console.error("Error fetching devices:", error.message);
-      alert("Failed to load devices from the server: " + error.message);
-    }
-  };
-
-  fetchDevices();
-}, []);
+    fetchDevices();
+  }, []);
 
   useEffect(() => {
     console.log("Current imageIcons state:", mapState.imageIcons);
   }, [mapState.imageIcons]);
 
-  // New function to handle port selection
-  const handlePortSelection = (e) => {
-    e.preventDefault();
-    const { selectedPortId, portDropdownEnd, tempCable } = mapState;
-    if (!selectedPortId || !tempCable) return;
 
-    setMapState((prevState) => {
-      const updatedLines = [...prevState.fiberLines];
-      const lineIndex = updatedLines.findIndex(
-        (line) => line.id === tempCable.id
-      );
-      if (lineIndex === -1) {
-        console.error("Fiber line not found:", tempCable.id);
-        return prevState;
-      }
+// const handlePortSelection = (e) => {
+//   e.preventDefault();
+//   const { selectedPortId, portDropdownEnd, tempCable } = mapState;
+//   if (!selectedPortId || !tempCable) {
+//     console.error("No port selected or tempCable missing");
+//     return;
+//   }
 
-      const selectedPort = prevState.allPorts.find(
-        (port) => port.id === parseInt(selectedPortId)
-      );
-      updatedLines[lineIndex] = {
-        ...updatedLines[lineIndex],
-        [portDropdownEnd === "start" ? "startPortId" : "endPortId"]:
-          selectedPortId,
-        [portDropdownEnd === "start" ? "startPortName" : "endPortName"]:
-          selectedPort ? selectedPort.name : `Port-${selectedPortId}`,
-      };
+//   setMapState((prevState) => {
+//     // Check if this port selection has already been processed
+//     if (
+//       (portDropdownEnd === "start" && prevState.tempCable?.startPortId) ||
+//       (portDropdownEnd === "end" && prevState.tempCable?.endPortId)
+//     ) {
+//       console.warn("Port already selected for this end, skipping duplicate processing");
+//       return prevState;
+//     }
 
-      // Check if both start and end ports are selected
-      const updatedLine = updatedLines[lineIndex];
-      const showSaveCableModal =
-        updatedLine.startPortId && updatedLine.endPortId;
+//     const updatedLines = [...prevState.fiberLines];
+//     const lineIndex = updatedLines.findIndex((line) => line.id === tempCable.id);
+//     if (lineIndex === -1) {
+//       console.error("Fiber line not found:", tempCable.id);
+//       return prevState;
+//     }
 
-      return {
-        ...prevState,
-        fiberLines: updatedLines,
-        showPortDropdown: false,
-        portDropdownPosition: null,
-        portDropdownDevice: null,
-        portDropdownPorts: [],
-        selectedPortId: null,
-        portDropdownEnd: null,
-        tempCable: showSaveCableModal ? null : updatedLine,
-        showSaveCableModal,
-      };
+//     const selectedPort = prevState.allPorts.find((port) => port.id === parseInt(selectedPortId));
+//     updatedLines[lineIndex] = {
+//       ...updatedLines[lineIndex],
+//       [portDropdownEnd === "start" ? "startPortId" : "endPortId"]: selectedPortId,
+//       [portDropdownEnd === "start" ? "startPortName" : "endPortName"]: selectedPort
+//         ? selectedPort.name
+//         : `Port-${selectedPortId}`,
+//       [portDropdownEnd === "start" ? "startDeviceId" : "endDeviceId"]: prevState.portDropdownDevice
+//         ? prevState.portDropdownDevice.deviceId
+//         : null,
+//     };
+
+//     const updatedLine = updatedLines[lineIndex];
+//     const bothPortsSelected = updatedLine.startPortId && updatedLine.endPortId;
+
+//     // Only send POST request if both ports are selected and haven't been sent yet
+//     if (bothPortsSelected && !prevState.cableSaveAttempted) {
+//       console.log("Both ports selected, attempting to save cable:", updatedLine);
+//       saveCableToInterface(updatedLine)
+//         .then(() => {
+//           alert("Cable saved successfully!");
+//           // Update state to mark cable as saved
+//           setMapState((prev) => ({
+//             ...prev,
+//             cableSaveAttempted: true, // Prevent further attempts
+//             tempCable: null, // Clear tempCable
+//           }));
+//         })
+//         .catch((error) => {
+//           alert(`Failed to save cable: ${error.message}`);
+//         });
+//     }
+
+//     return {
+//       ...prevState,
+//       fiberLines: updatedLines,
+//       showPortDropdown: false,
+//       portDropdownPosition: null,
+//       portDropdownDevice: null,
+//       portDropdownPorts: [],
+//       selectedPortId: null,
+//       portDropdownEnd: null,
+//       tempCable: updatedLine, // Keep tempCable until save is successful
+//       showSaveCableModal: false,
+//     };
+//   });
+// };
+
+// const handlePortSelection = (e) => {
+//   e.preventDefault();
+//   const { selectedPortId, portDropdownEnd, tempCable } = mapState;
+//   if (!selectedPortId || !tempCable) {
+//     console.error("No port selected or tempCable missing");
+//     return;
+//   }
+
+//   setMapState((prevState) => {
+//     // Prevent duplicate processing
+//     if (
+//       (portDropdownEnd === "start" && prevState.tempCable?.startPortId) ||
+//       (portDropdownEnd === "end" && prevState.tempCable?.endPortId)
+//     ) {
+//       console.warn("Port already selected for this end, skipping duplicate processing");
+//       return prevState;
+//     }
+
+//     const updatedLines = [...prevState.fiberLines];
+//     const lineIndex = updatedLines.findIndex((line) => line.id === tempCable.id);
+//     if (lineIndex === -1) {
+//       console.error("Fiber line not found:", tempCable.id);
+//       return prevState;
+//     }
+
+//     const selectedPort = prevState.allPorts.find((port) => port.id === parseInt(selectedPortId));
+//     updatedLines[lineIndex] = {
+//       ...updatedLines[lineIndex],
+//       [portDropdownEnd === "start" ? "startPortId" : "endPortId"]: selectedPortId,
+//       [portDropdownEnd === "start" ? "startPortName" : "endPortName"]: selectedPort
+//         ? selectedPort.name
+//         : `Port-${selectedPortId}`,
+//       [portDropdownEnd === "start" ? "startDeviceId" : "endDeviceId"]: prevState.portDropdownDevice
+//         ? prevState.portDropdownDevice.deviceId
+//         : null,
+//     };
+
+//     const updatedLine = updatedLines[lineIndex];
+//     const bothPortsSelected = updatedLine.startPortId && updatedLine.endPortId;
+
+//     return {
+//       ...prevState,
+//       fiberLines: updatedLines,
+//       showPortDropdown: false,
+//       portDropdownPosition: null,
+//       portDropdownDevice: null,
+//       portDropdownPorts: [],
+//       selectedPortId: null,
+//       portDropdownEnd: null,
+//       tempCable: updatedLine,
+//       // showSaveCableModal: bothPortsSelected,
+//     };
+//   });
+// };
+
+const handlePortSelection = (e) => {
+  e.preventDefault();
+  const { selectedPortId, portDropdownEnd, tempCable } = mapState;
+  if (!selectedPortId || !tempCable) {
+    console.error("No port selected or tempCable missing", { selectedPortId, tempCable });
+    return;
+  }
+
+  setMapState((prevState) => {
+    if (
+      (portDropdownEnd === "start" && prevState.tempCable?.startPortId) ||
+      (portDropdownEnd === "end" && prevState.tempCable?.endPortId)
+    ) {
+      console.warn("Port already selected for this end, skipping duplicate processing");
+      return prevState;
+    }
+
+    const updatedLines = [...prevState.fiberLines];
+    const lineIndex = updatedLines.findIndex((line) => line.id === tempCable.id);
+    if (lineIndex === -1) {
+      console.error("Fiber line not found:", tempCable.id, "fiberLines:", updatedLines);
+      return prevState;
+    }
+
+    const selectedPort = prevState.allPorts.find((port) => port.id === parseInt(selectedPortId));
+    updatedLines[lineIndex] = {
+      ...updatedLines[lineIndex],
+      [portDropdownEnd === "start" ? "startPortId" : "endPortId"]: selectedPortId,
+      [portDropdownEnd === "start" ? "startPortName" : "endPortName"]: selectedPort
+        ? selectedPort.name
+        : `Port-${selectedPortId}`,
+      [portDropdownEnd === "start" ? "startDeviceId" : "endDeviceId"]: prevState.portDropdownDevice
+        ? prevState.portDropdownDevice.deviceId
+        : null,
+    };
+
+    const updatedLine = updatedLines[lineIndex];
+    console.log("Updated line after port selection:", {
+      lineId: updatedLine.id,
+      startPortId: updatedLine.startPortId,
+      endPortId: updatedLine.endPortId,
+      startDeviceId: updatedLine.startDeviceId,
+      endDeviceId: updatedLine.endDeviceId,
     });
-  };
+
+    return {
+      ...prevState,
+      fiberLines: updatedLines,
+      showPortDropdown: false,
+      portDropdownPosition: null,
+      portDropdownDevice: null,
+      portDropdownPorts: [],
+      selectedPortId: null,
+      portDropdownEnd: null,
+      tempCable: { ...updatedLine }, // Ensure deep copy to avoid reference issues
+    };
+  });
+};
 
   const handlePortDropdownChange = (portId) => {
     setMapState((prevState) => ({
@@ -1609,17 +1120,106 @@ const MyMapV19 = () => {
     }));
   };
 
-  const handleLineClick = (line, index, isSavedLine = false, e) => {
+
+// const handleLineClick = (line, index, isSavedLine = false, e) => {
+//   console.log("handleLineClick called:", {
+//     lineId: line.id,
+//     index,
+//     isSavedLine,
+//     event: e,
+//     from: line.from,
+//     to: line.to,
+//     snappedFrom: isSnappedToIcon(line.from.lat, line.from.lng),
+//     snappedTo: isSnappedToIcon(line.to.lat, line.to.lng),
+//   });
+
+//   // Prevent default behavior and stop propagation to avoid interference
+//   if (e.domEvent) {
+//     e.domEvent.stopPropagation();
+//     e.domEvent.preventDefault();
+//   }
+
+//   // Check if interaction is allowed
+//   const canInteract = !isSavedLine || (isSavedLine && mapState.isSavedRoutesEditable);
+//   if (!canInteract) {
+//     console.warn(
+//       "Line interaction blocked: isSavedLine =",
+//       isSavedLine,
+//       "isSavedRoutesEditable =",
+//       mapState.isSavedRoutesEditable
+//     );
+//     return;
+//   }
+
+//   // Get click position
+//   const clickedLatLng = e.latLng || { lat: line.from.lat, lng: line.from.lng };
+//   const x = e.domEvent ? e.domEvent.clientX : window.innerWidth / 2;
+//   const y = e.domEvent ? e.domEvent.clientY : window.innerHeight / 2;
+
+//   console.log("Setting modal position:", {
+//     lat: clickedLatLng.lat(),
+//     lng: clickedLatLng.lng(),
+//     x,
+//     y,
+//   });
+
+//   // Update state to show line action modal
+//   setMapState((prevState) => ({
+//     ...prevState,
+//     selectedLineForActions: { line, index, isSavedLine },
+//     lineActionPosition: {
+//       lat: clickedLatLng.lat(),
+//       lng: clickedLatLng.lng(),
+//       x,
+//       y,
+//     },
+//     exactClickPosition: {
+//       lat: clickedLatLng.lat(),
+//       lng: clickedLatLng.lng(),
+//       x,
+//       y,
+//     },
+//     selectedWaypoint: null,
+//     waypointActionPosition: null,
+//     selectedWaypointInfo: null,
+//   }));
+// };
+
+const handleLineClick = (line, index, isSavedLine = false, e) => {
+    console.log("handleLineClick called:", {
+      lineId: line.id,
+      index,
+      isSavedLine,
+      event: e,
+      from: line.from,
+      to: line.to,
+      snappedFrom: isSnappedToIcon(line.from.lat, line.from.lng),
+      snappedTo: isSnappedToIcon(line.to.lat, line.to.lng),
+    });
+
     if (e.domEvent) {
+      e.domEvent.stopPropagation();
       e.domEvent.preventDefault();
+    } else {
+      console.warn("e.domEvent is undefined, event may be synthetic");
     }
 
-    if (isInteractionAllowed(isSavedLine)) {
-      const clickedLatLng = e.latLng;
-      const x = e.domEvent.clientX;
-      const y = e.domEvent.clientY;
+    const clickedLatLng = e.latLng || { lat: line.from.lat, lng: line.from.lng };
+    if (!e.latLng) {
+      console.warn("e.latLng is undefined, using fallback position:", clickedLatLng);
+    }
+    const x = e.domEvent ? e.domEvent.clientX : window.innerWidth / 2;
+    const y = e.domEvent ? e.domEvent.clientY : window.innerHeight / 2;
 
-      setMapState((prevState) => ({
+    console.log("Setting modal position:", {
+      lat: clickedLatLng.lat(),
+      lng: clickedLatLng.lng(),
+      x,
+      y,
+    });
+
+    setMapState((prevState) => {
+      const newState = {
         ...prevState,
         selectedLineForActions: { line, index, isSavedLine },
         lineActionPosition: {
@@ -1637,8 +1237,14 @@ const MyMapV19 = () => {
         selectedWaypoint: null,
         waypointActionPosition: null,
         selectedWaypointInfo: null,
-      }));
-    }
+      };
+      console.log("State updated for modal:", {
+        selectedLineForActions: newState.selectedLineForActions,
+        lineActionPosition: newState.lineActionPosition,
+        exactClickPosition: newState.exactClickPosition,
+      });
+      return newState;
+    });
   };
 
   const addWaypoint = () => {
@@ -2187,52 +1793,114 @@ const MyMapV19 = () => {
     return `line-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   };
 
-  // Modified addFiberLine to handle port selection
-  // Modified addFiberLine to handle port selection and button clicks
-  const addFiberLine = () => {
-    const { rightClickMarker } = mapState;
-    if (!rightClickMarker) {
-      console.error("No rightClickMarker set for addFiberLine");
-      return;
-    }
 
-    console.log("addFiberLine called with rightClickMarker:", rightClickMarker);
+  // Function to send POST request to the interface API
+// const saveCableToInterface = async (cable) => {
+//   try {
+//     const payload = {
+//       start: {
+//         device_id: cable.startDeviceId,
+//         port_id: cable.startPortId,
+//       },
+//       end: {
+//         device_id: cable.endDeviceId,
+//         port_id: cable.endPortId,
+//       },
+//       cable: {
+//         name: cable.name,
+//         type: cable.type.toLowerCase(), // Ensure type is lowercase as per API format
+//         path: {
+//           coordinates: [
+//             [cable.from.lat, cable.from.lng],
+//             ...(cable.waypoints || []).map((wp) => [wp.lat, wp.lng]),
+//             [cable.to.lat, cable.to.lng],
+//           ],
+//         },
+//       },
+//     };
 
-    const newFiberLine = {
-      id: generateUniqueId(),
-      from: { lat: rightClickMarker.lat, lng: rightClickMarker.lng },
-      to: {
-        lat: rightClickMarker.lat + 0.001, // Slightly offset end point
-        lng: rightClickMarker.lng + 0.001,
-      },
-      waypoints: [],
-      createdAt: Date.now(),
-      name: "",
-      startDeviceId: null, // Do not set until confirmed connection
-      endDeviceId: null,
-      startPortId: null,
-      endPortId: null,
-      startPortName: null,
-      endPortName: null,
-    };
+//     console.log("Sending POST request to /api/v1/interface with payload:", payload);
 
-    setMapState((prevState) => {
-      console.log("Creating new fiber line:", newFiberLine);
-      return {
-        ...prevState,
-        fiberLines: [...prevState.fiberLines, newFiberLine],
-        showModal: false,
-        selectedPoint: null,
-        rightClickMarker: null,
-        showPortDropdown: false, // Explicitly prevent dropdown
-        portDropdownPosition: null,
-        portDropdownDevice: null,
-        portDropdownPorts: [],
-        tempCable: null,
-        selectedPortId: null,
-      };
-    });
+//     const response = await fetch("http://127.0.0.1:8000/api/v1/interface", {
+//       method: "POST",
+//       headers: {
+//         "Content-Type": "application/json",
+//       },
+//       body: JSON.stringify(payload),
+//     });
+
+//     if (!response.ok) {
+//       const errorData = await response.json();
+//       throw new Error(`Failed to save cable: ${errorData.message || response.statusText}`);
+//     }
+
+//     const responseData = await response.json();
+//     console.log("Cable saved successfully:", responseData);
+//     return responseData;
+//   } catch (error) {
+//     console.error("Error saving cable to interface:", error);
+//     throw error;
+//   }
+// };
+
+const addFiberLine = () => {
+  const { rightClickMarker, fiberFormData } = mapState;
+  if (!rightClickMarker) {
+    console.error("No rightClickMarker set for addFiberLine");
+    alert("Error: No point selected for fiber creation.");
+    return;
+  }
+  if (!fiberFormData.name.trim()) {
+    alert("Fiber name cannot be empty.");
+    return;
+  }
+  if (!fiberFormData.type.trim()) {
+    alert("Fiber type cannot be empty.");
+    return;
+  }
+
+  console.log("addFiberLine called with rightClickMarker:", rightClickMarker, "and form data:", fiberFormData);
+
+  const newFiberLine = {
+    id: generateUniqueId(),
+    from: { lat: rightClickMarker.lat, lng: rightClickMarker.lng },
+    to: {
+      lat: rightClickMarker.lat + 0.001,
+      lng: rightClickMarker.lng + 0.001,
+    },
+    waypoints: [],
+    createdAt: Date.now(),
+    name: fiberFormData.name || `Fiber-${Date.now()}`,
+    type: fiberFormData.type.trim(),
+    startDeviceId: null,
+    endDeviceId: null,
+    startPortId: null,
+    endPortId: null,
+    startPortName: null,
+    endPortName: null,
   };
+
+  setMapState((prevState) => {
+    console.log("Creating new fiber line:", newFiberLine);
+    return {
+      ...prevState,
+      fiberLines: [...prevState.fiberLines, newFiberLine],
+      showModal: false,
+      showFiberForm: false,
+      selectedPoint: null,
+      rightClickMarker: null,
+      fiberFormData: { name: "", type: "Fiber" },
+      tempCable: newFiberLine, // Set tempCable to track the new fiber line
+      showPortDropdown: false,
+      portDropdownPosition: null,
+      portDropdownDevice: null,
+      portDropdownPorts: [],
+      selectedPortId: null,
+    };
+  });
+};
+
+
 
   useEffect(() => {
     console.log("showPortDropdown state:", {
@@ -2265,22 +1933,53 @@ const MyMapV19 = () => {
         : { lat: newLat, lng: newLng };
       console.log("New from position:", newFrom);
 
+      // Check for termination connection limits
+      if (nearestIcon && nearestIcon.type === "Termination") {
+        const connectedLines = getConnectedLinesCount(nearestIcon);
+        if (
+          connectedLines >= 2 &&
+          !isSnappedToIcon(line.from.lat, line.from.lng)
+        ) {
+          console.warn(
+            "Termination box connection limit reached (2 connections)"
+          );
+          alert("Termination box allows only 2 connections.");
+          return prevState;
+        }
+      }
+
+      // Check for splitter ratio limits
+      if (
+        nearestIcon &&
+        nearestIcon.type === "Splitter" &&
+        nearestIcon.splitterRatio
+      ) {
+        const splitNum = getRatioNumber(nearestIcon.splitterRatio);
+        const connectedLines = getConnectedLinesCount(nearestIcon);
+        if (
+          connectedLines >= splitNum &&
+          !isSnappedToIcon(line.from.lat, line.from.lng)
+        ) {
+          console.warn(
+            `Splitter ratio limit reached (${nearestIcon.splitterRatio})`
+          );
+          alert(`Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`);
+          return prevState;
+        }
+      }
+
       updatedLines[index] = {
         ...line,
         from: newFrom,
         createdAt: Date.now(),
         startDeviceId: nearestIcon ? nearestIcon.deviceId : null,
-        startPortId: null, // Reset until port is selected
+        startPortId: null,
         startPortName: null,
       };
       console.log("Updated line:", updatedLines[index]);
 
-      // Show port dropdown only if snapped to a device with ports
-      if (
-        nearestIcon &&
-        nearestIcon.portIds?.length > 0 &&
-        Array.isArray(prevState.allPorts)
-      ) {
+      // Show port dropdown if snapped to a device with ports
+      if (nearestIcon && nearestIcon.portIds?.length > 0) {
         const devicePorts = prevState.allPorts.filter((port) =>
           nearestIcon.portIds.includes(port.id)
         );
@@ -2298,10 +1997,7 @@ const MyMapV19 = () => {
             ...prevState,
             fiberLines: updatedLines,
             showPortDropdown: true,
-            portDropdownPosition: {
-              x: dropdownX,
-              y: dropdownY,
-            },
+            portDropdownPosition: { x: dropdownX, y: dropdownY },
             portDropdownDevice: nearestIcon,
             portDropdownPorts: devicePorts,
             portDropdownEnd: "start",
@@ -2313,13 +2009,8 @@ const MyMapV19 = () => {
             "No matching ports found for device portIds:",
             nearestIcon.portIds
           );
+          alert("No ports available for this device.");
         }
-      } else {
-        console.log("No port dropdown shown. Conditions:", {
-          hasNearestIcon: !!nearestIcon,
-          hasPortIds: nearestIcon?.portIds?.length > 0,
-          allPortsIsArray: Array.isArray(prevState.allPorts),
-        });
       }
 
       return {
@@ -2371,7 +2062,6 @@ const MyMapV19 = () => {
       ) {
         const splitNum = getRatioNumber(nearestIcon.splitterRatio);
         const connectedLines = getConnectedLinesCount(nearestIcon);
-
         if (
           connectedLines >= splitNum &&
           !isSnappedToIcon(line.to.lat, line.to.lng)
@@ -2389,17 +2079,13 @@ const MyMapV19 = () => {
         to: newTo,
         createdAt: Date.now(),
         endDeviceId: nearestIcon ? nearestIcon.deviceId : null,
-        endPortId: null, // Reset until port is selected
+        endPortId: null,
         endPortName: null,
       };
       console.log("Updated line:", updatedLines[index]);
 
-      // Show port dropdown only if snapped to a device with ports
-      if (
-        nearestIcon &&
-        nearestIcon.portIds?.length > 0 &&
-        Array.isArray(prevState.allPorts)
-      ) {
+      // Show port dropdown if snapped to a device with ports
+      if (nearestIcon && nearestIcon.portIds?.length > 0) {
         const devicePorts = prevState.allPorts.filter((port) =>
           nearestIcon.portIds.includes(port.id)
         );
@@ -2417,10 +2103,7 @@ const MyMapV19 = () => {
             ...prevState,
             fiberLines: updatedLines,
             showPortDropdown: true,
-            portDropdownPosition: {
-              x: dropdownX,
-              y: dropdownY,
-            },
+            portDropdownPosition: { x: dropdownX, y: dropdownY },
             portDropdownDevice: nearestIcon,
             portDropdownPorts: devicePorts,
             portDropdownEnd: "end",
@@ -2432,13 +2115,8 @@ const MyMapV19 = () => {
             "No matching ports found for device portIds:",
             nearestIcon.portIds
           );
+          alert("No ports available for this device.");
         }
-      } else {
-        console.log("No port dropdown shown. Conditions:", {
-          hasNearestIcon: !!nearestIcon,
-          hasPortIds: nearestIcon?.portIds?.length > 0,
-          allPortsIsArray: Array.isArray(prevState.allPorts),
-        });
       }
 
       return {
@@ -3103,11 +2781,18 @@ const MyMapV19 = () => {
                   strokeColor: line.strokeColor || "#FF0000",
                   strokeOpacity: 1.0,
                   strokeWeight: 2,
+                  zIndex: 100,
                 }}
+                // onClick={(e) => {
+                //   e.domEvent.stopPropagation();
+                //   handleLineClick(line, index, false, e);
+                // }}
+
                 onClick={(e) => {
-                  e.domEvent.stopPropagation();
-                  handleLineClick(line, index, false, e);
-                }}
+            console.log("Fiber PolylineF clicked:", { lineId: line.id, index, isSavedLine: false, event: e });
+            e.domEvent.stopPropagation();
+            handleLineClick(line, index, false, e);
+          }}
               />
 
               {mapState.selectedLineForActions &&
@@ -3131,6 +2816,51 @@ const MyMapV19 = () => {
                       <Trash2 size={20} className="text-red-500" />
                       <span className="line-action-tooltip">Delete Line</span>
                     </div>
+                    {/* Add Save Icon if both ports are connected and line is not saved */}
+      {!mapState.selectedLineForActions.isSavedLine &&
+        mapState.selectedLineForActions.line.startPortId &&
+        mapState.selectedLineForActions.line.endPortId && (
+          <div
+            className="line-action-item"
+            onClick={() => {
+              const { line } = mapState.selectedLineForActions;
+              saveCableToInterface(line)
+                .then(() => {
+                  alert("Cable saved successfully!");
+                  setMapState((prevState) => {
+                    // Move line to savedPolylines
+                    const updatedFiberLines = prevState.fiberLines.filter(
+                      (l) => l.id !== line.id
+                    );
+                    const updatedSavedPolylines = [
+                      ...prevState.savedPolylines,
+                      { ...line, id: `cable-${Date.now()}` }, // Simulate API cable ID
+                    ];
+                    localStorage.setItem(
+                      "savedPolylines",
+                      JSON.stringify(updatedSavedPolylines)
+                    );
+                    return {
+                      ...prevState,
+                      fiberLines: updatedFiberLines,
+                      savedPolylines: updatedSavedPolylines,
+                      selectedLineForActions: null,
+                      lineActionPosition: null,
+                      exactClickPosition: null,
+                      tempCable: null,
+                      cableSaveAttempted: true,
+                    };
+                  });
+                })
+                .catch((error) => {
+                  alert(`Failed to save cable: ${error.message}`);
+                });
+            }}
+          >
+            <Save size={20} className="text-blue-500" />
+            <span className="line-action-tooltip">Save Line</span>
+          </div>
+        )}
                     <div
                       className="line-action-item"
                       onClick={() =>
@@ -3219,7 +2949,13 @@ const MyMapV19 = () => {
                   strokeOpacity: 1.0,
                   strokeWeight: 2,
                 }}
-                onClick={(e) => handleLineClick(polyline, index, true, e)}
+                // onClick={(e) => handleLineClick(polyline, index, true, e)}
+
+                onClick={(e) => {
+            console.log("Fiber PolylineF clicked:", { lineId: line.id, index, isSavedLine: false, event: e });
+            e.domEvent.stopPropagation();
+            handleLineClick(line, index, false, e);
+          }}
               />
 
               {/* Line Action Modal for Saved Polylines */}
@@ -3423,13 +3159,104 @@ const MyMapV19 = () => {
                 {device.name}
               </button>
             ))}
-            <button className="modal-button" onClick={addFiberLine}>
-              Add Fiber
-            </button>
+            <button
+        className="modal-button"
+        onClick={() => handleSelection("Add Fiber", null)} // Trigger form via handleSelection
+      >
+        Add Fiber
+      </button>
           </div>
           <div className="modal-spike"></div>
         </div>
       )}
+
+      {/* Fiber Form Modal */}
+{mapState.showFiberForm && mapState.rightClickMarker && (
+  <div
+    className="fiber-form-modal"
+    style={{
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      background: "white",
+      padding: "20px",
+      borderRadius: "8px",
+      boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
+      zIndex: 1000,
+      width: "300px",
+    }}
+  >
+    <h3 className="text-lg font-semibold mb-4">Create Fiber Line</h3>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        addFiberLine();
+      }}
+    >
+      <div className="mb-3">
+        <label className="block text-sm font-medium">Fiber Name</label>
+        <input
+          type="text"
+          value={mapState.fiberFormData.name}
+          onChange={(e) =>
+            setMapState((prevState) => ({
+              ...prevState,
+              fiberFormData: {
+                ...prevState.fiberFormData,
+                name: e.target.value,
+              },
+            }))
+          }
+          className="w-full p-2 border rounded"
+          placeholder="Enter fiber name"
+          required
+        />
+      </div>
+      <div className="mb-3">
+        <label className="block text-sm font-medium">Type</label>
+        <input
+          type="text"
+          value={mapState.fiberFormData.type}
+          onChange={(e) =>
+            setMapState((prevState) => ({
+              ...prevState,
+              fiberFormData: {
+                ...prevState.fiberFormData,
+                type: e.target.value,
+              },
+            }))
+          }
+          className="w-full p-2 border rounded"
+          placeholder="Enter fiber type (e.g., Fiber, Copper)"
+          required
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() =>
+            setMapState((prevState) => ({
+              ...prevState,
+              showFiberForm: false,
+              rightClickMarker: null,
+              fiberFormData: { name: "", type: "Fiber" },
+            }))
+          }
+          className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Submit
+        </button>
+      </div>
+    </form>
+  </div>
+)}
 
       {mapState.showDeviceForm && mapState.deviceFormData && (
         <div
@@ -3620,31 +3447,25 @@ const MyMapV19 = () => {
       )}
 
       {/* Port Dropdown Modal for Cable */}
-      {mapState.showPortDropdown && mapState.portDropdownPosition && (
-        <>
-          {console.log("Attempting to render port dropdown:", {
-            showPortDropdown: mapState.showPortDropdown,
-            position: mapState.portDropdownPosition,
-            device: mapState.portDropdownDevice,
-            ports: mapState.portDropdownPorts,
-          })}
+      {mapState.showPortDropdown &&
+        mapState.portDropdownPosition &&
+        mapState.portDropdownDevice && (
           <div
             className="port-dropdown-modal"
             style={{
               position: "fixed",
-              top: `${mapState.portDropdownPosition.y - 150}px`,
-              left: `${mapState.portDropdownPosition.x}px`,
+              top: `${mapState.portDropdownPosition.y - 180}px`, // Adjusted to avoid overlap
+              left: `${mapState.portDropdownPosition.x - 100}px`,
               background: "white",
               padding: "15px",
               borderRadius: "8px",
               boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
-              zIndex: 10000,
-              width: "200px",
-              border: "2px solid red", // Ensure visibility
+              zIndex: 1000,
+              width: "220px",
             }}
           >
             <h3 className="text-md font-semibold mb-3">
-              Select Port for {mapState.portDropdownDevice?.type || "Unknown"} (
+              Select Port for {mapState.portDropdownDevice.type} (
               {mapState.portDropdownEnd === "start" ? "Start" : "End"})
             </h3>
             <form onSubmit={handlePortSelection}>
@@ -3656,11 +3477,15 @@ const MyMapV19 = () => {
                   required
                 >
                   <option value="">Select a port</option>
-                  {mapState.portDropdownPorts.map((port) => (
-                    <option key={port.id} value={port.id}>
-                      {port.name || `Port ${port.position}`}
-                    </option>
-                  ))}
+                  {mapState.portDropdownPorts.length > 0 ? (
+                    mapState.portDropdownPorts.map((port) => (
+                      <option key={port.id} value={port.id}>
+                        {port.name || `Port ${port.position}`}
+                      </option>
+                    ))
+                  ) : (
+                    <option disabled>No ports available</option>
+                  )}
                 </select>
               </div>
               <div className="flex justify-end gap-2">
@@ -3681,74 +3506,8 @@ const MyMapV19 = () => {
               </div>
             </form>
           </div>
-        </>
-      )}
+        )}
 
-      {/* Save Cable Modal */}
-      {mapState.showSaveCableModal && mapState.tempCable && (
-        <div
-          className="save-cable-modal"
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            background: "white",
-            padding: "20px",
-            borderRadius: "8px",
-            boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
-            zIndex: 1000,
-            width: "300px",
-          }}
-        >
-          <h3 className="text-lg font-semibold mb-4">Save Cable</h3>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                setMapState((prevState) => ({
-                  ...prevState,
-                  showSaveCableModal: false,
-                  tempCable: null,
-                  startPortId: null,
-                  endPortId: null,
-                  startPortName: null,
-                  endPortName: null,
-                  startDeviceId: null,
-                  endDeviceId: null,
-                }))
-              }
-              className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() =>
-                saveCable(mapState.tempCable)
-                  .then(() =>
-                    setMapState((prevState) => ({
-                      ...prevState,
-                      showSaveCableModal: false,
-                      tempCable: null,
-                      startPortId: null,
-                      endPortId: null,
-                      startPortName: null,
-                      endPortName: null,
-                      startDeviceId: null,
-                      endDeviceId: null,
-                    }))
-                  )
-                  .catch((error) =>
-                    alert(`Failed to save cable: ${error.message}`)
-                  )
-              }
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              Save
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 };
