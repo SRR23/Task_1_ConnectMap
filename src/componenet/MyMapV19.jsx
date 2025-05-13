@@ -259,7 +259,98 @@ const MyMapV19 = () => {
 
     fetchDeviceTypes();
   }, []);
-  
+
+  // Fetch cables on component mount
+useEffect(() => {
+  const fetchCables = async () => {
+    try {
+      console.log("Fetching cables from http://127.0.0.1:8000/api/v1/interface");
+      const response = await fetch("http://127.0.0.1:8000/api/v1/interface", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      const cables = await response.json();
+      console.log("API Response - Cables:", cables);
+
+      // Map cables to savedPolylines format
+      const fetchedPolylines = cables
+        .filter((cableInterface) => {
+          const hasValidCoords =
+            cableInterface.cable &&
+            cableInterface.cable.path &&
+            cableInterface.cable.path.coords &&
+            Array.isArray(cableInterface.cable.path.coords) &&
+            cableInterface.cable.path.coords.length >= 2 &&
+            cableInterface.cable.path.coords.every(
+              (coord) =>
+                Array.isArray(coord) &&
+                coord.length === 2 &&
+                !isNaN(parseFloat(coord[0])) &&
+                !isNaN(parseFloat(coord[1]))
+            );
+          if (!hasValidCoords) {
+            console.warn(
+              `Skipping cable ${cableInterface.cable?.name || cableInterface.id} with invalid coordinates`
+            );
+          }
+          return hasValidCoords;
+        })
+        .map((cableInterface) => {
+          const coords = cableInterface.cable.path.coords;
+          const from = {
+            lat: parseFloat(coords[0][0]),
+            lng: parseFloat(coords[0][1]),
+          };
+          const to = {
+            lat: parseFloat(coords[coords.length - 1][0]),
+            lng: parseFloat(coords[coords.length - 1][1]),
+          };
+          const waypoints = coords
+            .slice(1, -1)
+            .map((coord) => ({
+              lat: parseFloat(coord[0]),
+              lng: parseFloat(coord[1]),
+            }));
+
+          return {
+            id: `cable-${cableInterface.id}`,
+            name: cableInterface.cable.name || `Cable-${cableInterface.id}`,
+            from,
+            to,
+            waypoints,
+            createdAt: Date.now(), // API doesn't provide created_at
+            startDeviceId: cableInterface.start.device.id || null,
+            endDeviceId: cableInterface.end.device.id || null,
+            startPortId: cableInterface.start.id || null,
+            endPortId: cableInterface.end.id || null,
+            startPortName: cableInterface.start.name || null,
+            endPortName: cableInterface.end.name || null,
+          };
+        });
+
+      console.log("Fetched Polylines for savedPolylines:", fetchedPolylines);
+
+      setMapState((prevState) => ({
+        ...prevState,
+        savedPolylines: fetchedPolylines,
+        showSavedRoutes: true, // Show saved routes by default
+      }));
+    } catch (error) {
+      console.error("Error fetching cables:", error.message);
+      alert("Failed to load cables from the server: " + error.message);
+    }
+  };
+
+  fetchCables();
+}, []); // Empty dependency array to run once on mount
 
 const saveCableToInterface = async (cable) => {
   try {
@@ -735,71 +826,6 @@ const saveCableToInterface = async (cable) => {
     });
   };
 
-  // useEffect(() => {
-  //   const fetchDevices = async () => {
-  //     try {
-  //       console.log(
-  //         "Fetching devices from http://127.0.0.1:8000/api/v1/devices"
-  //       );
-  //       const response = await fetch("http://127.0.0.1:8000/api/v1/devices");
-  //       if (!response.ok) {
-  //         throw new Error(`HTTP error! Status: ${response.status}`);
-  //       }
-  //       const devices = await response.json();
-  //       console.log("API Response - Devices:", devices);
-
-  //       const fetchedIcons = devices
-  //         .filter((device) => {
-  //           const hasValidCoords =
-  //             device.latitude != null &&
-  //             device.longitude != null &&
-  //             !isNaN(device.latitude) &&
-  //             !isNaN(device.longitude);
-  //           if (!hasValidCoords) {
-  //             console.warn(
-  //               `Skipping device ${device.name} with invalid coordinates: lat=${device.latitude}, lng=${device.longitude}`
-  //             );
-  //           }
-  //           return hasValidCoords;
-  //         })
-  //         .map((device) => {
-  //           const icon = {
-  //             lat: device.latitude,
-  //             lng: device.longitude,
-  //             type: device.device_type.name,
-  //             id: `icon-api-${device.id}`,
-  //             imageUrl: device.device_type.icon
-  //               ? `http://127.0.0.1:8000${device.device_type.icon}`
-  //               : "/img/default-icon.png",
-  //             splitterRatio: device.device_type.name === "Splitter" ? "" : null,
-  //             name: device.device_type.name === "Splitter" ? "" : null,
-  //             nextLineNumber: device.device_type.name === "Splitter" ? 1 : null,
-  //             deviceId: device.id,
-  //             portIds: device.port_device.map((port) => port.id),
-  //           };
-  //           console.log("Mapped Icon:", icon);
-  //           return icon;
-  //         });
-
-  //       console.log("Fetched Icons for imageIcons:", fetchedIcons);
-
-  //       setMapState((prevState) => {
-  //         console.log("Updating imageIcons state with:", fetchedIcons);
-  //         return {
-  //           ...prevState,
-  //           imageIcons: fetchedIcons,
-  //           nextNumber: fetchedIcons.length + 1,
-  //         };
-  //       });
-  //     } catch (error) {
-  //       console.error("Error fetching devices:", error.message);
-  //       alert("Failed to load devices from the server: " + error.message);
-  //     }
-  //   };
-
-  //   fetchDevices();
-  // }, []);
-
   useEffect(() => {
     const fetchDevices = async () => {
       try {
@@ -880,138 +906,12 @@ const saveCableToInterface = async (cable) => {
     fetchDevices();
   }, []);
 
+  
+
   useEffect(() => {
     console.log("Current imageIcons state:", mapState.imageIcons);
   }, [mapState.imageIcons]);
 
-
-// const handlePortSelection = (e) => {
-//   e.preventDefault();
-//   const { selectedPortId, portDropdownEnd, tempCable } = mapState;
-//   if (!selectedPortId || !tempCable) {
-//     console.error("No port selected or tempCable missing");
-//     return;
-//   }
-
-//   setMapState((prevState) => {
-//     // Check if this port selection has already been processed
-//     if (
-//       (portDropdownEnd === "start" && prevState.tempCable?.startPortId) ||
-//       (portDropdownEnd === "end" && prevState.tempCable?.endPortId)
-//     ) {
-//       console.warn("Port already selected for this end, skipping duplicate processing");
-//       return prevState;
-//     }
-
-//     const updatedLines = [...prevState.fiberLines];
-//     const lineIndex = updatedLines.findIndex((line) => line.id === tempCable.id);
-//     if (lineIndex === -1) {
-//       console.error("Fiber line not found:", tempCable.id);
-//       return prevState;
-//     }
-
-//     const selectedPort = prevState.allPorts.find((port) => port.id === parseInt(selectedPortId));
-//     updatedLines[lineIndex] = {
-//       ...updatedLines[lineIndex],
-//       [portDropdownEnd === "start" ? "startPortId" : "endPortId"]: selectedPortId,
-//       [portDropdownEnd === "start" ? "startPortName" : "endPortName"]: selectedPort
-//         ? selectedPort.name
-//         : `Port-${selectedPortId}`,
-//       [portDropdownEnd === "start" ? "startDeviceId" : "endDeviceId"]: prevState.portDropdownDevice
-//         ? prevState.portDropdownDevice.deviceId
-//         : null,
-//     };
-
-//     const updatedLine = updatedLines[lineIndex];
-//     const bothPortsSelected = updatedLine.startPortId && updatedLine.endPortId;
-
-//     // Only send POST request if both ports are selected and haven't been sent yet
-//     if (bothPortsSelected && !prevState.cableSaveAttempted) {
-//       console.log("Both ports selected, attempting to save cable:", updatedLine);
-//       saveCableToInterface(updatedLine)
-//         .then(() => {
-//           alert("Cable saved successfully!");
-//           // Update state to mark cable as saved
-//           setMapState((prev) => ({
-//             ...prev,
-//             cableSaveAttempted: true, // Prevent further attempts
-//             tempCable: null, // Clear tempCable
-//           }));
-//         })
-//         .catch((error) => {
-//           alert(`Failed to save cable: ${error.message}`);
-//         });
-//     }
-
-//     return {
-//       ...prevState,
-//       fiberLines: updatedLines,
-//       showPortDropdown: false,
-//       portDropdownPosition: null,
-//       portDropdownDevice: null,
-//       portDropdownPorts: [],
-//       selectedPortId: null,
-//       portDropdownEnd: null,
-//       tempCable: updatedLine, // Keep tempCable until save is successful
-//       showSaveCableModal: false,
-//     };
-//   });
-// };
-
-// const handlePortSelection = (e) => {
-//   e.preventDefault();
-//   const { selectedPortId, portDropdownEnd, tempCable } = mapState;
-//   if (!selectedPortId || !tempCable) {
-//     console.error("No port selected or tempCable missing");
-//     return;
-//   }
-
-//   setMapState((prevState) => {
-//     // Prevent duplicate processing
-//     if (
-//       (portDropdownEnd === "start" && prevState.tempCable?.startPortId) ||
-//       (portDropdownEnd === "end" && prevState.tempCable?.endPortId)
-//     ) {
-//       console.warn("Port already selected for this end, skipping duplicate processing");
-//       return prevState;
-//     }
-
-//     const updatedLines = [...prevState.fiberLines];
-//     const lineIndex = updatedLines.findIndex((line) => line.id === tempCable.id);
-//     if (lineIndex === -1) {
-//       console.error("Fiber line not found:", tempCable.id);
-//       return prevState;
-//     }
-
-//     const selectedPort = prevState.allPorts.find((port) => port.id === parseInt(selectedPortId));
-//     updatedLines[lineIndex] = {
-//       ...updatedLines[lineIndex],
-//       [portDropdownEnd === "start" ? "startPortId" : "endPortId"]: selectedPortId,
-//       [portDropdownEnd === "start" ? "startPortName" : "endPortName"]: selectedPort
-//         ? selectedPort.name
-//         : `Port-${selectedPortId}`,
-//       [portDropdownEnd === "start" ? "startDeviceId" : "endDeviceId"]: prevState.portDropdownDevice
-//         ? prevState.portDropdownDevice.deviceId
-//         : null,
-//     };
-
-//     const updatedLine = updatedLines[lineIndex];
-//     const bothPortsSelected = updatedLine.startPortId && updatedLine.endPortId;
-
-//     return {
-//       ...prevState,
-//       fiberLines: updatedLines,
-//       showPortDropdown: false,
-//       portDropdownPosition: null,
-//       portDropdownDevice: null,
-//       portDropdownPorts: [],
-//       selectedPortId: null,
-//       portDropdownEnd: null,
-//       tempCable: updatedLine,
-//       // showSaveCableModal: bothPortsSelected,
-//     };
-//   });
-// };
 
 const handlePortSelection = (e) => {
   e.preventDefault();
@@ -1911,308 +1811,622 @@ const addFiberLine = () => {
     });
   }, [mapState.showPortDropdown, mapState.portDropdownPosition]);
 
+  // const handleStartMarkerDragEnd = (index, e) => {
+  //   console.log("handleStartMarkerDragEnd triggered for line index:", index);
+  //   const newLat = e.latLng.lat();
+  //   const newLng = e.latLng.lng();
+  //   console.log("Drag end coordinates:", { newLat, newLng });
+
+  //   const nearestIcon = findNearestIcon(newLat, newLng);
+  //   console.log("Nearest icon:", nearestIcon);
+
+  //   setMapState((prevState) => {
+  //     const updatedLines = [...prevState.fiberLines];
+  //     const line = updatedLines[index];
+  //     if (!line) {
+  //       console.error("Line not found at index:", index);
+  //       return prevState;
+  //     }
+
+  //     const newFrom = nearestIcon
+  //       ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+  //       : { lat: newLat, lng: newLng };
+  //     console.log("New from position:", newFrom);
+
+  //     // Check for termination connection limits
+  //     if (nearestIcon && nearestIcon.type === "Termination") {
+  //       const connectedLines = getConnectedLinesCount(nearestIcon);
+  //       if (
+  //         connectedLines >= 2 &&
+  //         !isSnappedToIcon(line.from.lat, line.from.lng)
+  //       ) {
+  //         console.warn(
+  //           "Termination box connection limit reached (2 connections)"
+  //         );
+  //         alert("Termination box allows only 2 connections.");
+  //         return prevState;
+  //       }
+  //     }
+
+  //     // Check for splitter ratio limits
+  //     if (
+  //       nearestIcon &&
+  //       nearestIcon.type === "Splitter" &&
+  //       nearestIcon.splitterRatio
+  //     ) {
+  //       const splitNum = getRatioNumber(nearestIcon.splitterRatio);
+  //       const connectedLines = getConnectedLinesCount(nearestIcon);
+  //       if (
+  //         connectedLines >= splitNum &&
+  //         !isSnappedToIcon(line.from.lat, line.from.lng)
+  //       ) {
+  //         console.warn(
+  //           `Splitter ratio limit reached (${nearestIcon.splitterRatio})`
+  //         );
+  //         alert(`Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`);
+  //         return prevState;
+  //       }
+  //     }
+
+  //     updatedLines[index] = {
+  //       ...line,
+  //       from: newFrom,
+  //       createdAt: Date.now(),
+  //       startDeviceId: nearestIcon ? nearestIcon.deviceId : null,
+  //       startPortId: null,
+  //       startPortName: null,
+  //     };
+  //     console.log("Updated line:", updatedLines[index]);
+
+  //     // Show port dropdown if snapped to a device with ports
+  //     if (nearestIcon && nearestIcon.portIds?.length > 0) {
+  //       const devicePorts = prevState.allPorts.filter((port) =>
+  //         nearestIcon.portIds.includes(port.id)
+  //       );
+  //       console.log("Filtered device ports:", devicePorts);
+
+  //       if (devicePorts.length > 0) {
+  //         const dropdownX = e.domEvent?.clientX || window.innerWidth / 2;
+  //         const dropdownY = e.domEvent?.clientY || window.innerHeight / 2;
+  //         console.log("Showing port dropdown at:", {
+  //           x: dropdownX,
+  //           y: dropdownY,
+  //         });
+
+  //         return {
+  //           ...prevState,
+  //           fiberLines: updatedLines,
+  //           showPortDropdown: true,
+  //           portDropdownPosition: { x: dropdownX, y: dropdownY },
+  //           portDropdownDevice: nearestIcon,
+  //           portDropdownPorts: devicePorts,
+  //           portDropdownEnd: "start",
+  //           tempCable: updatedLines[index],
+  //           selectedPortId: null,
+  //         };
+  //       } else {
+  //         console.warn(
+  //           "No matching ports found for device portIds:",
+  //           nearestIcon.portIds
+  //         );
+  //         alert("No ports available for this device.");
+  //       }
+  //     }
+
+  //     return {
+  //       ...prevState,
+  //       fiberLines: updatedLines,
+  //     };
+  //   });
+  // };
+
   const handleStartMarkerDragEnd = (index, e) => {
-    console.log("handleStartMarkerDragEnd triggered for line index:", index);
-    const newLat = e.latLng.lat();
-    const newLng = e.latLng.lng();
-    console.log("Drag end coordinates:", { newLat, newLng });
+  console.log("handleStartMarkerDragEnd triggered for line index:", index);
+  const newLat = e.latLng.lat();
+  const newLng = e.latLng.lng();
+  console.log("Drag end coordinates:", { newLat, newLng });
 
-    const nearestIcon = findNearestIcon(newLat, newLng);
-    console.log("Nearest icon:", nearestIcon);
+  const nearestIcon = findNearestIcon(newLat, newLng);
+  console.log("Nearest icon:", nearestIcon);
 
-    setMapState((prevState) => {
-      const updatedLines = [...prevState.fiberLines];
-      const line = updatedLines[index];
-      if (!line) {
-        console.error("Line not found at index:", index);
+  setMapState((prevState) => {
+    const updatedLines = [...prevState.fiberLines];
+    const line = updatedLines[index];
+    if (!line) {
+      console.error("Line not found at index:", index);
+      return prevState;
+    }
+
+    const newFrom = nearestIcon
+      ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+      : { lat: newLat, lng: newLng };
+    console.log("New from position:", newFrom);
+
+    // Check for termination connection limits
+    if (nearestIcon && nearestIcon.type === "Termination") {
+      const connectedLines = getConnectedLinesCount(nearestIcon);
+      if (
+        connectedLines >= 2 &&
+        !isSnappedToIcon(line.from.lat, line.from.lng)
+      ) {
+        console.warn("Termination box connection limit reached (2 connections)");
+        alert("Termination box allows only 2 connections.");
         return prevState;
       }
+    }
 
-      const newFrom = nearestIcon
-        ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-        : { lat: newLat, lng: newLng };
-      console.log("New from position:", newFrom);
-
-      // Check for termination connection limits
-      if (nearestIcon && nearestIcon.type === "Termination") {
-        const connectedLines = getConnectedLinesCount(nearestIcon);
-        if (
-          connectedLines >= 2 &&
-          !isSnappedToIcon(line.from.lat, line.from.lng)
-        ) {
-          console.warn(
-            "Termination box connection limit reached (2 connections)"
-          );
-          alert("Termination box allows only 2 connections.");
-          return prevState;
-        }
-      }
-
-      // Check for splitter ratio limits
+    // Check for splitter ratio limits
+    if (
+      nearestIcon &&
+      nearestIcon.type === "Splitter" &&
+      nearestIcon.splitterRatio
+    ) {
+      const splitNum = getRatioNumber(nearestIcon.splitterRatio);
+      const connectedLines = getConnectedLinesCount(nearestIcon);
       if (
-        nearestIcon &&
-        nearestIcon.type === "Splitter" &&
-        nearestIcon.splitterRatio
+        connectedLines >= splitNum &&
+        !isSnappedToIcon(line.from.lat, line.from.lng)
       ) {
-        const splitNum = getRatioNumber(nearestIcon.splitterRatio);
-        const connectedLines = getConnectedLinesCount(nearestIcon);
-        if (
-          connectedLines >= splitNum &&
-          !isSnappedToIcon(line.from.lat, line.from.lng)
-        ) {
-          console.warn(
-            `Splitter ratio limit reached (${nearestIcon.splitterRatio})`
-          );
-          alert(`Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`);
-          return prevState;
-        }
-      }
-
-      updatedLines[index] = {
-        ...line,
-        from: newFrom,
-        createdAt: Date.now(),
-        startDeviceId: nearestIcon ? nearestIcon.deviceId : null,
-        startPortId: null,
-        startPortName: null,
-      };
-      console.log("Updated line:", updatedLines[index]);
-
-      // Show port dropdown if snapped to a device with ports
-      if (nearestIcon && nearestIcon.portIds?.length > 0) {
-        const devicePorts = prevState.allPorts.filter((port) =>
-          nearestIcon.portIds.includes(port.id)
+        console.warn(
+          `Splitter ratio limit reached (${nearestIcon.splitterRatio})`
         );
-        console.log("Filtered device ports:", devicePorts);
-
-        if (devicePorts.length > 0) {
-          const dropdownX = e.domEvent?.clientX || window.innerWidth / 2;
-          const dropdownY = e.domEvent?.clientY || window.innerHeight / 2;
-          console.log("Showing port dropdown at:", {
-            x: dropdownX,
-            y: dropdownY,
-          });
-
-          return {
-            ...prevState,
-            fiberLines: updatedLines,
-            showPortDropdown: true,
-            portDropdownPosition: { x: dropdownX, y: dropdownY },
-            portDropdownDevice: nearestIcon,
-            portDropdownPorts: devicePorts,
-            portDropdownEnd: "start",
-            tempCable: updatedLines[index],
-            selectedPortId: null,
-          };
-        } else {
-          console.warn(
-            "No matching ports found for device portIds:",
-            nearestIcon.portIds
-          );
-          alert("No ports available for this device.");
-        }
+        alert(`Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`);
+        return prevState;
       }
+    }
 
-      return {
-        ...prevState,
-        fiberLines: updatedLines,
-      };
-    });
-  };
+    updatedLines[index] = {
+      ...line,
+      from: newFrom,
+      createdAt: Date.now(),
+      startDeviceId: nearestIcon ? nearestIcon.deviceId : null,
+      startPortId: null,
+      startPortName: null,
+    };
+    console.log("Updated line:", updatedLines[index]);
+
+    // Clear tempCable to prevent shadow
+    const newState = {
+      ...prevState,
+      fiberLines: updatedLines,
+      tempCable: null, // Clear tempCable to avoid rendering stale line
+      showPortDropdown: false,
+      portDropdownPosition: null,
+      portDropdownDevice: null,
+      portDropdownPorts: [],
+      selectedPortId: null,
+    };
+
+    // Show port dropdown if snapped to a device with ports
+    if (nearestIcon && nearestIcon.portIds?.length > 0) {
+      const devicePorts = prevState.allPorts.filter((port) =>
+        nearestIcon.portIds.includes(port.id)
+      );
+      console.log("Filtered device ports:", devicePorts);
+
+      if (devicePorts.length > 0) {
+        const dropdownX = e.domEvent?.clientX || window.innerWidth / 2;
+        const dropdownY = e.domEvent?.clientY || window.innerHeight / 2;
+        console.log("Showing port dropdown at:", { x: dropdownX, y: dropdownY });
+
+        return {
+          ...newState,
+          showPortDropdown: true,
+          portDropdownPosition: { x: dropdownX, y: dropdownY },
+          portDropdownDevice: nearestIcon,
+          portDropdownPorts: devicePorts,
+          portDropdownEnd: "start",
+          tempCable: updatedLines[index], // Set tempCable to the updated line
+        };
+      } else {
+        console.warn(
+          "No matching ports found for device portIds:",
+          nearestIcon.portIds
+        );
+        alert("No ports available for this device.");
+      }
+    }
+
+    return newState;
+  });
+};
+
+  // const handleEndMarkerDragEnd = (index, e) => {
+  //   console.log("handleEndMarkerDragEnd triggered for line index:", index);
+  //   const newLat = e.latLng.lat();
+  //   const newLng = e.latLng.lng();
+  //   console.log("Drag end coordinates:", { newLat, newLng });
+
+  //   const nearestIcon = findNearestIcon(newLat, newLng);
+  //   console.log("Nearest icon:", nearestIcon);
+
+  //   setMapState((prevState) => {
+  //     const updatedLines = [...prevState.fiberLines];
+  //     const line = updatedLines[index];
+  //     if (!line) {
+  //       console.error("Line not found at index:", index);
+  //       return prevState;
+  //     }
+
+  //     const newTo = nearestIcon
+  //       ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+  //       : { lat: newLat, lng: newLng };
+  //     console.log("New to position:", newTo);
+
+  //     // Check for termination connection limits
+  //     if (nearestIcon && nearestIcon.type === "Termination") {
+  //       const connectedLines = getConnectedLinesCount(nearestIcon);
+  //       if (connectedLines >= 2 && !isSnappedToIcon(line.to.lat, line.to.lng)) {
+  //         console.warn(
+  //           "Termination box connection limit reached (2 connections)"
+  //         );
+  //         alert("Termination box allows only 2 connections.");
+  //         return prevState;
+  //       }
+  //     }
+
+  //     // Check for splitter ratio limits
+  //     if (
+  //       nearestIcon &&
+  //       nearestIcon.type === "Splitter" &&
+  //       nearestIcon.splitterRatio
+  //     ) {
+  //       const splitNum = getRatioNumber(nearestIcon.splitterRatio);
+  //       const connectedLines = getConnectedLinesCount(nearestIcon);
+  //       if (
+  //         connectedLines >= splitNum &&
+  //         !isSnappedToIcon(line.to.lat, line.to.lng)
+  //       ) {
+  //         console.warn(
+  //           `Splitter ratio limit reached (${nearestIcon.splitterRatio})`
+  //         );
+  //         alert(`Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`);
+  //         return prevState;
+  //       }
+  //     }
+
+  //     updatedLines[index] = {
+  //       ...line,
+  //       to: newTo,
+  //       createdAt: Date.now(),
+  //       endDeviceId: nearestIcon ? nearestIcon.deviceId : null,
+  //       endPortId: null,
+  //       endPortName: null,
+  //     };
+  //     console.log("Updated line:", updatedLines[index]);
+
+  //     // Show port dropdown if snapped to a device with ports
+  //     if (nearestIcon && nearestIcon.portIds?.length > 0) {
+  //       const devicePorts = prevState.allPorts.filter((port) =>
+  //         nearestIcon.portIds.includes(port.id)
+  //       );
+  //       console.log("Filtered device ports:", devicePorts);
+
+  //       if (devicePorts.length > 0) {
+  //         const dropdownX = e.domEvent?.clientX || window.innerWidth / 2;
+  //         const dropdownY = e.domEvent?.clientY || window.innerHeight / 2;
+  //         console.log("Showing port dropdown at:", {
+  //           x: dropdownX,
+  //           y: dropdownY,
+  //         });
+
+  //         return {
+  //           ...prevState,
+  //           fiberLines: updatedLines,
+  //           showPortDropdown: true,
+  //           portDropdownPosition: { x: dropdownX, y: dropdownY },
+  //           portDropdownDevice: nearestIcon,
+  //           portDropdownPorts: devicePorts,
+  //           portDropdownEnd: "end",
+  //           tempCable: updatedLines[index],
+  //           selectedPortId: null,
+  //         };
+  //       } else {
+  //         console.warn(
+  //           "No matching ports found for device portIds:",
+  //           nearestIcon.portIds
+  //         );
+  //         alert("No ports available for this device.");
+  //       }
+  //     }
+
+  //     return {
+  //       ...prevState,
+  //       fiberLines: updatedLines,
+  //     };
+  //   });
+  // };
 
   const handleEndMarkerDragEnd = (index, e) => {
-    console.log("handleEndMarkerDragEnd triggered for line index:", index);
-    const newLat = e.latLng.lat();
-    const newLng = e.latLng.lng();
-    console.log("Drag end coordinates:", { newLat, newLng });
+  console.log("handleEndMarkerDragEnd triggered for line index:", index);
+  const newLat = e.latLng.lat();
+  const newLng = e.latLng.lng();
+  console.log("Drag end coordinates:", { newLat, newLng });
 
-    const nearestIcon = findNearestIcon(newLat, newLng);
-    console.log("Nearest icon:", nearestIcon);
+  const nearestIcon = findNearestIcon(newLat, newLng);
+  console.log("Nearest icon:", nearestIcon);
 
-    setMapState((prevState) => {
-      const updatedLines = [...prevState.fiberLines];
-      const line = updatedLines[index];
-      if (!line) {
-        console.error("Line not found at index:", index);
+  setMapState((prevState) => {
+    const updatedLines = [...prevState.fiberLines];
+    const line = updatedLines[index];
+    if (!line) {
+      console.error("Line not found at index:", index);
+      return prevState;
+    }
+
+    const newTo = nearestIcon
+      ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+      : { lat: newLat, lng: newLng };
+    console.log("New to position:", newTo);
+
+    // Check for termination connection limits
+    if (nearestIcon && nearestIcon.type === "Termination") {
+      const connectedLines = getConnectedLinesCount(nearestIcon);
+      if (connectedLines >= 2 && !isSnappedToIcon(line.to.lat, line.to.lng)) {
+        console.warn("Termination box connection limit reached (2 connections)");
+        alert("Termination box allows only 2 connections.");
+        return prevState;
+      }
+    }
+
+    // Check for splitter ratio limits
+    if (
+      nearestIcon &&
+      nearestIcon.type === "Splitter" &&
+      nearestIcon.splitterRatio
+    ) {
+      const splitNum = getRatioNumber(nearestIcon.splitterRatio);
+      const connectedLines = getConnectedLinesCount(nearestIcon);
+      if (
+        connectedLines >= splitNum &&
+        !isSnappedToIcon(line.to.lat, line.to.lng)
+      ) {
+        console.warn(
+          `Splitter ratio limit reached (${nearestIcon.splitterRatio})`
+        );
+        alert(`Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`);
+        return prevState;
+      }
+    }
+
+    updatedLines[index] = {
+      ...line,
+      to: newTo,
+      createdAt: Date.now(),
+      endDeviceId: nearestIcon ? nearestIcon.deviceId : null,
+      endPortId: null,
+      endPortName: null,
+    };
+    console.log("Updated line:", updatedLines[index]);
+
+    // Clear tempCable to prevent shadow
+    const newState = {
+      ...prevState,
+      fiberLines: updatedLines,
+      tempCable: null, // Clear tempCable to avoid rendering stale line
+      showPortDropdown: false,
+      portDropdownPosition: null,
+      portDropdownDevice: null,
+      portDropdownPorts: [],
+      selectedPortId: null,
+    };
+
+    // Show port dropdown if snapped to a device with ports
+    if (nearestIcon && nearestIcon.portIds?.length > 0) {
+      const devicePorts = prevState.allPorts.filter((port) =>
+        nearestIcon.portIds.includes(port.id)
+      );
+      console.log("Filtered device ports:", devicePorts);
+
+      if (devicePorts.length > 0) {
+        const dropdownX = e.domEvent?.clientX || window.innerWidth / 2;
+        const dropdownY = e.domEvent?.clientY || window.innerHeight / 2;
+        console.log("Showing port dropdown at:", { x: dropdownX, y: dropdownY });
+
+        return {
+          ...newState,
+          showPortDropdown: true,
+          portDropdownPosition: { x: dropdownX, y: dropdownY },
+          portDropdownDevice: nearestIcon,
+          portDropdownPorts: devicePorts,
+          portDropdownEnd: "end",
+          tempCable: updatedLines[index], // Set tempCable to the updated line
+        };
+      } else {
+        console.warn(
+          "No matching ports found for device portIds:",
+          nearestIcon.portIds
+        );
+        alert("No ports available for this device.");
+      }
+    }
+
+    return newState;
+  });
+};
+
+  // const handleWaypointDragEnd = (lineIndex, waypointIndex, e) => {
+  //   const newLat = e.latLng.lat();
+  //   const newLng = e.latLng.lng();
+  //   const nearestIcon = findNearestIcon(newLat, newLng);
+
+  //   setMapState((prevState) => {
+  //     const updatedFiberLines = [...prevState.fiberLines];
+  //     const line = updatedFiberLines[lineIndex];
+  //     const newWaypoint = nearestIcon
+  //       ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+  //       : { lat: newLat, lng: newLng };
+
+  //     if (
+  //       nearestIcon &&
+  //       nearestIcon.type === "Splitter" &&
+  //       nearestIcon.splitterRatio
+  //     ) {
+  //       const splitNum = getRatioNumber(nearestIcon.splitterRatio);
+  //       const connectedLines = getConnectedLinesCount(nearestIcon);
+
+  //       if (
+  //         connectedLines >= splitNum &&
+  //         !line.waypoints.some(
+  //           (wp, idx) =>
+  //             idx === waypointIndex &&
+  //             wp.lat === nearestIcon.lat &&
+  //             wp.lng === nearestIcon.lng
+  //         )
+  //       ) {
+  //         alert(
+  //           `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`
+  //         );
+  //         return prevState;
+  //       }
+
+  //       const updatedWaypoints = line.waypoints.map((wp, idx) =>
+  //         idx === waypointIndex ? newWaypoint : wp
+  //       );
+
+  //       if (
+  //         !line.waypoints.some(
+  //           (wp, idx) =>
+  //             idx === waypointIndex &&
+  //             wp.lat === nearestIcon.lat &&
+  //             wp.lng === nearestIcon.lng
+  //         )
+  //       ) {
+  //         console.log("Waypoint connected to splitter:", {
+  //           lineId: line.id,
+  //           waypointIndex,
+  //           splitterId: nearestIcon.id,
+  //           ratio: nearestIcon.splitterRatio,
+  //         });
+  //         const splitter = prevState.imageIcons.find(
+  //           (icon) => icon.id === nearestIcon.id
+  //         );
+  //         const lineNumber = splitter.nextLineNumber || 1;
+  //         const newLineName = `Line ${lineNumber}`;
+  //         updatedFiberLines[lineIndex] = {
+  //           ...line,
+  //           waypoints: updatedWaypoints,
+  //           name: newLineName,
+  //           createdAt: Date.now(),
+  //         };
+  //         const updatedImageIcons = prevState.imageIcons.map((icon) =>
+  //           icon.id === nearestIcon.id
+  //             ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
+  //             : icon
+  //         );
+  //         return {
+  //           ...prevState,
+  //           fiberLines: updatedFiberLines,
+  //           imageIcons: updatedImageIcons,
+  //         };
+  //       }
+  //     }
+
+  //     updatedFiberLines[lineIndex] = {
+  //       ...line,
+  //       waypoints: line.waypoints.map((wp, idx) =>
+  //         idx === waypointIndex ? newWaypoint : wp
+  //       ),
+  //       createdAt: line.createdAt || Date.now(),
+  //     };
+  //     return { ...prevState, fiberLines: updatedFiberLines };
+  //   });
+  // };
+
+  const handleWaypointDragEnd = (lineIndex, waypointIndex, e) => {
+  const newLat = e.latLng.lat();
+  const newLng = e.latLng.lng();
+  const nearestIcon = findNearestIcon(newLat, newLng);
+
+  setMapState((prevState) => {
+    const updatedFiberLines = [...prevState.fiberLines];
+    const line = updatedFiberLines[lineIndex];
+    const newWaypoint = nearestIcon
+      ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+      : { lat: newLat, lng: newLng };
+
+    if (
+      nearestIcon &&
+      nearestIcon.type === "Splitter" &&
+      nearestIcon.splitterRatio
+    ) {
+      const splitNum = getRatioNumber(nearestIcon.splitterRatio);
+      const connectedLines = getConnectedLinesCount(nearestIcon);
+
+      if (
+        connectedLines >= splitNum &&
+        !line.waypoints.some(
+          (wp, idx) =>
+            idx === waypointIndex &&
+            wp.lat === nearestIcon.lat &&
+            wp.lng === nearestIcon.lng
+        )
+      ) {
+        alert(
+          `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`
+        );
         return prevState;
       }
 
-      const newTo = nearestIcon
-        ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-        : { lat: newLat, lng: newLng };
-      console.log("New to position:", newTo);
-
-      // Check for termination connection limits
-      if (nearestIcon && nearestIcon.type === "Termination") {
-        const connectedLines = getConnectedLinesCount(nearestIcon);
-        if (connectedLines >= 2 && !isSnappedToIcon(line.to.lat, line.to.lng)) {
-          console.warn(
-            "Termination box connection limit reached (2 connections)"
-          );
-          alert("Termination box allows only 2 connections.");
-          return prevState;
-        }
-      }
-
-      // Check for splitter ratio limits
-      if (
-        nearestIcon &&
-        nearestIcon.type === "Splitter" &&
-        nearestIcon.splitterRatio
-      ) {
-        const splitNum = getRatioNumber(nearestIcon.splitterRatio);
-        const connectedLines = getConnectedLinesCount(nearestIcon);
-        if (
-          connectedLines >= splitNum &&
-          !isSnappedToIcon(line.to.lat, line.to.lng)
-        ) {
-          console.warn(
-            `Splitter ratio limit reached (${nearestIcon.splitterRatio})`
-          );
-          alert(`Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`);
-          return prevState;
-        }
-      }
-
-      updatedLines[index] = {
-        ...line,
-        to: newTo,
-        createdAt: Date.now(),
-        endDeviceId: nearestIcon ? nearestIcon.deviceId : null,
-        endPortId: null,
-        endPortName: null,
-      };
-      console.log("Updated line:", updatedLines[index]);
-
-      // Show port dropdown if snapped to a device with ports
-      if (nearestIcon && nearestIcon.portIds?.length > 0) {
-        const devicePorts = prevState.allPorts.filter((port) =>
-          nearestIcon.portIds.includes(port.id)
-        );
-        console.log("Filtered device ports:", devicePorts);
-
-        if (devicePorts.length > 0) {
-          const dropdownX = e.domEvent?.clientX || window.innerWidth / 2;
-          const dropdownY = e.domEvent?.clientY || window.innerHeight / 2;
-          console.log("Showing port dropdown at:", {
-            x: dropdownX,
-            y: dropdownY,
-          });
-
-          return {
-            ...prevState,
-            fiberLines: updatedLines,
-            showPortDropdown: true,
-            portDropdownPosition: { x: dropdownX, y: dropdownY },
-            portDropdownDevice: nearestIcon,
-            portDropdownPorts: devicePorts,
-            portDropdownEnd: "end",
-            tempCable: updatedLines[index],
-            selectedPortId: null,
-          };
-        } else {
-          console.warn(
-            "No matching ports found for device portIds:",
-            nearestIcon.portIds
-          );
-          alert("No ports available for this device.");
-        }
-      }
-
-      return {
-        ...prevState,
-        fiberLines: updatedLines,
-      };
-    });
-  };
-
-  const handleWaypointDragEnd = (lineIndex, waypointIndex, e) => {
-    const newLat = e.latLng.lat();
-    const newLng = e.latLng.lng();
-    const nearestIcon = findNearestIcon(newLat, newLng);
-
-    setMapState((prevState) => {
-      const updatedFiberLines = [...prevState.fiberLines];
-      const line = updatedFiberLines[lineIndex];
-      const newWaypoint = nearestIcon
-        ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-        : { lat: newLat, lng: newLng };
+      const updatedWaypoints = line.waypoints.map((wp, idx) =>
+        idx === waypointIndex ? newWaypoint : wp
+      );
 
       if (
-        nearestIcon &&
-        nearestIcon.type === "Splitter" &&
-        nearestIcon.splitterRatio
+        !line.waypoints.some(
+          (wp, idx) =>
+            idx === waypointIndex &&
+            wp.lat === nearestIcon.lat &&
+            wp.lng === nearestIcon.lng
+        )
       ) {
-        const splitNum = getRatioNumber(nearestIcon.splitterRatio);
-        const connectedLines = getConnectedLinesCount(nearestIcon);
-
-        if (
-          connectedLines >= splitNum &&
-          !line.waypoints.some(
-            (wp, idx) =>
-              idx === waypointIndex &&
-              wp.lat === nearestIcon.lat &&
-              wp.lng === nearestIcon.lng
-          )
-        ) {
-          alert(
-            `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`
-          );
-          return prevState;
-        }
-
-        const updatedWaypoints = line.waypoints.map((wp, idx) =>
-          idx === waypointIndex ? newWaypoint : wp
+        console.log("Waypoint connected to splitter:", {
+          lineId: line.id,
+          waypointIndex,
+          splitterId: nearestIcon.id,
+          ratio: nearestIcon.splitterRatio,
+        });
+        const splitter = prevState.imageIcons.find(
+          (icon) => icon.id === nearestIcon.id
         );
-
-        if (
-          !line.waypoints.some(
-            (wp, idx) =>
-              idx === waypointIndex &&
-              wp.lat === nearestIcon.lat &&
-              wp.lng === nearestIcon.lng
-          )
-        ) {
-          console.log("Waypoint connected to splitter:", {
-            lineId: line.id,
-            waypointIndex,
-            splitterId: nearestIcon.id,
-            ratio: nearestIcon.splitterRatio,
-          });
-          const splitter = prevState.imageIcons.find(
-            (icon) => icon.id === nearestIcon.id
-          );
-          const lineNumber = splitter.nextLineNumber || 1;
-          const newLineName = `Line ${lineNumber}`;
-          updatedFiberLines[lineIndex] = {
-            ...line,
-            waypoints: updatedWaypoints,
-            name: newLineName,
-            createdAt: Date.now(),
-          };
-          const updatedImageIcons = prevState.imageIcons.map((icon) =>
-            icon.id === nearestIcon.id
-              ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
-              : icon
-          );
-          return {
-            ...prevState,
-            fiberLines: updatedFiberLines,
-            imageIcons: updatedImageIcons,
-          };
-        }
+        const lineNumber = splitter.nextLineNumber || 1;
+        const newLineName = `Line ${lineNumber}`;
+        updatedFiberLines[lineIndex] = {
+          ...line,
+          waypoints: updatedWaypoints,
+          name: newLineName,
+          createdAt: Date.now(),
+        };
+        const updatedImageIcons = prevState.imageIcons.map((icon) =>
+          icon.id === nearestIcon.id
+            ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
+            : icon
+        );
+        return {
+          ...prevState,
+          fiberLines: updatedFiberLines,
+          imageIcons: updatedImageIcons,
+          tempCable: null, // Clear tempCable to avoid shadow
+        };
       }
+    }
 
-      updatedFiberLines[lineIndex] = {
-        ...line,
-        waypoints: line.waypoints.map((wp, idx) =>
-          idx === waypointIndex ? newWaypoint : wp
-        ),
-        createdAt: line.createdAt || Date.now(),
-      };
-      return { ...prevState, fiberLines: updatedFiberLines };
-    });
-  };
+    updatedFiberLines[lineIndex] = {
+      ...line,
+      waypoints: line.waypoints.map((wp, idx) =>
+        idx === waypointIndex ? newWaypoint : wp
+      ),
+      createdAt: line.createdAt || Date.now(),
+    };
+    console.log("Updated line with new waypoint:", updatedFiberLines[lineIndex]);
+
+    return {
+      ...prevState,
+      fiberLines: updatedFiberLines,
+      tempCable: null, // Clear tempCable to avoid shadow
+    };
+  });
+};
 
   const saveRoute = async () => {
     // try {
