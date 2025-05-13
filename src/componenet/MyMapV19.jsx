@@ -260,6 +260,81 @@ const MyMapV19 = () => {
     fetchDeviceTypes();
   }, []);
 
+  // Fetch Devices (Reusable Function)
+  const fetchDevices = async () => {
+    try {
+      console.log("Fetching devices from http://127.0.0.1:8000/api/v1/devices");
+      const response = await fetch("http://127.0.0.1:8000/api/v1/devices");
+      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+      const devices = await response.json();
+      console.log("API Response - Devices:", devices);
+
+      const allPorts = devices.flatMap((device) =>
+        device.port_device.map((port) => ({
+          id: port.id,
+          name: port.name,
+          position: port.position,
+          device_id: device.id,
+        }))
+      );
+      console.log("Extracted allPorts:", allPorts);
+
+      const fetchedIcons = devices
+        .filter((device) => {
+          const hasValidCoords =
+            device.latitude != null &&
+            device.longitude != null &&
+            !isNaN(device.latitude) &&
+            !isNaN(device.longitude);
+          if (!hasValidCoords) {
+            console.warn(
+              `Skipping device ${device.name} with invalid coordinates: lat=${device.latitude}, lng=${device.longitude}`
+            );
+          }
+          return hasValidCoords;
+        })
+        .map((device) => ({
+          lat: device.latitude,
+          lng: device.longitude,
+          type: device.device_type.name,
+          id: `icon-api-${device.id}`,
+          imageUrl: device.device_type.icon
+            ? `http://127.0.0.1:8000${device.device_type.icon}`
+            : "/img/default-icon.png",
+          splitterRatio: device.device_type.name === "Splitter" ? "" : null,
+          name: device.device_type.name === "Splitter" ? "" : null,
+          nextLineNumber: device.device_type.name === "Splitter" ? 1 : null,
+          deviceId: device.id,
+          portIds: device.port_device.map((port) => port.id),
+        }));
+
+      console.log("Fetched Icons for imageIcons:", fetchedIcons);
+
+      setMapState((prevState) => {
+        console.log("Updating imageIcons and allPorts state with:", {
+          fetchedIcons,
+          allPorts,
+        });
+        return {
+          ...prevState,
+          imageIcons: fetchedIcons,
+          allPorts,
+          nextNumber: fetchedIcons.length + 1,
+        };
+      });
+
+      setAllPorts(allPorts); // Update allPorts state
+    } catch (error) {
+      console.error("Error fetching devices:", error.message);
+      alert("Failed to load devices from the server: " + error.message);
+    }
+  };
+
+  // Fetch Devices on Mount
+  useEffect(() => {
+    fetchDevices();
+  }, []);
+
   // Fetch cables on component mount
   useEffect(() => {
     const fetchCables = async () => {
@@ -676,11 +751,6 @@ const MyMapV19 = () => {
         }),
       };
 
-      // const endpoint =
-      //   deviceFormData.type === "OLT"
-      //     ? "http://127.0.0.1:8000/api/v1/olt"
-      //     : "http://127.0.0.1:8000/api/v1/onu";
-
       const endpointMap = {
         OLT: "http://127.0.0.1:8000/api/v1/olt",
         ONU: "http://127.0.0.1:8000/api/v1/onu",
@@ -688,6 +758,9 @@ const MyMapV19 = () => {
       };
 
       const endpoint = endpointMap[deviceFormData.type] || "";
+      if (!endpoint) {
+        throw new Error(`Invalid device type: ${deviceFormData.type}`);
+      }
 
       console.log("Sending payload to", endpoint, ":", payload);
 
@@ -720,6 +793,10 @@ const MyMapV19 = () => {
         ? deviceData.ports.map((port) => port.id)
         : [];
 
+      // Fetch updated devices and ports immediately after creation
+      await fetchDevices();
+
+      // Update state to include the new device
       setMapState((prevState) => {
         if (
           isNaN(deviceFormData.lat) ||
@@ -735,21 +812,7 @@ const MyMapV19 = () => {
           return prevState;
         }
 
-        const newIcon = {
-          lat: deviceFormData.lat,
-          lng: deviceFormData.lng,
-          type: deviceFormData.type,
-          id: `icon-api-${createdDeviceId}`,
-          imageUrl: deviceFormData.imageUrl || "/img/default-icon.png",
-          splitterRatio: null,
-          name: null,
-          nextLineNumber: null,
-          deviceId: createdDeviceId,
-          portIds: createdPortIds,
-        };
-
-        console.log("New Icon:", newIcon);
-
+        // Note: imageIcons and allPorts are already updated by fetchDevices
         const newState = {
           ...prevState,
           showDeviceForm: false,
@@ -766,14 +829,14 @@ const MyMapV19 = () => {
             hostname: "",
             community: "",
           },
-          imageIcons: [...prevState.imageIcons, newIcon],
-          nextNumber: nextNumber + 1,
           rightClickMarker: null,
         };
 
-        console.log("New imageIcons:", newState.imageIcons);
+        console.log("New state after device creation:", newState);
         return newState;
       });
+
+      alert(`${deviceFormData.type} created successfully!`);
     } catch (error) {
       console.error(`Error creating ${deviceFormData.type}:`, error);
       alert(`Failed to create ${deviceFormData.type}: ${error.message}`);
@@ -841,85 +904,6 @@ const MyMapV19 = () => {
     });
   };
 
-  useEffect(() => {
-    const fetchDevices = async () => {
-      try {
-        console.log(
-          "Fetching devices from http://127.0.0.1:8000/api/v1/devices"
-        );
-        const response = await fetch("http://127.0.0.1:8000/api/v1/devices");
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        const devices = await response.json();
-        console.log("API Response - Devices:", devices);
-
-        // Extract ports from port_device
-        const allPorts = devices.flatMap((device) =>
-          device.port_device.map((port) => ({
-            id: port.id,
-            name: port.name,
-            position: port.position,
-            device_id: device.id, // Optional: store device_id for reference
-          }))
-        );
-        console.log("Extracted allPorts:", allPorts);
-
-        const fetchedIcons = devices
-          .filter((device) => {
-            const hasValidCoords =
-              device.latitude != null &&
-              device.longitude != null &&
-              !isNaN(device.latitude) &&
-              !isNaN(device.longitude);
-            if (!hasValidCoords) {
-              console.warn(
-                `Skipping device ${device.name} with invalid coordinates: lat=${device.latitude}, lng=${device.longitude}`
-              );
-            }
-            return hasValidCoords;
-          })
-          .map((device) => {
-            const icon = {
-              lat: device.latitude,
-              lng: device.longitude,
-              type: device.device_type.name,
-              id: `icon-api-${device.id}`,
-              imageUrl: device.device_type.icon
-                ? `http://127.0.0.1:8000${device.device_type.icon}`
-                : "/img/default-icon.png",
-              splitterRatio: device.device_type.name === "Splitter" ? "" : null,
-              name: device.device_type.name === "Splitter" ? "" : null,
-              nextLineNumber: device.device_type.name === "Splitter" ? 1 : null,
-              deviceId: device.id,
-              portIds: device.port_device.map((port) => port.id),
-            };
-            console.log("Mapped Icon:", icon);
-            return icon;
-          });
-
-        console.log("Fetched Icons for imageIcons:", fetchedIcons);
-
-        setMapState((prevState) => {
-          console.log("Updating imageIcons and allPorts state with:", {
-            fetchedIcons,
-            allPorts,
-          });
-          return {
-            ...prevState,
-            imageIcons: fetchedIcons,
-            allPorts, // Set allPorts here
-            nextNumber: fetchedIcons.length + 1,
-          };
-        });
-      } catch (error) {
-        console.error("Error fetching devices:", error.message);
-        alert("Failed to load devices from the server: " + error.message);
-      }
-    };
-
-    fetchDevices();
-  }, []);
 
   useEffect(() => {
     console.log("Current imageIcons state:", mapState.imageIcons);
