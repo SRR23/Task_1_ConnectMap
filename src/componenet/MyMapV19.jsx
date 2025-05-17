@@ -265,7 +265,8 @@ const MyMapV19 = () => {
     try {
       console.log("Fetching devices from http://127.0.0.1:8000/api/v1/devices");
       const response = await fetch("http://127.0.0.1:8000/api/v1/devices");
-      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+      if (!response.ok)
+        throw new Error(`HTTP error! Status: ${response.status}`);
       const devices = await response.json();
       console.log("API Response - Devices:", devices);
 
@@ -491,6 +492,46 @@ const MyMapV19 = () => {
     }
   };
 
+  const patchCableToInterface = async (cable) => {
+    try {
+      const interfaceId = cable.id.split("-")[1]; // Extract Interface ID (e.g., "18" from "cable-18")
+      const payload = {
+        cable: {
+          path: {
+            coords: [
+              [cable.from.lat, cable.from.lng],
+              ...(cable.waypoints || []).map((wp) => [wp.lat, wp.lng]),
+              [cable.to.lat, cable.to.lng],
+            ],
+          },
+        },
+      };
+      console.log("PATCH payload:", payload); // Debug payload
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/v1/interface/${interfaceId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+      const responseText = await response.text();
+      if (!response.ok)
+        throw new Error(
+          `Failed to update cable path: ${response.status} ${response.statusText} - ${responseText}`
+        );
+      const responseData = JSON.parse(responseText);
+      console.log("Cable path updated successfully:", responseData);
+      return responseData;
+    } catch (error) {
+      console.error("Error updating cable path:", error);
+      throw error;
+    }
+  };
+
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -506,7 +547,7 @@ const MyMapV19 = () => {
   }, [mapState.showTerminationModal]);
 
   const isInteractionAllowed = (isSavedLine) => {
-    return !isSavedLine || mapState.isSavedRoutesEditable;
+    return !isSavedLine || isSavedLine;
   };
 
   const findNearestIcon = (lat, lng) => {
@@ -904,7 +945,6 @@ const MyMapV19 = () => {
     });
   };
 
-
   useEffect(() => {
     console.log("Current imageIcons state:", mapState.imageIcons);
   }, [mapState.imageIcons]);
@@ -1043,26 +1083,23 @@ const MyMapV19 = () => {
   //     snappedTo: isSnappedToIcon(line.to.lat, line.to.lng),
   //   });
 
-  //   // Prevent default behavior and stop propagation to avoid interference
   //   if (e.domEvent) {
   //     e.domEvent.stopPropagation();
   //     e.domEvent.preventDefault();
+  //   } else {
+  //     console.warn("e.domEvent is undefined, event may be synthetic");
   //   }
 
-  //   // Check if interaction is allowed
-  //   const canInteract = !isSavedLine || (isSavedLine && mapState.isSavedRoutesEditable);
-  //   if (!canInteract) {
+  //   const clickedLatLng = e.latLng || {
+  //     lat: line.from.lat,
+  //     lng: line.from.lng,
+  //   };
+  //   if (!e.latLng) {
   //     console.warn(
-  //       "Line interaction blocked: isSavedLine =",
-  //       isSavedLine,
-  //       "isSavedRoutesEditable =",
-  //       mapState.isSavedRoutesEditable
+  //       "e.latLng is undefined, using fallback position:",
+  //       clickedLatLng
   //     );
-  //     return;
   //   }
-
-  //   // Get click position
-  //   const clickedLatLng = e.latLng || { lat: line.from.lat, lng: line.from.lng };
   //   const x = e.domEvent ? e.domEvent.clientX : window.innerWidth / 2;
   //   const y = e.domEvent ? e.domEvent.clientY : window.innerHeight / 2;
 
@@ -1073,26 +1110,33 @@ const MyMapV19 = () => {
   //     y,
   //   });
 
-  //   // Update state to show line action modal
-  //   setMapState((prevState) => ({
-  //     ...prevState,
-  //     selectedLineForActions: { line, index, isSavedLine },
-  //     lineActionPosition: {
-  //       lat: clickedLatLng.lat(),
-  //       lng: clickedLatLng.lng(),
-  //       x,
-  //       y,
-  //     },
-  //     exactClickPosition: {
-  //       lat: clickedLatLng.lat(),
-  //       lng: clickedLatLng.lng(),
-  //       x,
-  //       y,
-  //     },
-  //     selectedWaypoint: null,
-  //     waypointActionPosition: null,
-  //     selectedWaypointInfo: null,
-  //   }));
+  //   setMapState((prevState) => {
+  //     const newState = {
+  //       ...prevState,
+  //       selectedLineForActions: { line, index, isSavedLine },
+  //       lineActionPosition: {
+  //         lat: clickedLatLng.lat(),
+  //         lng: clickedLatLng.lng(),
+  //         x,
+  //         y,
+  //       },
+  //       exactClickPosition: {
+  //         lat: clickedLatLng.lat(),
+  //         lng: clickedLatLng.lng(),
+  //         x,
+  //         y,
+  //       },
+  //       selectedWaypoint: null,
+  //       waypointActionPosition: null,
+  //       selectedWaypointInfo: null,
+  //     };
+  //     console.log("State updated for modal:", {
+  //       selectedLineForActions: newState.selectedLineForActions,
+  //       lineActionPosition: newState.lineActionPosition,
+  //       exactClickPosition: newState.exactClickPosition,
+  //     });
+  //     return newState;
+  //   });
   // };
 
   const handleLineClick = (line, index, isSavedLine = false, e) => {
@@ -1114,16 +1158,15 @@ const MyMapV19 = () => {
       console.warn("e.domEvent is undefined, event may be synthetic");
     }
 
+    // Verify if the line is actually a saved polyline
+    const verifiedIsSavedLine = mapState.savedPolylines.some(
+      (polyline) => polyline.id === line.id
+    );
+
     const clickedLatLng = e.latLng || {
       lat: line.from.lat,
       lng: line.from.lng,
     };
-    if (!e.latLng) {
-      console.warn(
-        "e.latLng is undefined, using fallback position:",
-        clickedLatLng
-      );
-    }
     const x = e.domEvent ? e.domEvent.clientX : window.innerWidth / 2;
     const y = e.domEvent ? e.domEvent.clientY : window.innerHeight / 2;
 
@@ -1132,12 +1175,17 @@ const MyMapV19 = () => {
       lng: clickedLatLng.lng(),
       x,
       y,
+      verifiedIsSavedLine,
     });
 
     setMapState((prevState) => {
       const newState = {
         ...prevState,
-        selectedLineForActions: { line, index, isSavedLine },
+        selectedLineForActions: {
+          line,
+          index,
+          isSavedLine: verifiedIsSavedLine,
+        },
         lineActionPosition: {
           lat: clickedLatLng.lat(),
           lng: clickedLatLng.lng(),
@@ -1709,54 +1757,7 @@ const MyMapV19 = () => {
     return `line-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   };
 
-  // Function to send POST request to the interface API
-  // const saveCableToInterface = async (cable) => {
-  //   try {
-  //     const payload = {
-  //       start: {
-  //         device_id: cable.startDeviceId,
-  //         port_id: cable.startPortId,
-  //       },
-  //       end: {
-  //         device_id: cable.endDeviceId,
-  //         port_id: cable.endPortId,
-  //       },
-  //       cable: {
-  //         name: cable.name,
-  //         type: cable.type.toLowerCase(), // Ensure type is lowercase as per API format
-  //         path: {
-  //           coordinates: [
-  //             [cable.from.lat, cable.from.lng],
-  //             ...(cable.waypoints || []).map((wp) => [wp.lat, wp.lng]),
-  //             [cable.to.lat, cable.to.lng],
-  //           ],
-  //         },
-  //       },
-  //     };
-
-  //     console.log("Sending POST request to /api/v1/interface with payload:", payload);
-
-  //     const response = await fetch("http://127.0.0.1:8000/api/v1/interface", {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify(payload),
-  //     });
-
-  //     if (!response.ok) {
-  //       const errorData = await response.json();
-  //       throw new Error(`Failed to save cable: ${errorData.message || response.statusText}`);
-  //     }
-
-  //     const responseData = await response.json();
-  //     console.log("Cable saved successfully:", responseData);
-  //     return responseData;
-  //   } catch (error) {
-  //     console.error("Error saving cable to interface:", error);
-  //     throw error;
-  //   }
-  // };
+  
 
   const addFiberLine = () => {
     const { rightClickMarker, fiberFormData } = mapState;
@@ -1829,114 +1830,6 @@ const MyMapV19 = () => {
     });
   }, [mapState.showPortDropdown, mapState.portDropdownPosition]);
 
-  // const handleStartMarkerDragEnd = (index, e) => {
-  //   console.log("handleStartMarkerDragEnd triggered for line index:", index);
-  //   const newLat = e.latLng.lat();
-  //   const newLng = e.latLng.lng();
-  //   console.log("Drag end coordinates:", { newLat, newLng });
-
-  //   const nearestIcon = findNearestIcon(newLat, newLng);
-  //   console.log("Nearest icon:", nearestIcon);
-
-  //   setMapState((prevState) => {
-  //     const updatedLines = [...prevState.fiberLines];
-  //     const line = updatedLines[index];
-  //     if (!line) {
-  //       console.error("Line not found at index:", index);
-  //       return prevState;
-  //     }
-
-  //     const newFrom = nearestIcon
-  //       ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-  //       : { lat: newLat, lng: newLng };
-  //     console.log("New from position:", newFrom);
-
-  //     // Check for termination connection limits
-  //     if (nearestIcon && nearestIcon.type === "Termination") {
-  //       const connectedLines = getConnectedLinesCount(nearestIcon);
-  //       if (
-  //         connectedLines >= 2 &&
-  //         !isSnappedToIcon(line.from.lat, line.from.lng)
-  //       ) {
-  //         console.warn(
-  //           "Termination box connection limit reached (2 connections)"
-  //         );
-  //         alert("Termination box allows only 2 connections.");
-  //         return prevState;
-  //       }
-  //     }
-
-  //     // Check for splitter ratio limits
-  //     if (
-  //       nearestIcon &&
-  //       nearestIcon.type === "Splitter" &&
-  //       nearestIcon.splitterRatio
-  //     ) {
-  //       const splitNum = getRatioNumber(nearestIcon.splitterRatio);
-  //       const connectedLines = getConnectedLinesCount(nearestIcon);
-  //       if (
-  //         connectedLines >= splitNum &&
-  //         !isSnappedToIcon(line.from.lat, line.from.lng)
-  //       ) {
-  //         console.warn(
-  //           `Splitter ratio limit reached (${nearestIcon.splitterRatio})`
-  //         );
-  //         alert(`Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`);
-  //         return prevState;
-  //       }
-  //     }
-
-  //     updatedLines[index] = {
-  //       ...line,
-  //       from: newFrom,
-  //       createdAt: Date.now(),
-  //       startDeviceId: nearestIcon ? nearestIcon.deviceId : null,
-  //       startPortId: null,
-  //       startPortName: null,
-  //     };
-  //     console.log("Updated line:", updatedLines[index]);
-
-  //     // Show port dropdown if snapped to a device with ports
-  //     if (nearestIcon && nearestIcon.portIds?.length > 0) {
-  //       const devicePorts = prevState.allPorts.filter((port) =>
-  //         nearestIcon.portIds.includes(port.id)
-  //       );
-  //       console.log("Filtered device ports:", devicePorts);
-
-  //       if (devicePorts.length > 0) {
-  //         const dropdownX = e.domEvent?.clientX || window.innerWidth / 2;
-  //         const dropdownY = e.domEvent?.clientY || window.innerHeight / 2;
-  //         console.log("Showing port dropdown at:", {
-  //           x: dropdownX,
-  //           y: dropdownY,
-  //         });
-
-  //         return {
-  //           ...prevState,
-  //           fiberLines: updatedLines,
-  //           showPortDropdown: true,
-  //           portDropdownPosition: { x: dropdownX, y: dropdownY },
-  //           portDropdownDevice: nearestIcon,
-  //           portDropdownPorts: devicePorts,
-  //           portDropdownEnd: "start",
-  //           tempCable: updatedLines[index],
-  //           selectedPortId: null,
-  //         };
-  //       } else {
-  //         console.warn(
-  //           "No matching ports found for device portIds:",
-  //           nearestIcon.portIds
-  //         );
-  //         alert("No ports available for this device.");
-  //       }
-  //     }
-
-  //     return {
-  //       ...prevState,
-  //       fiberLines: updatedLines,
-  //     };
-  //   });
-  // };
 
   const handleStartMarkerDragEnd = (index, e) => {
     console.log("handleStartMarkerDragEnd triggered for line index:", index);
@@ -1959,39 +1852,6 @@ const MyMapV19 = () => {
         ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
         : { lat: newLat, lng: newLng };
       console.log("New from position:", newFrom);
-
-      // Check for termination connection limits
-      // if (nearestIcon && nearestIcon.type === "Termination") {
-      //   const connectedLines = getConnectedLinesCount(nearestIcon);
-      //   if (
-      //     connectedLines >= 2 &&
-      //     !isSnappedToIcon(line.from.lat, line.from.lng)
-      //   ) {
-      //     console.warn("Termination box connection limit reached (2 connections)");
-      //     alert("Termination box allows only 2 connections.");
-      //     return prevState;
-      //   }
-      // }
-
-      // Check for splitter ratio limits
-      // if (
-      //   nearestIcon &&
-      //   nearestIcon.type === "Splitter" &&
-      //   nearestIcon.splitterRatio
-      // ) {
-      //   const splitNum = getRatioNumber(nearestIcon.splitterRatio);
-      //   const connectedLines = getConnectedLinesCount(nearestIcon);
-      //   if (
-      //     connectedLines >= splitNum &&
-      //     !isSnappedToIcon(line.from.lat, line.from.lng)
-      //   ) {
-      //     console.warn(
-      //       `Splitter ratio limit reached (${nearestIcon.splitterRatio})`
-      //     );
-      //     alert(`Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`);
-      //     return prevState;
-      //   }
-      // }
 
       updatedLines[index] = {
         ...line,
@@ -2052,112 +1912,7 @@ const MyMapV19 = () => {
     });
   };
 
-  // const handleEndMarkerDragEnd = (index, e) => {
-  //   console.log("handleEndMarkerDragEnd triggered for line index:", index);
-  //   const newLat = e.latLng.lat();
-  //   const newLng = e.latLng.lng();
-  //   console.log("Drag end coordinates:", { newLat, newLng });
-
-  //   const nearestIcon = findNearestIcon(newLat, newLng);
-  //   console.log("Nearest icon:", nearestIcon);
-
-  //   setMapState((prevState) => {
-  //     const updatedLines = [...prevState.fiberLines];
-  //     const line = updatedLines[index];
-  //     if (!line) {
-  //       console.error("Line not found at index:", index);
-  //       return prevState;
-  //     }
-
-  //     const newTo = nearestIcon
-  //       ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-  //       : { lat: newLat, lng: newLng };
-  //     console.log("New to position:", newTo);
-
-  //     // Check for termination connection limits
-  //     if (nearestIcon && nearestIcon.type === "Termination") {
-  //       const connectedLines = getConnectedLinesCount(nearestIcon);
-  //       if (connectedLines >= 2 && !isSnappedToIcon(line.to.lat, line.to.lng)) {
-  //         console.warn(
-  //           "Termination box connection limit reached (2 connections)"
-  //         );
-  //         alert("Termination box allows only 2 connections.");
-  //         return prevState;
-  //       }
-  //     }
-
-  //     // Check for splitter ratio limits
-  //     if (
-  //       nearestIcon &&
-  //       nearestIcon.type === "Splitter" &&
-  //       nearestIcon.splitterRatio
-  //     ) {
-  //       const splitNum = getRatioNumber(nearestIcon.splitterRatio);
-  //       const connectedLines = getConnectedLinesCount(nearestIcon);
-  //       if (
-  //         connectedLines >= splitNum &&
-  //         !isSnappedToIcon(line.to.lat, line.to.lng)
-  //       ) {
-  //         console.warn(
-  //           `Splitter ratio limit reached (${nearestIcon.splitterRatio})`
-  //         );
-  //         alert(`Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`);
-  //         return prevState;
-  //       }
-  //     }
-
-  //     updatedLines[index] = {
-  //       ...line,
-  //       to: newTo,
-  //       createdAt: Date.now(),
-  //       endDeviceId: nearestIcon ? nearestIcon.deviceId : null,
-  //       endPortId: null,
-  //       endPortName: null,
-  //     };
-  //     console.log("Updated line:", updatedLines[index]);
-
-  //     // Show port dropdown if snapped to a device with ports
-  //     if (nearestIcon && nearestIcon.portIds?.length > 0) {
-  //       const devicePorts = prevState.allPorts.filter((port) =>
-  //         nearestIcon.portIds.includes(port.id)
-  //       );
-  //       console.log("Filtered device ports:", devicePorts);
-
-  //       if (devicePorts.length > 0) {
-  //         const dropdownX = e.domEvent?.clientX || window.innerWidth / 2;
-  //         const dropdownY = e.domEvent?.clientY || window.innerHeight / 2;
-  //         console.log("Showing port dropdown at:", {
-  //           x: dropdownX,
-  //           y: dropdownY,
-  //         });
-
-  //         return {
-  //           ...prevState,
-  //           fiberLines: updatedLines,
-  //           showPortDropdown: true,
-  //           portDropdownPosition: { x: dropdownX, y: dropdownY },
-  //           portDropdownDevice: nearestIcon,
-  //           portDropdownPorts: devicePorts,
-  //           portDropdownEnd: "end",
-  //           tempCable: updatedLines[index],
-  //           selectedPortId: null,
-  //         };
-  //       } else {
-  //         console.warn(
-  //           "No matching ports found for device portIds:",
-  //           nearestIcon.portIds
-  //         );
-  //         alert("No ports available for this device.");
-  //       }
-  //     }
-
-  //     return {
-  //       ...prevState,
-  //       fiberLines: updatedLines,
-  //     };
-  //   });
-  // };
-
+  
   const handleEndMarkerDragEnd = (index, e) => {
     console.log("handleEndMarkerDragEnd triggered for line index:", index);
     const newLat = e.latLng.lat();
@@ -2180,35 +1935,6 @@ const MyMapV19 = () => {
         : { lat: newLat, lng: newLng };
       console.log("New to position:", newTo);
 
-      // Check for termination connection limits
-      // if (nearestIcon && nearestIcon.type === "Termination") {
-      //   const connectedLines = getConnectedLinesCount(nearestIcon);
-      //   if (connectedLines >= 2 && !isSnappedToIcon(line.to.lat, line.to.lng)) {
-      //     console.warn("Termination box connection limit reached (2 connections)");
-      //     alert("Termination box allows only 2 connections.");
-      //     return prevState;
-      //   }
-      // }
-
-      // Check for splitter ratio limits
-      // if (
-      //   nearestIcon &&
-      //   nearestIcon.type === "Splitter" &&
-      //   nearestIcon.splitterRatio
-      // ) {
-      //   const splitNum = getRatioNumber(nearestIcon.splitterRatio);
-      //   const connectedLines = getConnectedLinesCount(nearestIcon);
-      //   if (
-      //     connectedLines >= splitNum &&
-      //     !isSnappedToIcon(line.to.lat, line.to.lng)
-      //   ) {
-      //     console.warn(
-      //       `Splitter ratio limit reached (${nearestIcon.splitterRatio})`
-      //     );
-      //     alert(`Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`);
-      //     return prevState;
-      //   }
-      // }
 
       updatedLines[index] = {
         ...line,
@@ -2269,93 +1995,6 @@ const MyMapV19 = () => {
     });
   };
 
-  // const handleWaypointDragEnd = (lineIndex, waypointIndex, e) => {
-  //   const newLat = e.latLng.lat();
-  //   const newLng = e.latLng.lng();
-  //   const nearestIcon = findNearestIcon(newLat, newLng);
-
-  //   setMapState((prevState) => {
-  //     const updatedFiberLines = [...prevState.fiberLines];
-  //     const line = updatedFiberLines[lineIndex];
-  //     const newWaypoint = nearestIcon
-  //       ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-  //       : { lat: newLat, lng: newLng };
-
-  //     if (
-  //       nearestIcon &&
-  //       nearestIcon.type === "Splitter" &&
-  //       nearestIcon.splitterRatio
-  //     ) {
-  //       const splitNum = getRatioNumber(nearestIcon.splitterRatio);
-  //       const connectedLines = getConnectedLinesCount(nearestIcon);
-
-  //       if (
-  //         connectedLines >= splitNum &&
-  //         !line.waypoints.some(
-  //           (wp, idx) =>
-  //             idx === waypointIndex &&
-  //             wp.lat === nearestIcon.lat &&
-  //             wp.lng === nearestIcon.lng
-  //         )
-  //       ) {
-  //         alert(
-  //           `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio}) reached.`
-  //         );
-  //         return prevState;
-  //       }
-
-  //       const updatedWaypoints = line.waypoints.map((wp, idx) =>
-  //         idx === waypointIndex ? newWaypoint : wp
-  //       );
-
-  //       if (
-  //         !line.waypoints.some(
-  //           (wp, idx) =>
-  //             idx === waypointIndex &&
-  //             wp.lat === nearestIcon.lat &&
-  //             wp.lng === nearestIcon.lng
-  //         )
-  //       ) {
-  //         console.log("Waypoint connected to splitter:", {
-  //           lineId: line.id,
-  //           waypointIndex,
-  //           splitterId: nearestIcon.id,
-  //           ratio: nearestIcon.splitterRatio,
-  //         });
-  //         const splitter = prevState.imageIcons.find(
-  //           (icon) => icon.id === nearestIcon.id
-  //         );
-  //         const lineNumber = splitter.nextLineNumber || 1;
-  //         const newLineName = `Line ${lineNumber}`;
-  //         updatedFiberLines[lineIndex] = {
-  //           ...line,
-  //           waypoints: updatedWaypoints,
-  //           name: newLineName,
-  //           createdAt: Date.now(),
-  //         };
-  //         const updatedImageIcons = prevState.imageIcons.map((icon) =>
-  //           icon.id === nearestIcon.id
-  //             ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
-  //             : icon
-  //         );
-  //         return {
-  //           ...prevState,
-  //           fiberLines: updatedFiberLines,
-  //           imageIcons: updatedImageIcons,
-  //         };
-  //       }
-  //     }
-
-  //     updatedFiberLines[lineIndex] = {
-  //       ...line,
-  //       waypoints: line.waypoints.map((wp, idx) =>
-  //         idx === waypointIndex ? newWaypoint : wp
-  //       ),
-  //       createdAt: line.createdAt || Date.now(),
-  //     };
-  //     return { ...prevState, fiberLines: updatedFiberLines };
-  //   });
-  // };
 
   const handleWaypointDragEnd = (lineIndex, waypointIndex, e) => {
     const newLat = e.latLng.lat();
@@ -2456,109 +2095,7 @@ const MyMapV19 = () => {
   };
 
   const saveRoute = async () => {
-    // try {
-    //   const cablesToSave = mapState.isSavedRoutesEditable
-    //     ? [...mapState.savedPolylines]
-    //     : [...mapState.fiberLines];
-    //   const updatedDevices = mapState.updatedDevices;
-    //   if (updatedDevices.length > 0) {
-    //     const deviceUpdateResults = await Promise.all(
-    //       updatedDevices.map(async (device) => {
-    //         try {
-    //           await updateDevice(device.deviceId, device.lat, device.lng);
-    //           return { deviceId: device.deviceId, success: true };
-    //         } catch (error) {
-    //           console.error(
-    //             `Failed to update device ${device.deviceId}:`,
-    //             error
-    //           );
-    //           return { deviceId: device.deviceId, success: false, error };
-    //         }
-    //       })
-    //     );
-    //     const failedUpdates = deviceUpdateResults.filter(
-    //       (result) => !result.success
-    //     );
-    //     if (failedUpdates.length > 0) {
-    //       console.warn("Some device updates failed:", failedUpdates);
-    //       alert(
-    //         `Some devices failed to update: ${failedUpdates
-    //           .map((f) => `Device ${f.deviceId}: ${f.error.message}`)
-    //           .join(", ")}`
-    //       );
-    //     }
-    //   }
-    //   if (cablesToSave.length > 0) {
-    //     const savedCables = await Promise.all(
-    //       cablesToSave.map((line) =>
-    //         saveCable({
-    //           ...line,
-    //           startPortId: line.startPortId || line.fromPortId, // Handle both fiberLines and savedPolylines
-    //           endPortId: line.endPortId || line.toPortId,
-    //         })
-    //       )
-    //     );
-    //     console.log("All cables processed:", savedCables);
-    //   } else {
-    //     console.log("No cables to save.");
-    //   }
-    //   const response = await fetch("http://127.0.0.1:8000/api/cables/");
-    //   if (!response.ok) {
-    //     throw new Error("Failed to fetch updated cables");
-    //   }
-    //   const cables = await response.json();
-    //   const fetchedPolylines = cables
-    //     .filter((cable) => {
-    //       const hasValidCoords =
-    //         cable.path &&
-    //         cable.path.from &&
-    //         cable.path.to &&
-    //         !isNaN(parseFloat(cable.path.from.lat)) &&
-    //         !isNaN(parseFloat(cable.path.from.lng)) &&
-    //         !isNaN(parseFloat(cable.path.to.lat)) &&
-    //         !isNaN(parseFloat(cable.path.to.lng));
-    //       return hasValidCoords;
-    //     })
-    //     .map((cable) => ({
-    //       id: `cable-${cable.id}`,
-    //       name: cable.name || `Cable-${cable.id}`,
-    //       from: {
-    //         lat: parseFloat(cable.path.from.lat),
-    //         lng: parseFloat(cable.path.from.lng),
-    //       },
-    //       to: {
-    //         lat: parseFloat(cable.path.to.lat),
-    //         lng: parseFloat(cable.path.to.lng),
-    //       },
-    //       waypoints: Array.isArray(cable.path.waypoints)
-    //         ? cable.path.waypoints
-    //             .filter(
-    //               (wp) =>
-    //                 !isNaN(parseFloat(wp.lat)) && !isNaN(parseFloat(wp.lng))
-    //             )
-    //             .map((wp) => ({
-    //               lat: parseFloat(wp.lat),
-    //               lng: parseFloat(wp.lng),
-    //             }))
-    //         : [],
-    //       createdAt: cable.created_at
-    //         ? new Date(cable.created_at).getTime()
-    //         : Date.now(),
-    //       // Note: Port IDs are not fetched from cables; they are managed via interfaces
-    //     }));
-    //   setMapState((prevState) => ({
-    //     ...prevState,
-    //     fiberLines: [],
-    //     savedPolylines: fetchedPolylines,
-    //     showSavedRoutes: true,
-    //     isSavedRoutesEditable: false,
-    //     updatedDevices: [],
-    //   }));
-    //   alert("Polylines and devices saved successfully!");
-    // } catch (error) {
-    //   console.error("Error saving routes or devices:", error);
-    //   alert(`Failed to save routes or devices: ${error.message}`);
-    // }
+    
   };
 
   useEffect(() => {
@@ -2658,7 +2195,7 @@ const MyMapV19 = () => {
   );
 
   const handleSavedPolylinePointDragEnd = (polylineId, pointType, e) => {
-    if (!mapState.isSavedRoutesEditable) return;
+    // if (!mapState.isSavedRoutesEditable) return;
 
     const newLat = e.latLng.lat();
     const newLng = e.latLng.lng();
@@ -2767,109 +2304,260 @@ const MyMapV19 = () => {
   };
 
   const handleSavedPolylineWaypointDragEnd = (polylineId, waypointIndex, e) => {
-    if (!mapState.isSavedRoutesEditable) return;
+  const newLat = e.latLng.lat();
+  const newLng = e.latLng.lng();
+  const nearestIcon = findNearestIcon(newLat, newLng);
 
-    const newLat = e.latLng.lat();
-    const newLng = e.latLng.lng();
-    const nearestIcon = findNearestIcon(newLat, newLng);
+  setMapState((prevState) => {
+    // Create a deep copy of savedPolylines to ensure immutability
+    const updatedSavedPolylines = prevState.savedPolylines.map((polyline) => ({
+      ...polyline,
+      waypoints: polyline.waypoints ? [...polyline.waypoints] : [],
+    }));
 
-    setMapState((prevState) => {
-      const updatedSavedPolylines = prevState.savedPolylines.map((polyline) => {
-        if (polyline.id === polylineId && polyline.waypoints) {
-          if (
-            nearestIcon &&
-            nearestIcon.type === "Splitter" &&
-            nearestIcon.ratioSetTimestamp
-          ) {
-            const splitNum = getRatioNumber(nearestIcon.splitterRatio);
-            const connectedLines = getConnectedLinesCount(nearestIcon);
+    let polylineUpdated = false;
+    let updatedImageIcons = [...prevState.imageIcons];
+    let updatedSavedIcons = [...prevState.savedIcons];
 
-            if (
-              connectedLines >= splitNum &&
-              !polyline.waypoints.some(
-                (wp, idx) =>
-                  idx === waypointIndex &&
-                  wp.lat === nearestIcon.lat &&
-                  wp.lng === nearestIcon.lng
-              )
-            ) {
-              alert(
-                `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`
-              );
-              return polyline;
-            }
+    const newSavedPolylines = updatedSavedPolylines.map((polyline) => {
+      if (polyline.id !== polylineId || !polyline.waypoints) {
+        return polyline;
+      }
 
-            if (
-              !polyline.waypoints.some(
-                (wp, idx) =>
-                  idx === waypointIndex &&
-                  wp.lat === nearestIcon.lat &&
-                  wp.lng === nearestIcon.lng
-              )
-            ) {
-              console.log("Saved waypoint connected to splitter:", {
-                polylineId,
-                waypointIndex,
-                splitterId: nearestIcon.id,
-                ratio: nearestIcon.splitterRatio,
-              });
-              const splitter = prevState.imageIcons.find(
-                (icon) => icon.id === nearestIcon.id
-              );
-              const lineNumber = splitter.nextLineNumber || 1;
-              const newLineName = `Line ${lineNumber}`;
-              return {
-                ...polyline,
-                waypoints: polyline.waypoints.map((waypoint, index) =>
-                  index === waypointIndex
-                    ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-                    : waypoint
-                ),
-                name: newLineName,
-                createdAt: polyline.createdAt || Date.now(),
-              };
-            }
-          }
+      // Robust check for duplicate waypoints at the new position
+      const waypointExistsAtPosition = polyline.waypoints.some(
+        (wp, idx) =>
+          idx !== waypointIndex &&
+          Math.abs(wp.lat - newLat) < 0.00001 && // Increased precision
+          Math.abs(wp.lng - newLng) < 0.00001
+      );
 
+      if (waypointExistsAtPosition) {
+        console.warn(
+          `Waypoint at index ${waypointIndex} would overlap with an existing waypoint at (${newLat}, ${newLng}). Skipping update.`
+        );
+        return polyline;
+      }
+
+      // Handle splitter snapping
+      if (
+        nearestIcon &&
+        nearestIcon.type === "Splitter" &&
+        nearestIcon.splitterRatio
+      ) {
+        const splitNum = getRatioNumber(nearestIcon.splitterRatio);
+        const connectedLines = getConnectedLinesCount(nearestIcon);
+
+        // Check if the waypoint is already snapped to this splitter
+        const isAlreadySnapped =
+          polyline.waypoints[waypointIndex] &&
+          Math.abs(polyline.waypoints[waypointIndex].lat - nearestIcon.lat) <
+            0.00001 &&
+          Math.abs(polyline.waypoints[waypointIndex].lng - nearestIcon.lng) <
+            0.00001;
+
+        if (connectedLines >= splitNum && !isAlreadySnapped) {
+          alert(
+            `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`
+          );
+          return polyline;
+        }
+
+        if (!isAlreadySnapped) {
+          console.log("Saved waypoint connected to splitter:", {
+            polylineId,
+            waypointIndex,
+            splitterId: nearestIcon.id,
+            ratio: nearestIcon.splitterRatio,
+          });
+
+          // Update splitter's nextLineNumber
+          updatedImageIcons = updatedImageIcons.map((icon) =>
+            icon.id === nearestIcon.id
+              ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
+              : icon
+          );
+          updatedSavedIcons = updatedSavedIcons.map((icon) =>
+            icon.id === nearestIcon.id
+              ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
+              : icon
+          );
+
+          // Update waypoint position to splitter's exact coordinates
+          polylineUpdated = true;
           return {
             ...polyline,
             waypoints: polyline.waypoints.map((waypoint, index) =>
-              index === waypointIndex ? { lat: newLat, lng: newLng } : waypoint
+              index === waypointIndex
+                ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+                : waypoint
             ),
+            name: `Line ${(nearestIcon.nextLineNumber || 1)}`, // Use current nextLineNumber
+            createdAt: polyline.createdAt || Date.now(),
           };
         }
-        return polyline;
-      });
+      }
 
-      const updatedImageIcons =
-        nearestIcon && nearestIcon.type === "Splitter"
-          ? prevState.imageIcons.map((icon) =>
-              icon.id === nearestIcon.id
-                ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
-                : icon
-            )
-          : prevState.imageIcons;
-
-      localStorage.setItem(
-        "savedPolylines",
-        JSON.stringify(updatedSavedPolylines)
-      );
-
+      // Update waypoint position for non-splitter cases
+      polylineUpdated = true;
       return {
-        ...prevState,
-        savedPolylines: updatedSavedPolylines,
-        fiberLines: prevState.showSavedRoutes
-          ? updatedSavedPolylines
-          : prevState.fiberLines,
-        imageIcons: updatedImageIcons,
-        savedIcons: prevState.savedIcons.map((icon) =>
-          icon.id === nearestIcon?.id
-            ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
-            : icon
+        ...polyline,
+        waypoints: polyline.waypoints.map((waypoint, index) =>
+          index === waypointIndex ? { lat: newLat, lng: newLng } : waypoint
         ),
+        createdAt: polyline.createdAt || Date.now(),
       };
     });
-  };
+
+    if (!polylineUpdated) {
+      return prevState;
+    }
+
+    // Update localStorage only if changes were made
+    localStorage.setItem("savedPolylines", JSON.stringify(newSavedPolylines));
+
+    return {
+      ...prevState,
+      savedPolylines: newSavedPolylines,
+      fiberLines: prevState.showSavedRoutes
+        ? newSavedPolylines
+        : prevState.fiberLines,
+      imageIcons: updatedImageIcons,
+      savedIcons: updatedSavedIcons,
+    };
+  });
+};
+
+  // const handleSavedPolylineWaypointDragEnd = (polylineId, waypointIndex, e) => {
+  //   const newLat = e.latLng.lat();
+  //   const newLng = e.latLng.lng();
+  //   const nearestIcon = findNearestIcon(newLat, newLng);
+
+  //   setMapState((prevState) => {
+  //     // Deep copy to ensure immutability
+  //     const updatedSavedPolylines = prevState.savedPolylines.map(
+  //       (polyline) => ({
+  //         ...polyline,
+  //         waypoints: polyline.waypoints ? [...polyline.waypoints] : [],
+  //       })
+  //     );
+
+  //     let polylineUpdated = false;
+  //     let updatedImageIcons = [...prevState.imageIcons];
+  //     let updatedSavedIcons = [...prevState.savedIcons];
+
+  //     const newSavedPolylines = updatedSavedPolylines.map((polyline) => {
+  //       if (polyline.id !== polylineId || !polyline.waypoints) {
+  //         return polyline;
+  //       }
+
+  //       // Check if waypoint already exists at the new position to prevent duplication
+  //       const waypointExistsAtPosition = polyline.waypoints.some(
+  //         (wp, idx) =>
+  //           idx !== waypointIndex &&
+  //           Math.abs(wp.lat - newLat) < 0.0001 &&
+  //           Math.abs(wp.lng - newLng) < 0.0001
+  //       );
+
+  //       if (waypointExistsAtPosition) {
+  //         console.warn(
+  //           `Waypoint at index ${waypointIndex} already exists at position (${newLat}, ${newLng}). Skipping update to prevent duplication.`
+  //         );
+  //         return polyline;
+  //       }
+
+  //       // Handle splitter snapping
+  //       if (
+  //         nearestIcon &&
+  //         nearestIcon.type === "Splitter" &&
+  //         nearestIcon.splitterRatio
+  //       ) {
+  //         const splitNum = getRatioNumber(nearestIcon.splitterRatio);
+  //         const connectedLines = getConnectedLinesCount(nearestIcon);
+
+  //         // Check if the waypoint is already snapped to this splitter
+  //         const isAlreadySnapped =
+  //           polyline.waypoints[waypointIndex] &&
+  //           Math.abs(polyline.waypoints[waypointIndex].lat - nearestIcon.lat) <
+  //             0.0001 &&
+  //           Math.abs(polyline.waypoints[waypointIndex].lng - nearestIcon.lng) <
+  //             0.0001;
+
+  //         if (connectedLines >= splitNum && !isAlreadySnapped) {
+  //           alert(
+  //             `Cannot connect more lines. Splitter ratio limit (${nearestIcon.splitterRatio} = ${splitNum}) reached.`
+  //           );
+  //           return polyline;
+  //         }
+
+  //         if (!isAlreadySnapped) {
+  //           console.log("Saved waypoint connected to splitter:", {
+  //             polylineId,
+  //             waypointIndex,
+  //             splitterId: nearestIcon.id,
+  //             ratio: nearestIcon.splitterRatio,
+  //           });
+  //           const splitter = prevState.imageIcons.find(
+  //             (icon) => icon.id === nearestIcon.id
+  //           );
+  //           const lineNumber = splitter.nextLineNumber || 1;
+  //           const newLineName = `Line ${lineNumber}`;
+
+  //           // Update imageIcons and savedIcons for splitter
+  //           updatedImageIcons = updatedImageIcons.map((icon) =>
+  //             icon.id === nearestIcon.id
+  //               ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
+  //               : icon
+  //           );
+  //           updatedSavedIcons = updatedSavedIcons.map((icon) =>
+  //             icon.id === nearestIcon.id
+  //               ? { ...icon, nextLineNumber: (icon.nextLineNumber || 1) + 1 }
+  //               : icon
+  //           );
+
+  //           polylineUpdated = true;
+  //           return {
+  //             ...polyline,
+  //             waypoints: polyline.waypoints.map((waypoint, index) =>
+  //               index === waypointIndex
+  //                 ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+  //                 : waypoint
+  //             ),
+  //             name: newLineName,
+  //             createdAt: polyline.createdAt || Date.now(),
+  //           };
+  //         }
+  //       }
+
+  //       // Update waypoint position
+  //       polylineUpdated = true;
+  //       return {
+  //         ...polyline,
+  //         waypoints: polyline.waypoints.map((waypoint, index) =>
+  //           index === waypointIndex ? { lat: newLat, lng: newLng } : waypoint
+  //         ),
+  //         createdAt: polyline.createdAt || Date.now(),
+  //       };
+  //     });
+
+  //     if (!polylineUpdated) {
+  //       return prevState;
+  //     }
+
+  //     // Update localStorage
+  //     localStorage.setItem("savedPolylines", JSON.stringify(newSavedPolylines));
+
+  //     return {
+  //       ...prevState,
+  //       savedPolylines: newSavedPolylines,
+  //       fiberLines: prevState.showSavedRoutes
+  //         ? newSavedPolylines
+  //         : prevState.fiberLines,
+  //       imageIcons: updatedImageIcons,
+  //       savedIcons: updatedSavedIcons,
+  //     };
+  //   });
+  // };
 
   const toggleSavedRoutesEditability = () => {
     setMapState((prevState) => ({
@@ -2988,7 +2676,7 @@ const MyMapV19 = () => {
             <MarkerF
               key={icon.id}
               position={{ lat: icon.lat, lng: icon.lng }}
-              draggable={isDraggable}
+              draggable={true}
               icon={{
                 url: icon.imageUrl || "/img/default-icon.png",
                 scaledSize: new window.google.maps.Size(30, 30),
@@ -3200,13 +2888,13 @@ const MyMapV19 = () => {
 
                 onClick={(e) => {
                   console.log("Fiber PolylineF clicked:", {
-                    lineId: line.id,
+                    lineId: polyline.id,
                     index,
-                    isSavedLine: false,
+                    isSavedLine: true,
                     event: e,
                   });
                   e.domEvent.stopPropagation();
-                  handleLineClick(line, index, false, e);
+                  handleLineClick(polyline, index, true, e);
                 }}
               />
 
@@ -3214,8 +2902,7 @@ const MyMapV19 = () => {
               {mapState.selectedLineForActions &&
                 mapState.exactClickPosition &&
                 mapState.selectedLineForActions.index === index &&
-                mapState.selectedLineForActions.isSavedLine &&
-                mapState.isSavedRoutesEditable && (
+                mapState.selectedLineForActions.isSavedLine && (
                   <div
                     className="line-action-modal"
                     style={{
@@ -3235,6 +2922,51 @@ const MyMapV19 = () => {
                       <Trash2 size={20} className="text-red-500" />
                       <span className="line-action-tooltip">Delete Line</span>
                     </div>
+                    {/* Always show Save button if both ports are connected */}
+                    {mapState.selectedLineForActions.line.startPortId &&
+                      mapState.selectedLineForActions.line.endPortId && (
+                        <div
+                          className="line-action-item"
+                          onClick={() => {
+                            const { line } = mapState.selectedLineForActions;
+                            patchCableToInterface(line)
+                              .then(() => {
+                                alert("Cable updated successfully!");
+                                setMapState((prevState) => {
+                                  const updatedSavedPolylines =
+                                    prevState.savedPolylines.map(
+                                      (polyline, idx) =>
+                                        idx ===
+                                        mapState.selectedLineForActions.index
+                                          ? { ...polyline }
+                                          : polyline
+                                    );
+                                  localStorage.setItem(
+                                    "savedPolylines",
+                                    JSON.stringify(updatedSavedPolylines)
+                                  );
+                                  return {
+                                    ...prevState,
+                                    savedPolylines: updatedSavedPolylines,
+                                    selectedLineForActions: null,
+                                    lineActionPosition: null,
+                                    exactClickPosition: null,
+                                  };
+                                });
+                              })
+                              .catch((error) => {
+                                alert(
+                                  `Failed to update cable: ${error.message}`
+                                );
+                              });
+                          }}
+                        >
+                          <Save size={20} className="text-blue-500" />
+                          <span className="line-action-tooltip">
+                            Save Changes
+                          </span>
+                        </div>
+                      )}
                     <div
                       className="line-action-item"
                       onClick={() =>
@@ -3259,16 +2991,13 @@ const MyMapV19 = () => {
                   <MarkerF
                     key={`saved-waypoint-${polyline.id}-${waypointIndex}`}
                     position={waypoint}
-                    draggable={mapState.isSavedRoutesEditable}
-                    onDragEnd={
-                      mapState.isSavedRoutesEditable
-                        ? (e) =>
-                            handleSavedPolylineWaypointDragEnd(
-                              polyline.id,
-                              waypointIndex,
-                              e
-                            )
-                        : undefined
+                    draggable={true}
+                    onDragEnd={(e) =>
+                      handleSavedPolylineWaypointDragEnd(
+                        polyline.id,
+                        waypointIndex,
+                        e
+                      )
                     }
                     icon={{
                       url: "/img/location.jpg",
@@ -3292,16 +3021,9 @@ const MyMapV19 = () => {
                 <MarkerF
                   key={`saved-start-${polyline.id}`}
                   position={polyline.from}
-                  draggable={mapState.isSavedRoutesEditable}
-                  onDragEnd={
-                    mapState.isSavedRoutesEditable
-                      ? (e) =>
-                          handleSavedPolylinePointDragEnd(
-                            polyline.id,
-                            "from",
-                            e
-                          )
-                      : undefined
+                  draggable={true}
+                  onDragEnd={(e) =>
+                    handleSavedPolylinePointDragEnd(polyline.id, "from", e)
                   }
                   icon={{
                     url: "/img/location.jpg",
@@ -3313,12 +3035,9 @@ const MyMapV19 = () => {
                 <MarkerF
                   key={`saved-end-${polyline.id}`}
                   position={polyline.to}
-                  draggable={mapState.isSavedRoutesEditable}
-                  onDragEnd={
-                    mapState.isSavedRoutesEditable
-                      ? (e) =>
-                          handleSavedPolylinePointDragEnd(polyline.id, "to", e)
-                      : undefined
+                  draggable={true}
+                  onDragEnd={(e) =>
+                    handleSavedPolylinePointDragEnd(polyline.id, "to", e)
                   }
                   icon={{
                     url: "/img/location.jpg",
