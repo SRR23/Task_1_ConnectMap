@@ -104,6 +104,7 @@ const MyMapV19 = () => {
   });
 
   const [deviceTypes, setDeviceTypes] = useState([]);
+  const [deviceModels, setDeviceModels] = useState([]);
   const [allPorts, setAllPorts] = useState([]);
 
   useEffect(() => {
@@ -120,7 +121,23 @@ const MyMapV19 = () => {
         alert("Failed to load device types.");
       }
     };
+
+    const fetchDeviceModels = async () => {
+      try {
+        const response = await fetch(
+          "http://127.0.0.1:8000/api/v1/device-models"
+        );
+        if (!response.ok) throw new Error("Failed to fetch device models");
+        const data = await response.json();
+        setDeviceModels(data);
+      } catch (error) {
+        console.error("Error fetching device models:", error);
+        alert("Failed to load device models.");
+      }
+    };
+
     fetchDeviceTypes();
+    fetchDeviceModels();
   }, []);
 
   const fetchDevices = async () => {
@@ -324,7 +341,7 @@ const MyMapV19 = () => {
       alert(`Failed to update cable: ${error.message}`);
       throw error;
     }
-  }; 
+  };
 
   const removeSavedSelectedLine = async () => {
     if (!mapState.selectedLineForActions || !mapState.isSavedRoutesEditable)
@@ -650,6 +667,11 @@ const MyMapV19 = () => {
   };
 
   const handleLineClick = (line, index, isSavedLine, e) => {
+    // Do not open modal for saved lines when editing is disabled
+    if (isSavedLine && !mapState.isSavedRoutesEditable) {
+      return;
+    }
+
     e.domEvent.stopPropagation();
     e.domEvent.preventDefault();
 
@@ -752,32 +774,32 @@ const MyMapV19 = () => {
     });
   };
 
-  const handleWaypointClick = (
-    lineIndex,
-    waypointIndex,
-    isSavedLine,
-    waypoint,
-    e
-  ) => {
-    e.domEvent.preventDefault();
-    e.domEvent.stopPropagation();
+  // const handleWaypointClick = (
+  //   lineIndex,
+  //   waypointIndex,
+  //   isSavedLine,
+  //   waypoint,
+  //   e
+  // ) => {
+  //   e.domEvent.preventDefault();
+  //   e.domEvent.stopPropagation();
 
-    if (!isInteractionAllowed(isSavedLine)) return;
+  //   if (!isInteractionAllowed(isSavedLine)) return;
 
-    setMapState((prevState) => ({
-      ...prevState,
-      selectedLineForActions: null,
-      lineActionPosition: null,
-      exactClickPosition: null,
-      showModal: false,
-      selectedWaypoint: waypoint,
-      waypointActionPosition: { x: e.domEvent.clientX, y: e.domEvent.clientY },
-      selectedWaypointInfo: { lineIndex, waypointIndex, isSavedLine },
-      tempModifiedCable: isSavedLine
-        ? { ...prevState.savedPolylines[lineIndex] }
-        : null,
-    }));
-  };
+  //   setMapState((prevState) => ({
+  //     ...prevState,
+  //     selectedLineForActions: null,
+  //     lineActionPosition: null,
+  //     exactClickPosition: null,
+  //     showModal: false,
+  //     selectedWaypoint: waypoint,
+  //     waypointActionPosition: { x: e.domEvent.clientX, y: e.domEvent.clientY },
+  //     selectedWaypointInfo: { lineIndex, waypointIndex, isSavedLine },
+  //     tempModifiedCable: isSavedLine
+  //       ? { ...prevState.savedPolylines[lineIndex] }
+  //       : null,
+  //   }));
+  // };
 
   const removeSelectedWaypoint = () => {
     if (
@@ -843,7 +865,8 @@ const MyMapV19 = () => {
       selectedWaypoint: null,
       waypointActionPosition: null,
       selectedWaypointInfo: null,
-      tempModifiedCable: null,
+      // Preserve tempModifiedCable to retain cable modifications
+      tempModifiedCable: prevState.tempModifiedCable,
     }));
   };
 
@@ -891,6 +914,56 @@ const MyMapV19 = () => {
     }
   };
 
+  // const saveDeviceChanges = async () => {
+  //   if (!mapState.selectedDevice) return;
+  //   const { selectedDevice } = mapState;
+
+  //   try {
+  //     if (selectedDevice.id.startsWith("icon-api-")) {
+  //       const deviceId = selectedDevice.id.split("-")[2];
+  //       const payload = {
+  //         latitude: selectedDevice.lat,
+  //         longitude: selectedDevice.lng,
+  //       };
+  //       const endpointMap = {
+  //         OLT: `http://127.0.0.1:8000/api/v1/olt/${deviceId}`,
+  //         ONU: `http://127.0.0.1:8000/api/v1/onu/${deviceId}`,
+  //         Splitter: `http://127.0.0.1:8000/api/v1/splitter/${deviceId}`,
+  //       };
+  //       const endpoint = endpointMap[selectedDevice.type];
+  //       if (!endpoint) throw new Error(`Invalid device type`);
+
+  //       const response = await fetch(endpoint, {
+  //         method: "PATCH",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Accept: "application/json",
+  //         },
+  //         body: JSON.stringify(payload),
+  //       });
+  //       if (!response.ok) throw new Error(`Failed to update device`);
+  //     }
+
+  //     setMapState((prevState) => ({
+  //       ...prevState,
+  //       imageIcons: prevState.imageIcons.map((icon) =>
+  //         icon.id === selectedDevice.id ? { ...icon } : icon
+  //       ),
+  //       showDeviceModal: false,
+  //       selectedDevice: null,
+  //       deviceModalPosition: null,
+  //       updatedDevices: prevState.updatedDevices.filter(
+  //         (device) => device.deviceId !== selectedDevice.id.split("-")[2]
+  //       ),
+  //       tempModifiedCable: null,
+  //     }));
+  //     alert("Device saved successfully!");
+  //   } catch (error) {
+  //     console.error("Error saving device:", error);
+  //     alert(`Failed to save device: ${error.message}`);
+  //   }
+  // };
+
   const saveDeviceChanges = async () => {
     if (!mapState.selectedDevice) return;
     const { selectedDevice } = mapState;
@@ -921,19 +994,99 @@ const MyMapV19 = () => {
         if (!response.ok) throw new Error(`Failed to update device`);
       }
 
-      setMapState((prevState) => ({
-        ...prevState,
-        imageIcons: prevState.imageIcons.map((icon) =>
+      setMapState((prevState) => {
+        const updatedImageIcons = prevState.imageIcons.map((icon) =>
           icon.id === selectedDevice.id ? { ...icon } : icon
-        ),
-        showDeviceModal: false,
-        selectedDevice: null,
-        deviceModalPosition: null,
-        updatedDevices: prevState.updatedDevices.filter(
-          (device) => device.deviceId !== selectedDevice.id.split("-")[2]
-        ),
-        tempModifiedCable: null,
-      }));
+        );
+
+        // Update savedPolylines to reflect device's new position
+        const updatedSavedPolylines = prevState.savedPolylines.map(
+          (polyline) => {
+            let updatedPolyline = { ...polyline };
+            if (
+              polyline.startDeviceId === selectedDevice.deviceId &&
+              isSnappedToIcon(polyline.from.lat, polyline.from.lng)
+            ) {
+              updatedPolyline.from = {
+                lat: selectedDevice.lat,
+                lng: selectedDevice.lng,
+              };
+            }
+            if (
+              polyline.endDeviceId === selectedDevice.deviceId &&
+              isSnappedToIcon(polyline.to.lat, polyline.to.lng)
+            ) {
+              updatedPolyline.to = {
+                lat: selectedDevice.lat,
+                lng: selectedDevice.lng,
+              };
+            }
+            if (polyline.waypoints) {
+              updatedPolyline.waypoints = polyline.waypoints.map((wp) =>
+                isSnappedToIcon(wp.lat, wp.lng) &&
+                findNearestIcon(wp.lat, wp.lng)?.deviceId ===
+                  selectedDevice.deviceId
+                  ? { lat: selectedDevice.lat, lng: selectedDevice.lng }
+                  : wp
+              );
+            }
+            return updatedPolyline;
+          }
+        );
+
+        // Update tempModifiedCable if it exists
+        let updatedTempModifiedCable = prevState.tempModifiedCable;
+        if (updatedTempModifiedCable) {
+          if (
+            updatedTempModifiedCable.startDeviceId ===
+              selectedDevice.deviceId &&
+            isSnappedToIcon(
+              updatedTempModifiedCable.from.lat,
+              updatedTempModifiedCable.from.lng
+            )
+          ) {
+            updatedTempModifiedCable.from = {
+              lat: selectedDevice.lat,
+              lng: selectedDevice.lng,
+            };
+          }
+          if (
+            updatedTempModifiedCable.endDeviceId === selectedDevice.deviceId &&
+            isSnappedToIcon(
+              updatedTempModifiedCable.to.lat,
+              updatedTempModifiedCable.to.lng
+            )
+          ) {
+            updatedTempModifiedCable.to = {
+              lat: selectedDevice.lat,
+              lng: selectedDevice.lng,
+            };
+          }
+          if (updatedTempModifiedCable.waypoints) {
+            updatedTempModifiedCable.waypoints =
+              updatedTempModifiedCable.waypoints.map((wp) =>
+                isSnappedToIcon(wp.lat, wp.lng) &&
+                findNearestIcon(wp.lat, wp.lng)?.deviceId ===
+                  selectedDevice.deviceId
+                  ? { lat: selectedDevice.lat, lng: selectedDevice.lng }
+                  : wp
+              );
+          }
+        }
+
+        return {
+          ...prevState,
+          imageIcons: updatedImageIcons,
+          savedPolylines: updatedSavedPolylines,
+          tempModifiedCable: updatedTempModifiedCable,
+          showDeviceModal: false,
+          selectedDevice: null,
+          deviceModalPosition: null,
+          updatedDevices: prevState.updatedDevices.filter(
+            (device) => device.deviceId !== selectedDevice.id.split("-")[2]
+          ),
+        };
+      });
       alert("Device saved successfully!");
     } catch (error) {
       console.error("Error saving device:", error);
@@ -941,38 +1094,38 @@ const MyMapV19 = () => {
     }
   };
 
-  const addSplitterAtWaypoint = () => {
-    if (
-      !mapState.selectedWaypointInfo ||
-      !isInteractionAllowed(mapState.selectedWaypointInfo.isSavedLine)
-    )
-      return;
-    const { lineIndex, waypointIndex, isSavedLine } =
-      mapState.selectedWaypointInfo;
-    const waypoint = (
-      isSavedLine ? mapState.savedPolylines : mapState.fiberLines
-    )[lineIndex].waypoints[waypointIndex];
+  // const addSplitterAtWaypoint = () => {
+  //   if (
+  //     !mapState.selectedWaypointInfo ||
+  //     !isInteractionAllowed(mapState.selectedWaypointInfo.isSavedLine)
+  //   )
+  //     return;
+  //   const { lineIndex, waypointIndex, isSavedLine } =
+  //     mapState.selectedWaypointInfo;
+  //   const waypoint = (
+  //     isSavedLine ? mapState.savedPolylines : mapState.fiberLines
+  //   )[lineIndex].waypoints[waypointIndex];
 
-    const newSplitter = {
-      lat: waypoint.lat,
-      lng: waypoint.lng,
-      type: "Splitter",
-      id: `icon-${mapState.nextNumber}`,
-      imageUrl: "/img/splitter-icon.png",
-      deviceId: null,
-      portIds: [],
-    };
+  //   const newSplitter = {
+  //     lat: waypoint.lat,
+  //     lng: waypoint.lng,
+  //     type: "Splitter",
+  //     id: `icon-${mapState.nextNumber}`,
+  //     imageUrl: "/img/splitter-icon.png",
+  //     deviceId: null,
+  //     portIds: [],
+  //   };
 
-    setMapState((prevState) => ({
-      ...prevState,
-      imageIcons: [...prevState.imageIcons, newSplitter],
-      nextNumber: prevState.nextNumber + 1,
-      selectedWaypoint: null,
-      waypointActionPosition: null,
-      selectedWaypointInfo: null,
-      tempModifiedCable: null,
-    }));
-  };
+  //   setMapState((prevState) => ({
+  //     ...prevState,
+  //     imageIcons: [...prevState.imageIcons, newSplitter],
+  //     nextNumber: prevState.nextNumber + 1,
+  //     selectedWaypoint: null,
+  //     waypointActionPosition: null,
+  //     selectedWaypointInfo: null,
+  //     tempModifiedCable: null,
+  //   }));
+  // };
 
   const handleMarkerDragEnd = (iconId, e) => {
     const newLat = e.latLng.lat();
@@ -1300,15 +1453,15 @@ const MyMapV19 = () => {
     });
   };
 
-  const closeWaypointActions = () => {
-    setMapState((prevState) => ({
-      ...prevState,
-      selectedWaypoint: null,
-      waypointActionPosition: null,
-      selectedWaypointInfo: null,
-      tempModifiedCable: null,
-    }));
-  };
+  // const closeWaypointActions = () => {
+  //   setMapState((prevState) => ({
+  //     ...prevState,
+  //     selectedWaypoint: null,
+  //     waypointActionPosition: null,
+  //     selectedWaypointInfo: null,
+  //     tempModifiedCable: null,
+  //   }));
+  // };
 
   const onMapLoad = useCallback((map) => {
     mapRef.current = map;
@@ -1448,16 +1601,16 @@ const MyMapV19 = () => {
                     url: "/img/location.jpg",
                     scaledSize: new window.google.maps.Size(15, 15),
                   }}
-                  onClick={(e) => {
-                    e.domEvent.stopPropagation();
-                    handleWaypointClick(
-                      index,
-                      waypointIndex,
-                      false,
-                      waypoint,
-                      e
-                    );
-                  }}
+                  // onClick={(e) => {
+                  //   e.domEvent.stopPropagation();
+                  //   handleWaypointClick(
+                  //     index,
+                  //     waypointIndex,
+                  //     false,
+                  //     waypoint,
+                  //     e
+                  //   );
+                  // }}
                 />
               ))}
               {!isSnappedToIcon(line.from.lat, line.from.lng) && (
@@ -1593,15 +1746,15 @@ const MyMapV19 = () => {
                         url: "/img/location.jpg",
                         scaledSize: new window.google.maps.Size(15, 15),
                       }}
-                      onClick={(e) =>
-                        handleWaypointClick(
-                          index,
-                          waypointIndex,
-                          true,
-                          waypoint,
-                          e
-                        )
-                      }
+                      // onClick={(e) =>
+                      //   handleWaypointClick(
+                      //     index,
+                      //     waypointIndex,
+                      //     true,
+                      //     waypoint,
+                      //     e
+                      //   )
+                      // }
                     />
                   )
                 )}
@@ -1642,55 +1795,6 @@ const MyMapV19 = () => {
               </React.Fragment>
             );
           })}
-
-        {mapState.selectedWaypoint && mapState.waypointActionPosition && (
-          <div
-            className="line-action-modal"
-            style={{
-              top: `${mapState.waypointActionPosition.y - 100}px`,
-              left: `${mapState.waypointActionPosition.x - 74}px`,
-            }}
-          >
-            <div
-              className="line-action-item"
-              onClick={
-                mapState.selectedWaypointInfo?.isIcon
-                  ? removeSelectedIcon
-                  : removeSelectedWaypoint
-              }
-            >
-              <Trash2 size={20} color="red" />
-              <span className="line-action-tooltip">Remove</span>
-            </div>
-            {!mapState.selectedWaypointInfo?.isIcon && (
-              <div className="line-action-item" onClick={addSplitterAtWaypoint}>
-                <Plus size={20} color="blue" />
-                <span className="line-action-tooltip">Add Splitter</span>
-              </div>
-            )}
-            {mapState.selectedWaypointInfo?.isSavedLine &&
-              mapState.tempModifiedCable && (
-                <div
-                  className="line-action-item"
-                  onClick={() =>
-                    patchCableToInterface(mapState.tempModifiedCable)
-                      .then(() => alert("Cable updated successfully!"))
-                      .catch((error) =>
-                        alert(`Failed to update cable: ${error.message}`)
-                      )
-                  }
-                >
-                  <Save size={20} className="text-blue-500" />
-                  <span className="line-action-tooltip">Save Changes</span>
-                </div>
-              )}
-            <div className="line-action-item" onClick={closeWaypointActions}>
-              <span className="close-icon">×</span>
-              <span className="line-action-tooltip">Close</span>
-            </div>
-            <div className="modal-spike"></div>
-          </div>
-        )}
       </GoogleMap>
 
       {mapState.showModal && mapState.selectedPoint && (
@@ -1736,32 +1840,19 @@ const MyMapV19 = () => {
       )}
 
       {mapState.showFiberForm && mapState.rightClickMarker && (
-        <div
-          className="fiber-form-modal"
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            background: "white",
-            padding: "20px",
-            borderRadius: "8px",
-            boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
-            zIndex: 1000,
-            width: "300px",
-          }}
-        >
-          <h3 className="text-lg font-semibold mb-4">Create Fiber Line</h3>
+        <div className="fiber-form-modal">
+          <h3>Create Fiber Line</h3>
           <form
             onSubmit={(e) => {
               e.preventDefault();
               addFiberLine();
             }}
           >
-            <div className="mb-3">
-              <label className="block text-sm font-medium">Fiber Name</label>
+            <div>
+              <label htmlFor="fiberName">Name</label>
               <input
                 type="text"
+                id="fiberName"
                 value={mapState.fiberFormData.name}
                 onChange={(e) =>
                   setMapState((prev) => ({
@@ -1772,15 +1863,15 @@ const MyMapV19 = () => {
                     },
                   }))
                 }
-                className="w-full p-2 border rounded"
-                placeholder="Enter fiber name"
+                placeholder="Name"
                 required
               />
             </div>
-            <div className="mb-3">
-              <label className="block text-sm font-medium">Type</label>
+            <div>
+              <label htmlFor="fiberType">Type</label>
               <input
                 type="text"
+                id="fiberType"
                 value={mapState.fiberFormData.type}
                 onChange={(e) =>
                   setMapState((prev) => ({
@@ -1791,12 +1882,11 @@ const MyMapV19 = () => {
                     },
                   }))
                 }
-                className="w-full p-2 border rounded"
-                placeholder="Enter fiber type (e.g., Fiber, Copper)"
+                placeholder="Type (e.g., Fiber, Copper)"
                 required
               />
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="fiber-form-buttons">
               <button
                 type="button"
                 onClick={() =>
@@ -1807,14 +1897,12 @@ const MyMapV19 = () => {
                     fiberFormData: { name: "", type: "Fiber" },
                   }))
                 }
-                className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+                className="cancel-button"
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              >
+              <button type="submit" className="submit-button">
+                <Save size={12} />
                 Submit
               </button>
             </div>
@@ -1861,156 +1949,116 @@ const MyMapV19 = () => {
         )}
 
       {mapState.showDeviceForm && mapState.deviceFormData && (
-        <div
-          className="device-form-modal"
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            background: "white",
-            padding: "20px",
-            borderRadius: "8px",
-            boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
-            zIndex: 1000,
-            width: "400px",
-            maxHeight: "80vh",
-            overflowY: "auto",
-          }}
-        >
-          <h3 className="text-lg font-semibold mb-4">
-            Create {mapState.deviceFormData.type} Device
-          </h3>
+        <div className="device-form-modal">
+          <h3>Create {mapState.deviceFormData.type} Device</h3>
           <form onSubmit={handleDeviceFormSubmit}>
-            <div className="mb-3">
-              <label className="block text-sm font-medium">Device Name</label>
+            <div>
+              <label htmlFor="deviceName">Device Name</label>
               <input
                 type="text"
+                id="deviceName"
                 value={mapState.deviceForm.deviceName}
-                onChange={(e) =>
-                  handleDeviceFormInputChange("deviceName", e.target.value)
-                }
-                className="w-full p-2 border rounded"
-                placeholder="Enter device name"
+                onChange={(e) => handleDeviceFormInputChange("deviceName", e.target.value)}
+                placeholder="Device name"
                 required
               />
             </div>
-            <div className="mb-3">
-              <label className="block text-sm font-medium">Description</label>
+            <div>
+              <label htmlFor="description">Description</label>
               <textarea
+                id="description"
                 value={mapState.deviceForm.description}
-                onChange={(e) =>
-                  handleDeviceFormInputChange("description", e.target.value)
-                }
-                className="w-full p-2 border rounded"
-                placeholder="Enter description"
+                onChange={(e) => handleDeviceFormInputChange("description", e.target.value)}
+                placeholder="Description"
                 required
               />
             </div>
-            <div className="mb-3">
-              <label className="block text-sm font-medium">
-                Device Model ID
-              </label>
-              <input
-                type="number"
+            <div>
+              <label htmlFor="deviceModelId">Model</label>
+              <select
+                id="deviceModelId"
                 value={mapState.deviceForm.deviceModelId}
-                onChange={(e) =>
-                  handleDeviceFormInputChange("deviceModelId", e.target.value)
-                }
-                className="w-full p-2 border rounded"
-                placeholder="Enter device model ID"
+                onChange={(e) => handleDeviceFormInputChange("deviceModelId", e.target.value)}
                 required
-              />
+              >
+                <option value="">Select model</option>
+                {deviceModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name} ({model.vendor})
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="mb-3">
-              <label className="block text-sm font-medium">
-                {mapState.deviceFormData.type} Name
-              </label>
+            <div>
+              <label htmlFor="name">{mapState.deviceFormData.type} Name</label>
               <input
                 type="text"
+                id="name"
                 value={mapState.deviceForm.name}
-                onChange={(e) =>
-                  handleDeviceFormInputChange("name", e.target.value)
-                }
-                className="w-full p-2 border rounded"
-                placeholder={`Enter ${mapState.deviceFormData.type} name`}
+                onChange={(e) => handleDeviceFormInputChange("name", e.target.value)}
+                placeholder={`${mapState.deviceFormData.type} name`}
                 required
               />
             </div>
             {mapState.deviceFormData.type === "OLT" && (
               <>
-                <div className="mb-3">
-                  <label className="block text-sm font-medium">Hostname</label>
+                <div>
+                  <label htmlFor="hostname">Hostname</label>
                   <input
                     type="text"
+                    id="hostname"
                     value={mapState.deviceForm.hostname}
-                    onChange={(e) =>
-                      handleDeviceFormInputChange("hostname", e.target.value)
-                    }
-                    className="w-full p-2 border rounded"
-                    placeholder="Enter hostname"
+                    onChange={(e) => handleDeviceFormInputChange("hostname", e.target.value)}
+                    placeholder="Hostname"
                     required
                   />
                 </div>
-                <div className="mb-3">
-                  <label className="block text-sm font-medium">Community</label>
+                <div>
+                  <label htmlFor="community">Community</label>
                   <input
                     type="text"
+                    id="community"
                     value={mapState.deviceForm.community}
-                    onChange={(e) =>
-                      handleDeviceFormInputChange("community", e.target.value)
-                    }
-                    className="w-full p-2 border rounded"
-                    placeholder="Enter community"
+                    onChange={(e) => handleDeviceFormInputChange("community", e.target.value)}
+                    placeholder="Community"
                     required
                   />
                 </div>
               </>
             )}
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-2">Ports</label>
-              {mapState.deviceForm.ports.map((port, index) => (
-                <div key={index} className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    value={port.name}
-                    onChange={(e) =>
-                      handlePortChange(index, "name", e.target.value)
-                    }
-                    className="flex-1 p-2 border rounded"
-                    placeholder={`Port ${index + 1} name`}
-                    required
-                  />
-                  <input
-                    type="number"
-                    value={port.position}
-                    onChange={(e) =>
-                      handlePortChange(index, "position", e.target.value)
-                    }
-                    className="w-20 p-2 border rounded"
-                    placeholder="Position"
-                    required
-                  />
-                  {mapState.deviceForm.ports.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => removePort(index)}
-                      className="p-2 text-red-500 hover:text-red-700"
-                    >
-                      <Trash2 size={20} />
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={addPort}
-                className="mt-2 px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
-              >
+            <div>
+              <label>Ports</label>
+              <div className="port-section">
+                {mapState.deviceForm.ports.map((port, index) => (
+                  <div key={index} className="port-row">
+                    <input
+                      type="text"
+                      value={port.name}
+                      onChange={(e) => handlePortChange(index, "name", e.target.value)}
+                      placeholder={`Port ${index + 1}`}
+                      required
+                    />
+                    <input
+                      type="number"
+                      value={port.position}
+                      onChange={(e) => handlePortChange(index, "position", e.target.value)}
+                      placeholder="Pos"
+                      required
+                    />
+                    {mapState.deviceForm.ports.length > 2 && (
+                      <button type="button" onClick={() => removePort(index)} title="Remove">
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={addPort} className="add-port-button">
+                <Plus size={14} />
                 Add Port
               </button>
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="form-buttons">
               <button
                 type="button"
                 onClick={() =>
@@ -2033,20 +2081,18 @@ const MyMapV19 = () => {
                     rightClickMarker: null,
                   }))
                 }
-                className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+                className="cancel-button"
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              >
+              <button type="submit" className="submit-button">
+                <Save size={14} />
                 Submit
               </button>
             </div>
           </form>
         </div>
-      )}
+      )} 
 
       {mapState.showPortDropdown &&
         mapState.portDropdownPosition &&
@@ -2057,27 +2103,22 @@ const MyMapV19 = () => {
               position: "fixed",
               top: `${mapState.portDropdownPosition.y - 180}px`,
               left: `${mapState.portDropdownPosition.x - 100}px`,
-              background: "white",
-              padding: "15px",
-              borderRadius: "8px",
-              boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
-              zIndex: 1000,
-              width: "220px",
             }}
           >
-            <h3 className="text-md font-semibold mb-3">
+            <h3>
               Select Port for {mapState.portDropdownDevice.type} (
               {mapState.portDropdownEnd === "start" ? "Start" : "End"})
             </h3>
             <form onSubmit={handlePortSelection}>
-              <div className="mb-3">
+              <div>
+                <label htmlFor="portSelect">Port</label>
                 <select
+                  id="portSelect"
                   value={mapState.selectedPortId || ""}
                   onChange={(e) => handlePortDropdownChange(e.target.value)}
-                  className="w-full p-2 border rounded"
                   required
                 >
-                  <option value="">Select a port</option>
+                  <option value="">Select port</option>
                   {mapState.portDropdownPorts.map((port) => (
                     <option key={port.id} value={port.id}>
                       {port.name || `Port ${port.position}`}
@@ -2085,19 +2126,16 @@ const MyMapV19 = () => {
                   ))}
                 </select>
               </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closePortDropdown}
-                  className="px-3 py-1 bg-gray-300 rounded hover:bg-gray-400"
-                >
+              <div className="port-form-buttons">
+                <button type="button" onClick={closePortDropdown} className="cancel-button">
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!mapState.selectedPortId}
-                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
+                  className="select-button"
                 >
+                  <Save size={12} />
                   Select
                 </button>
               </div>
@@ -2142,7 +2180,9 @@ const MyMapV19 = () => {
           style={{ margin: "5px" }}
         >
           {mapState.isSavedRoutesEditable ? <Lock /> : <Unlock />}
-          {mapState.isSavedRoutesEditable ? " Lock Editing" : " Unlock Editing"}
+          {mapState.isSavedRoutesEditable
+            ? " Disbale Cable Editing"
+            : " Enable Cable Editing"}
         </button>
       </div>
     </>

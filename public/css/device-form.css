@@ -1,33 +1,375 @@
+
 .device-form-modal {
-  position: absolute;
-  background: white;
-  padding: 20px;
+  background: #ffffff;
   border-radius: 8px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
-  width: 400px;
-  max-height: 80vh;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  width: 100%;
+  max-width: 400px;
+  max-height: 90vh;
   overflow-y: auto;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translate(-50%, -55%); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+.device-form-modal h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1a202c;
+  margin-bottom: 20px;
+}
+
+.device-form-modal form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .device-form-modal label {
+  font-size: 0.8125rem;
   font-weight: 500;
-  margin-bottom: 0.5rem;
-  display: block;
+  color: #4a5568;
+  margin-bottom: 4px;
 }
 
 .device-form-modal input,
 .device-form-modal textarea,
 .device-form-modal select {
   width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   font-size: 0.875rem;
+  color: #1a202c;
+  background: #ffffff;
+  transition: border-color 0.2s;
 }
 
-.device-form-modal button {
-  padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
+.device-form-modal input:focus,
+.device-form-modal textarea:focus,
+.device-form-modal select:focus {
+  outline: none;
+  border-color: #3182ce;
+}
+
+.device-form-modal textarea {
+  resize: none;
+  height: 80px;
+}
+
+.device-form-modal select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%237a879d'%3E%3Cpath d='M10 12l-5-5h10l-5 5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px;
+  cursor: pointer !important;
+}
+
+.device-form-modal .port-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.device-form-modal .port-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.device-form-modal .port-row input[type="text"] {
+  flex: 1;
+}
+
+.device-form-modal .port-row input[type="number"] {
+  width: 60px;
+}
+
+.device-form-modal .port-row button {
+  padding: 4px;
+  color: #e53e3e;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.device-form-modal .port-row button:hover {
+  color: #c53030;
+}
+
+.device-form-modal .add-port-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: #319795;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-top: 8px;
+}
+
+.device-form-modal .add-port-button:hover {
+  background: #2c7a7b;
+}
+
+.device-form-modal .add-port-button svg {
+  margin-right: 6px;
+}
+
+.device-form-modal .form-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #edf2f7;
+}
+
+.device-form-modal .cancel-button,
+.device-form-modal .submit-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.device-form-modal .cancel-button {
+  background: #edf2f7;
+  color: #4a5568;
+}
+
+.device-form-modal .cancel-button:hover {
+  background: #e2e8f0;
+}
+
+.device-form-modal .submit-button {
+  background: #3182ce;
+  color: #ffffff;
+}
+
+.device-form-modal .submit-button svg {
+  margin-right: 6px;
+}
+
+.device-form-modal .submit-button:hover {
+  background: #2b6cb0;
+}
+
+
+/* New port dropdown styles */
+.port-dropdown-modal {
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  padding: 12px;
+  width: 200px;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.port-dropdown-modal h3 {
   font-size: 0.875rem;
+  font-weight: 600;
+  color: #1a202c;
+  margin-bottom: 8px;
+}
+
+.port-dropdown-modal form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.port-dropdown-modal label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #4a5568;
+  margin-bottom: 3px;
+}
+
+.port-dropdown-modal select {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  font-size: 0.8125rem;
+  color: #1a202c;
+  background: #ffffff;
+  transition: border-color 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%237a879d'%3E%3Cpath d='M10 12l-5-5h10l-5 5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 12px;
+  cursor: pointer !important;
+}
+
+.port-dropdown-modal select:focus {
+  outline: none;
+  border-color: #3182ce;
+}
+
+.port-dropdown-modal .port-form-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #edf2f7;
+}
+
+.port-dropdown-modal .cancel-button,
+.port-dropdown-modal .select-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.port-dropdown-modal .cancel-button {
+  background: #edf2f7;
+  color: #4a5568;
+}
+
+.port-dropdown-modal .cancel-button:hover {
+  background: #e2e8f0;
+}
+
+.port-dropdown-modal .select-button {
+  background: #3182ce;
+  color: #ffffff;
+}
+
+.port-dropdown-modal .select-button:hover {
+  background: #2b6cb0;
+}
+
+.port-dropdown-modal .select-button:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+}
+
+.port-dropdown-modal .select-button svg {
+  margin-right: 5px;
+}
+
+
+/* Fiber form styles */
+.fiber-form-modal {
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  padding: 12px;
+  width: 100%;
+  max-width: 280px;
+  max-height: 60vh;
+  overflow-y: auto;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.fiber-form-modal h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1a202c;
+  margin-bottom: 8px;
+}
+
+.fiber-form-modal form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fiber-form-modal label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #4a5568;
+  margin-bottom: 3px;
+}
+
+.fiber-form-modal input {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  font-size: 0.8125rem;
+  color: #1a202c;
+  background: #ffffff;
+  transition: border-color 0.2s;
+}
+
+.fiber-form-modal input:focus {
+  outline: none;
+  border-color: #3182ce;
+}
+
+.fiber-form-modal .fiber-form-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #edf2f7;
+}
+
+.fiber-form-modal .cancel-button,
+.fiber-form-modal .submit-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.fiber-form-modal .cancel-button {
+  background: #edf2f7;
+  color: #4a5568;
+}
+
+.fiber-form-modal .cancel-button:hover {
+  background: #e2e8f0;
+}
+
+.fiber-form-modal .submit-button {
+  background: #3182ce;
+  color: #ffffff;
+}
+
+.fiber-form-modal .submit-button svg {
+  margin-right: 5px;
+}
+
+.fiber-form-modal .submit-button:hover {
+  background: #2b6cb0;
 }
