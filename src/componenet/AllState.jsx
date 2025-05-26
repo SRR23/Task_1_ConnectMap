@@ -2,7 +2,7 @@ import React from 'react';
 
 const AllState = () => {
 
-    // Route Management
+    // Route Manage
 const [savedRoutes, setSavedRoutes] = useState([]);
 const [nextNumber, setNextNumber] = useState(1);
 const [savedPolylines, setSavedPolylines] = useState([]);
