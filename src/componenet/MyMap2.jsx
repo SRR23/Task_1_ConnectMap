@@ -241,47 +241,6 @@ const MyMap = () => {
   // Save all new and edited cables
   const saveAllCables = useCallback(async () => {
     try {
-      // First, save updated device positions to ensure cables reference valid coordinates
-      for (const device of updatedDevices) {
-        const deviceIcon = imageIcons.find(
-          (icon) => icon.deviceId === device.deviceId
-        );
-        if (!deviceIcon) {
-          console.warn(
-            `Device icon not found for deviceId: ${device.deviceId}`
-          );
-          continue;
-        }
-        const endpointMap = {
-          OLT: `http://localhost:8000/api/v1/olt/${device.deviceId}`,
-          ONU: `http://localhost:8000/api/v1/onu/${device.deviceId}`,
-          Splitter: `http://localhost:8000/api/v1/splitter/${device.deviceId}`,
-        };
-        const endpoint = endpointMap[deviceIcon.type];
-        if (!endpoint) {
-          console.warn(`Invalid device type for deviceId: ${device.deviceId}`);
-          continue;
-        }
-
-        const devicePayload = {
-          latitude: device.lat,
-          longitude: device.lng,
-        };
-        const deviceResponse = await fetch(endpoint, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify(devicePayload),
-        });
-        if (!deviceResponse.ok) {
-          throw new Error(
-            `Failed to update device ${device.deviceId}: ${deviceResponse.status}`
-          );
-        }
-      }
-
       // Save new fiber lines
       for (const line of fiberLines) {
         if (!line.startPortId || !line.endPortId) {
@@ -311,11 +270,10 @@ const MyMap = () => {
           },
           body: JSON.stringify(payload),
         });
-        if (!response.ok) {
+        if (!response.ok)
           throw new Error(
             `Failed to save cable ${line.name}: ${response.status}`
           );
-        }
         setUsedPorts((prev) => [
           ...prev,
           ...(line.startPortId ? [line.startPortId] : []),
@@ -329,27 +287,16 @@ const MyMap = () => {
         if (!cable.hasEditedCables) continue;
         const interfaceId = cable.id.split("-")[1];
         const payload = {
-          start: {
-            device_id: cable.startDeviceId,
-            port_id: cable.startPortId,
-          },
-          end: {
-            device_id: cable.endDeviceId,
-            port_id: cable.endPortId,
-          },
           cable: {
-            name: cable.name,
-            type: cable.type?.toLowerCase() || "fiber",
             path: {
               coords: [
-                [cable.from.lat, cable.from.lng], // Updated start coordinates
+                [cable.from.lat, cable.from.lng],
                 ...(cable.waypoints || []).map((wp) => [wp.lat, wp.lng]),
-                [cable.to.lat, cable.to.lng], // Updated end coordinates
+                [cable.to.lat, cable.to.lng],
               ],
             },
           },
         };
-        console.log("PATCH Payload for cable", cableId, payload); // Debugging
         const response = await fetch(
           `http://localhost:8000/api/v1/interface/${interfaceId}`,
           {
@@ -361,37 +308,26 @@ const MyMap = () => {
             body: JSON.stringify(payload),
           }
         );
-        if (!response.ok) {
+        if (!response.ok)
           throw new Error(
             `Failed to update cable ${cable.name}: ${response.status}`
           );
-        }
       }
 
       // Reset states and refresh data
       setFiberLines([]);
       setModifiedCables({});
-      setUpdatedDevices([]);
       setSelectedLineForActions(null);
       setLineActionPosition(null);
       setExactClickPosition(null);
       setTempCable(null);
       setHasEditedCables(false);
-      await fetchDevices();
       await fetchCables();
-      alert("All cables and devices saved successfully!");
+      alert("All cables saved successfully!");
     } catch (error) {
-      handleApiError(error, "Error saving all cables and devices");
+      handleApiError(error, "Error saving all cables");
     }
-  }, [
-    fiberLines,
-    modifiedCables,
-    updatedDevices,
-    imageIcons,
-    fetchDevices,
-    fetchCables,
-    handleApiError,
-  ]);
+  }, [fiberLines, modifiedCables, fetchCables, handleApiError]);
 
   // Delete saved polyline
   const removeSavedSelectedLine = useCallback(async () => {
@@ -972,7 +908,6 @@ const MyMap = () => {
               updated[cableId] = {
                 ...cable,
                 from: { lat: selectedDevice.lat, lng: selectedDevice.lng },
-                hasEditedCables: true,
               };
             }
             if (
@@ -982,7 +917,6 @@ const MyMap = () => {
               updated[cableId] = {
                 ...cable,
                 to: { lat: selectedDevice.lat, lng: selectedDevice.lng },
-                hasEditedCables: true,
               };
             }
             if (cable.waypoints) {
@@ -995,13 +929,11 @@ const MyMap = () => {
                     ? { lat: selectedDevice.lat, lng: selectedDevice.lng }
                     : wp
                 ),
-                hasEditedCables: true,
               };
             }
           });
           return updated;
         });
-        setHasEditedCables(true);
         setShowDeviceModal(false);
         setSelectedDevice(null);
         setDeviceModalPosition(null);
@@ -1025,7 +957,6 @@ const MyMap = () => {
 
       setImageIcons((prev) => {
         const draggedIcon = prev.find((icon) => icon.id === iconId);
-        if (!draggedIcon) return prev;
         const updatedIcons = prev.map((icon) =>
           icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
         );
@@ -1050,106 +981,48 @@ const MyMap = () => {
           return updated;
         });
 
-        // Update cables connected to the dragged device
-        setSavedPolylines((prev) =>
-          prev.map((polyline) => {
-            let updatedPolyline = { ...polyline };
-            let hasChanges = false;
-            if (
-              polyline.startDeviceId === draggedIcon.deviceId &&
-              isSnappedToIcon(polyline.from.lat, polyline.from.lng)
-            ) {
-              updatedPolyline.from = { lat: newLat, lng: newLng };
-              hasChanges = true;
-            }
-            if (
-              polyline.endDeviceId === draggedIcon.deviceId &&
-              isSnappedToIcon(polyline.to.lat, polyline.to.lng)
-            ) {
-              updatedPolyline.to = { lat: newLat, lng: newLng };
-              hasChanges = true;
-            }
-            if (polyline.waypoints) {
-              const updatedWaypoints = polyline.waypoints.map((wp) =>
-                isSnappedToIcon(wp.lat, wp.lng) &&
-                findNearestIcon(wp.lat, wp.lng)?.deviceId ===
-                  draggedIcon.deviceId
-                  ? { lat: newLat, lng: newLng }
-                  : wp
-              );
-              if (
-                updatedWaypoints.some(
-                  (wp, i) =>
-                    wp.lat !== polyline.waypoints[i]?.lat ||
-                    wp.lng !== polyline.waypoints[i]?.lng
-                )
-              ) {
-                updatedPolyline.waypoints = updatedWaypoints;
-                hasChanges = true;
-              }
-            }
-            if (hasChanges) {
-              setModifiedCables((prev) => ({
-                ...prev,
-                [polyline.id]: {
-                  ...polyline,
-                  from: updatedPolyline.from,
-                  to: updatedPolyline.to,
-                  waypoints: updatedPolyline.waypoints,
-                  hasEditedCables: true,
-                },
-              }));
-              setHasEditedCables(true);
-            }
-            return updatedPolyline;
-          })
-        );
-
-        setFiberLines((prevLines) =>
-          prevLines.map((line) => {
+        const updateLines = (lines) =>
+          lines.map((line) => {
             let updatedLine = { ...line };
-            let hasChanges = false;
             if (
-              line.startDeviceId === draggedIcon.deviceId &&
-              isSnappedToIcon(line.from.lat, line.from.lng)
+              isSnappedToIcon(line.from.lat, line.from.lng) &&
+              line.from.lat === draggedIcon.lat &&
+              line.from.lng === draggedIcon.lng
             ) {
               updatedLine.from = { lat: newLat, lng: newLng };
-              hasChanges = true;
             }
             if (
-              line.endDeviceId === draggedIcon.deviceId &&
-              isSnappedToIcon(line.to.lat, line.to.lng)
+              isSnappedToIcon(line.to.lat, line.to.lng) &&
+              line.to.lat === draggedIcon.lat &&
+              line.to.lng === draggedIcon.lng
             ) {
               updatedLine.to = { lat: newLat, lng: newLng };
-              hasChanges = true;
             }
             if (line.waypoints) {
-              const updatedWaypoints = line.waypoints.map((wp) =>
-                isSnappedToIcon(wp.lat, wp.lng) &&
-                findNearestIcon(wp.lat, wp.lng)?.deviceId ===
-                  draggedIcon.deviceId
+              updatedLine.waypoints = line.waypoints.map((wp) =>
+                wp.lat === draggedIcon.lat && wp.lng === draggedIcon.lng
                   ? { lat: newLat, lng: newLng }
                   : wp
               );
-              if (
-                updatedWaypoints.some(
-                  (wp, i) =>
-                    wp.lat !== line.waypoints[i]?.lat ||
-                    wp.lng !== line.waypoints[i]?.lng
-                )
-              ) {
-                updatedLine.waypoints = updatedWaypoints;
-                hasChanges = true;
-              }
             }
             return updatedLine;
-          })
-        );
+          });
+
+        setFiberLines((prevLines) => updateLines(prevLines));
+        setModifiedCables((prev) => {
+          const updated = { ...prev };
+          Object.keys(updated).forEach((cableId) => {
+            updated[cableId] = updateLines([updated[cableId]])[0];
+          });
+          return updated;
+        });
+        setSavedPolylines((prev) => updateLines(prev));
+        setHasEditedCables((prev) => true);
 
         return updatedIcons;
       });
     },
-    [isSnappedToIcon, findNearestIcon]
+    [isSnappedToIcon]
   );
 
   // Generate unique ID
@@ -2051,7 +1924,7 @@ const MyMap = () => {
         </button>
         <button
           onClick={saveAllCables}
-          className="flex items-center gap-2 p-2 m-1 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 p-2 m-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed"
           disabled={!fiberLines.length && !hasEditedCables}
         >
           <Save size={16} />

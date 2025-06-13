@@ -1,227 +1,142 @@
-import React from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
+import { useLoadScript } from "@react-google-maps/api";
+import MapComponent from "../Map/MapComponent";
+import FiberFormModal from "../Modal/FiberFormModal";
+import DeviceModal from "../Modal/DeviceModal";
+import DeviceFormModal from "../Modal/DeviceFormModal";
+import PortDropdownModal from "../Modal/PortDropdownModal";
+import ContextMenuModal from "../Modal/ContextMenuModal";
+import ControlPanel from "../ControlPanel/ControlPanel";
+import WaypointActionModal from "../Modal/WaypointActionModal";
+import debounce from "lodash/debounce";
 
-const AllState = () => {
-
-    // Route Manage
-const [savedRoutes, setSavedRoutes] = useState([]);
-const [nextNumber, setNextNumber] = useState(1);
-const [savedPolylines, setSavedPolylines] = useState([]);
-const [savedIcons, setSavedIcons] = useState([]);
-const [showSavedRoutes, setShowSavedRoutes] = useState(false);
-const [isSavedRoutesEditable, setIsSavedRoutesEditable] = useState(false);
-
-// Map Interaction
-const [selectedType, setSelectedType] = useState(null);
-const [selectedPoint, setSelectedPoint] = useState(null);
-const [rightClickMarker, setRightClickMarker] = useState(null);
-const [exactClickPosition, setExactClickPosition] = useState(null);
-const [fiberLines, setFiberLines] = useState([]);
-const [imageIcons, setImageIcons] = useState([]);
-
-// Line Actions
-const [selectedLineForActions, setSelectedLineForActions] = useState(null);
-const [lineActionPosition, setLineActionPosition] = useState(null);
-const [editingLineId, setEditingLineId] = useState(null);
-const [tempLineName, setTempLineName] = useState("");
-
-// Waypoint Actions
-const [selectedWaypoint, setSelectedWaypoint] = useState(null);
-const [waypointActionPosition, setWaypointActionPosition] = useState(null);
-const [selectedWaypointInfo, setSelectedWaypointInfo] = useState(null);
-
-// Splitter Modal
-const [showSplitterModal, setShowSplitterModal] = useState(false);
-const [selectedSplitter, setSelectedSplitter] = useState(null);
-const [splitterRatio, setSplitterRatio] = useState("");
-
-// Termination Modal
-const [showTerminationModal, setShowTerminationModal] = useState(false);
-const [selectedTermination, setSelectedTermination] = useState(null);
-const [terminationConnections, setTerminationConnections] = useState([]);
-const [tempConnection, setTempConnection] = useState(null);
-const [hasEditedCables, setHasEditedCables] = useState(false);
-
-// Device Management
-const [updatedDevices, setUpdatedDevices] = useState([]);
-const [showDeviceForm, setShowDeviceForm] = useState(false);
-const [deviceFormData, setDeviceFormData] = useState(null); // Added deviceFormData
-const [deviceForm, setDeviceForm] = useState({
-  deviceName: "",
-  description: "",
-  deviceModelId: "",
-  ports: [
-    { name: "", position: 1 },
-    { name: "", position: 2 },
-  ],
-  name: "",
-  hostname: "",
-  community: "",
-});
-
-// Port Selection
-const [showPortDropdown, setShowPortDropdown] = useState(false);
-const [portDropdownPosition, setPortDropdownPosition] = useState(null);
-const [portDropdownDevice, setPortDropdownDevice] = useState(null);
-const [portDropdownPorts, setPortDropdownPorts] = useState([]);
-const [selectedPortId, setSelectedPortId] = useState(null);
-const [portDropdownEnd, setPortDropdownEnd] = useState(null);
-const [tempCable, setTempCable] = useState(null);
-const [startPortId, setStartPortId] = useState(null);
-const [endPortId, setEndPortId] = useState(null);
-const [allPorts, setAllPorts] = useState([]);
-
-// Fiber Form
-const [showFiberForm, setShowFiberForm] = useState(false);
-const [fiberFormData, setFiberFormData] = useState({
-  name: "",
-  type: "Fiber",
-});
-const [cableSaveAttempted, setCableSaveAttempted] = useState(false);
-
-
-    return (
-        <div>
-            
-        </div>
-    );
-};
-
-export default AllState;
-
-
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import {
-  GoogleMap,
-  useLoadScript,
-  MarkerF,
-  PolylineF,
-} from "@react-google-maps/api";
-import { Trash2, Plus, Save, Eye, EyeOff, Lock, Unlock } from "lucide-react";
-
-const containerStyle = { width: "100%", height: "600px" };
-const center = { lat: 23.685, lng: 90.3563 };
-
-const mapStyles = [
-  {
-    featureType: "administrative",
-    elementType: "geometry.stroke",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "administrative.country",
-    elementType: "geometry.stroke",
-    stylers: [{ visibility: "on" }, { color: "#2c3e50" }, { weight: 2 }],
-  },
-  {
-    featureType: "poi",
-    elementType: "all",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "transit",
-    elementType: "all",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "landscape",
-    elementType: "all",
-    stylers: [{ visibility: "simplified" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry",
-    stylers: [{ visibility: "simplified" }],
-  },
-  {
-    featureType: "water",
-    elementType: "all",
-    stylers: [{ visibility: "off" }],
-  },
-];
-
-const MyMapV19 = () => {
+const FiberMapPage = () => {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
   });
 
   const mapRef = useRef(null);
 
-  const [mapState, setMapState] = useState({
-    savedPolylines: [],
-    fiberLines: [],
-    imageIcons: [],
-    showSavedRoutes: true,
-    isSavedRoutesEditable: false,
-    selectedLineForActions: null,
-    lineActionPosition: null,
-    exactClickPosition: null,
-    selectedWaypoint: null,
-    waypointActionPosition: null,
-    selectedWaypointInfo: null,
-    showModal: false,
-    selectedPoint: null,
-    rightClickMarker: null,
-    showFiberForm: false,
-    fiberFormData: { name: "", type: "Fiber" },
-    showDeviceForm: false,
-    deviceFormData: null,
-    deviceForm: {
-      deviceName: "",
-      description: "",
-      deviceModelId: "",
-      ports: [
-        { name: "", position: 1 },
-        { name: "", position: 2 },
-      ],
-      name: "",
-      hostname: "",
-      community: "",
-    },
-    showPortDropdown: false,
-    portDropdownPosition: null,
-    portDropdownDevice: null,
-    portDropdownPorts: [],
-    selectedPortId: null,
-    portDropdownEnd: null,
-    tempCable: null,
-    showDeviceModal: false,
-    selectedDevice: null,
-    deviceModalPosition: null,
-    tempModifiedCable: null,
-    nextNumber: 1,
-    allPorts: [],
-    hasEditedCables: false,
-    updatedDevices: [],
+  // State declarations
+  const [savedPolylines, setSavedPolylines] = useState([]);
+  const [fiberLines, setFiberLines] = useState([]);
+  const [imageIcons, setImageIcons] = useState([]);
+  const [showSavedRoutes, setShowSavedRoutes] = useState(true);
+  const [selectedLineForActions, setSelectedLineForActions] = useState(null);
+  const [lineActionPosition, setLineActionPosition] = useState(null);
+  const [exactClickPosition, setExactClickPosition] = useState(null);
+  const [selectedPoint, setSelectedPoint] = useState(null);
+  const [rightClickMarker, setRightClickMarker] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [showFiberForm, setShowFiberForm] = useState(false);
+  const [fiberFormData, setFiberFormData] = useState({
+    name: "",
+    type: "Fiber",
   });
-
-  const [deviceTypes, setDeviceTypes] = useState([]);
+  const [showDeviceForm, setShowDeviceForm] = useState(false);
+  const [deviceFormData, setDeviceFormData] = useState(null);
+  const [deviceForm, setDeviceForm] = useState({
+    deviceName: "",
+    description: "",
+    deviceModelId: "",
+    ports: [
+      { name: "", position: 1 },
+      { name: "", position: 2 },
+    ],
+    name: "",
+    hostname: "",
+    community: "",
+  });
+  const [showPortDropdown, setShowPortDropdown] = useState(false);
+  const [portDropdownPosition, setPortDropdownPosition] = useState(null);
+  const [portDropdownDevice, setPortDropdownDevice] = useState(null);
+  const [portDropdownPorts, setPortDropdownPorts] = useState([]);
+  const [selectedPortId, setSelectedPortId] = useState(null);
+  const [portDropdownEnd, setPortDropdownEnd] = useState(null);
+  const [tempCable, setTempCable] = useState(null);
+  const [showDeviceModal, setShowDeviceModal] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  const [deviceModalPosition, setDeviceModalPosition] = useState(null);
+  const [modifiedCables, setModifiedCables] = useState({});
+  const [nextNumber, setNextNumber] = useState(1);
   const [allPorts, setAllPorts] = useState([]);
+  const [hasEditedCables, setHasEditedCables] = useState(false);
+  const [updatedDevices, setUpdatedDevices] = useState([]);
+  const [deviceTypes, setDeviceTypes] = useState([]);
+  const [deviceModels, setDeviceModels] = useState([]);
+  const [usedPorts, setUsedPorts] = useState([]);
+  const [selectedWaypoint, setSelectedWaypoint] = useState(null);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
 
+  // Centralized error handler
+  const handleApiError = useCallback((error, message) => {
+    console.error(message, error);
+    alert(`${message}: ${error.message}`);
+  }, []);
+
+  // Find nearest icon
+  const findNearestIcon = useCallback(
+    (lat, lng) => {
+      const threshold = 0.0001;
+      return imageIcons.find(
+        (icon) =>
+          Math.abs(icon.lat - lat) < threshold &&
+          Math.abs(icon.lng - lng) < threshold
+      );
+    },
+    [imageIcons]
+  );
+
+  const isSnappedToIcon = useCallback(
+    (lat, lng) => !!findNearestIcon(lat, lng),
+    [findNearestIcon]
+  );
+
+  // Fetch device types and models
   useEffect(() => {
     const fetchDeviceTypes = async () => {
       try {
         const response = await fetch(
-          "http://127.0.0.1:8000/api/v1/device-types"
+          "http://localhost:8000/api/v1/device-types"
         );
         if (!response.ok) throw new Error("Failed to fetch device types");
-        const data = await response.json();
-        setDeviceTypes(data);
+        setDeviceTypes(await response.json());
       } catch (error) {
-        console.error("Error fetching device types:", error);
-        alert("Failed to load device types.");
+        handleApiError(error, "Error fetching device types");
       }
     };
-    fetchDeviceTypes();
-  }, []);
 
-  const fetchDevices = async () => {
+    const fetchDeviceModels = async () => {
+      try {
+        const response = await fetch(
+          "http://localhost:8000/api/v1/device-models"
+        );
+        if (!response.ok) throw new Error("Failed to fetch device models");
+        setDeviceModels(await response.json());
+      } catch (error) {
+        handleApiError(error, "Error fetching device models");
+      }
+    };
+
+    fetchDeviceTypes();
+    fetchDeviceModels();
+  }, [handleApiError]);
+
+  // Fetch devices
+  const fetchDevices = useCallback(async () => {
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/v1/devices");
+      const response = await fetch("http://localhost:8000/api/v1/devices");
       if (!response.ok)
         throw new Error(`HTTP error! Status: ${response.status}`);
       const devices = await response.json();
 
-      const allPorts = devices.flatMap((device) =>
+      const ports = devices.flatMap((device) =>
         device.port_device.map((port) => ({
           id: port.id,
           name: port.name,
@@ -230,7 +145,7 @@ const MyMapV19 = () => {
         }))
       );
 
-      const fetchedIcons = devices
+      const icons = devices
         .filter((device) => device.latitude != null && device.longitude != null)
         .map((device) => ({
           lat: device.latitude,
@@ -238,43 +153,41 @@ const MyMapV19 = () => {
           type: device.device_type.name,
           id: `icon-api-${device.id}`,
           imageUrl: device.device_type.icon
-            ? `http://127.0.0.1:8000${device.device_type.icon}`
+            ? `http://localhost:8000${device.device_type.icon}`
             : "/img/default-icon.png",
           deviceId: device.id,
           portIds: device.port_device.map((port) => port.id),
         }));
 
-      setMapState((prevState) => ({
-        ...prevState,
-        imageIcons: fetchedIcons,
-        allPorts,
-        nextNumber: fetchedIcons.length + 1,
-        tempModifiedCable: null,
-      }));
-      setAllPorts(allPorts);
+      setImageIcons(icons);
+      setAllPorts(ports);
+      setNextNumber(icons.length + 1);
+      // Only reset modifiedCables if no pending updates
+      if (!hasEditedCables) {
+        setModifiedCables({});
+      }
     } catch (error) {
-      console.error("Error fetching devices:", error);
-      alert("Failed to load devices.");
+      handleApiError(error, "Error fetching devices");
     }
-  };
+  }, [handleApiError, hasEditedCables]);
 
-  const fetchCables = async () => {
+  // Fetch cables
+  const fetchCables = useCallback(async () => {
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/v1/interface");
+      const response = await fetch("http://localhost:8000/api/v1/interface");
       if (!response.ok)
         throw new Error(`HTTP error! Status: ${response.status}`);
       const cables = await response.json();
 
-      const fetchedPolylines = cables
-        .filter(
-          (cableInterface) => cableInterface.cable?.path?.coords?.length >= 2
-        )
-        .map((cableInterface) => {
-          const coords = cableInterface.cable.path.coords;
+      const polylines = cables
+        .filter((cable) => cable.cable?.path?.coords?.length >= 2)
+        .map((cable) => {
+          const coords = cable.cable.path.coords;
           return {
-            id: `cable-${cableInterface.id}`,
-            cableId: cableInterface.cable.id,
-            name: cableInterface.cable.name || `Cable-${cableInterface.id}`,
+            id: `cable-${cable.id}`,
+            cableId: cable.cable.id,
+            name: cable.cable.name || `Cable-${cable.id}`,
+            type: cable.cable.type || "Fiber",
             from: {
               lat: parseFloat(coords[0][0]),
               lng: parseFloat(coords[0][1]),
@@ -287,146 +200,243 @@ const MyMapV19 = () => {
               lat: parseFloat(coord[0]),
               lng: parseFloat(coord[1]),
             })),
-            startDeviceId: cableInterface.start.device.id || null,
-            endDeviceId: cableInterface.end.device.id || null,
-            startPortId: cableInterface.start.id || null,
-            endPortId: cableInterface.end.id || null,
-            startPortName: cableInterface.start.name || null,
-            endPortName: cableInterface.end.name || null,
+            startDeviceId: cable.start?.device.id || null,
+            endDeviceId: cable.end?.device.id || null,
+            startPortId: cable.start?.id || null,
+            endPortId: cable.end?.id || null,
+            startPortName: cable.start?.name || null,
+            endPortName: cable.end?.name || null,
           };
         });
 
-      setMapState((prevState) => ({
-        ...prevState,
-        savedPolylines: fetchedPolylines,
-        tempModifiedCable: null,
-      }));
+      const usedPortIds = cables
+        .filter((cable) => cable.start?.id || cable.end?.id)
+        .flatMap((cable) => [cable.start?.id, cable.end?.id])
+        .filter((id) => id != null);
+      setUsedPorts([...new Set(usedPortIds)]);
+
+      setSavedPolylines(polylines);
+      if (!hasEditedCables) {
+        setModifiedCables({});
+      }
     } catch (error) {
-      console.error("Error fetching cables:", error);
-      alert("Failed to load cables.");
+      handleApiError(error, "Error fetching cables");
     }
-  };
+  }, [handleApiError, hasEditedCables]);
 
-  useEffect(() => {
-    fetchDevices();
-    fetchCables();
-  }, []);
-
-  const saveCableToInterface = async (cable) => {
+  // Auto-save function
+  const autoSave = useCallback(async () => {
     try {
-      const payload = {
-        start: { device_id: cable.startDeviceId, port_id: cable.startPortId },
-        end: { device_id: cable.endDeviceId, port_id: cable.endPortId },
-        cable: {
-          name: cable.name,
-          type: cable.type.toLowerCase(),
-          path: {
-            coords: [
-              [cable.from.lat, cable.from.lng],
-              ...(cable.waypoints || []).map((wp) => [wp.lat, wp.lng]),
-              [cable.to.lat, cable.to.lng],
-            ],
-          },
-        },
-      };
+      setIsAutoSaving(true);
 
-      const response = await fetch("http://127.0.0.1:8000/api/v1/interface", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      // Save updated device positions first
+      for (const device of updatedDevices) {
+        // Find device in imageIcons
+        const deviceIcon = imageIcons.find(
+          (icon) => icon.deviceId === device.deviceId
+        );
+        if (!deviceIcon) {
+          console.warn(
+            `Device icon not found for deviceId: ${device.deviceId}`
+          );
+          continue;
+        }
 
-      if (!response.ok)
-        throw new Error(`Failed to save cable: ${response.status}`);
-      const responseData = await response.json();
+        const endpointMap = {
+          OLT: `http://localhost:8000/api/v1/olt/${device.deviceId}`,
+          ONU: `http://localhost:8000/api/v1/onu/${device.deviceId}`,
+          Splitter: `http://localhost:8000/api/v1/splitter/${device.deviceId}`,
+        };
+        const endpoint = endpointMap[deviceIcon.type];
+        if (!endpoint) {
+          console.warn(`Invalid device type for deviceId: ${device.deviceId}`);
+          continue;
+        }
 
-      setMapState((prevState) => ({
-        ...prevState,
-        fiberLines: prevState.fiberLines.filter((l) => l.id !== cable.id),
-        selectedLineForActions: null,
-        lineActionPosition: null,
-        exactClickPosition: null,
-        tempCable: null,
-        tempModifiedCable: null,
-      }));
-
-      await fetchCables();
-      return responseData;
-    } catch (error) {
-      console.error("Error saving cable:", error);
-      alert(`Failed to save cable: ${error.message}`);
-      throw error;
-    }
-  };
-
-  const patchCableToInterface = async (cable) => {
-    try {
-      const interfaceId = cable.id.split("-")[1];
-      const payload = {
-        cable: {
-          path: {
-            coords: [
-              [cable.from.lat, cable.from.lng],
-              ...(cable.waypoints || []).map((wp) => [wp.lat, wp.lng]),
-              [cable.to.lat, cable.to.lng],
-            ],
-          },
-        },
-      };
-
-      const response = await fetch(
-        `http://127.0.0.1:8000/api/v1/interface/${interfaceId}`,
-        {
+        const devicePayload = {
+          latitude: device.lat,
+          longitude: device.lng,
+        };
+        // console.log(`Saving device ${device.deviceId} at`, devicePayload);
+        const deviceResponse = await fetch(endpoint, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
             Accept: "application/json",
           },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(devicePayload),
+        });
+        if (!deviceResponse.ok) {
+          throw new Error(
+            `Failed to update device ${device.deviceId}: ${deviceResponse.status}`
+          );
         }
+      }
+
+      // Save new fiber lines (only if both ports are connected)
+      const cablesToSave = fiberLines.filter(
+        (line) => line.startPortId && line.endPortId
+      );
+      const cablesToKeep = fiberLines.filter(
+        (line) => !line.startPortId || !line.endPortId
       );
 
-      if (!response.ok)
-        throw new Error(`Failed to update cable: ${response.status}`);
-
-      setMapState((prevState) => {
-        const updatedSavedPolylines = prevState.savedPolylines.map((polyline) =>
-          polyline.id === cable.id
-            ? { ...cable, hasEditedCables: false }
-            : polyline
-        );
-        return {
-          ...prevState,
-          savedPolylines: updatedSavedPolylines,
-          tempModifiedCable: null,
-          selectedLineForActions: null,
-          lineActionPosition: null,
-          exactClickPosition: null,
-          hasEditedCables: false,
+      for (const line of cablesToSave) {
+        const payload = {
+          start: { device_id: line.startDeviceId, port_id: line.startPortId },
+          end: { device_id: line.endDeviceId, port_id: line.endPortId },
+          cable: {
+            name: line.name || `Cable-${Date.now()}`,
+            type: line.type.toLowerCase(),
+            path: {
+              coords: [
+                [line.from.lat, line.from.lng],
+                ...(line.waypoints || []).map((wp) => [wp.lat, wp.lng]),
+                [line.to.lat, line.to.lng],
+              ],
+            },
+          },
         };
+        // console.log(`Saving new cable:`, payload);
+        const response = await fetch("http://localhost:8000/api/v1/interface", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          throw new Error(
+            `Failed to save cable ${line.name || "Unnamed"}: ${response.status}`
+          );
+        }
+        if (line.startPortId || line.endPortId) {
+          setUsedPorts((prev) => [
+            ...prev,
+            ...(line.startPortId ? [line.startPortId] : []),
+            ...(line.endPortId ? [line.endPortId] : []),
+          ]);
+        }
+      }
+
+      // Save edited cables (only if both ports are connected)
+      for (const cableId in modifiedCables) {
+        const cable = modifiedCables[cableId];
+        if (!cable.hasEditedCables || !cable.startPortId || !cable.endPortId) {
+          continue;
+        }
+        const interfaceId = cable.id.split("-")[1];
+        const payload = {
+          start: {
+            device_id: cable.startDeviceId,
+            port_id: cable.startPortId,
+          },
+          end: {
+            device_id: cable.endDeviceId,
+            port_id: cable.endPortId,
+          },
+          cable: {
+            name: cable.name || `Cable-${interfaceId}`,
+            type: cable.type?.toLowerCase() || "fiber",
+            path: {
+              coords: [
+                [cable.from.lat, cable.from.lng],
+                ...(cable.waypoints || []).map((wp) => [wp.lat, wp.lng]),
+                [cable.to.lat, cable.to.lng],
+              ],
+            },
+          },
+        };
+        // console.log(`Updating cable ${cableId}:`, payload);
+        const response = await fetch(
+          `http://localhost:8000/api/v1/interface/${interfaceId}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify(payload),
+          }
+        );
+        if (!response.ok) {
+          throw new Error(
+            `Failed to update cable ${cable.name || "Unnamed"}: ${response.status}`
+          );
+        }
+      }
+
+      // Update state after successful saves
+      setFiberLines(cablesToKeep);
+      setModifiedCables((prev) => {
+        const updated = {};
+        for (const cableId in prev) {
+          if (!prev[cableId].startPortId || !prev[cableId].endPortId) {
+            updated[cableId] = prev[cableId];
+          }
+        }
+        return updated;
       });
-
-      return await response.json();
+      setUpdatedDevices([]);
+      setSelectedLineForActions(null);
+      setLineActionPosition(null);
+      setExactClickPosition(null);
+      setTempCable(null);
+      setHasEditedCables(Object.keys(modifiedCables).length > 0);
+      await fetchDevices();
+      await fetchCables();
     } catch (error) {
-      console.error("Error updating cable:", error);
-      alert(`Failed to update cable: ${error.message}`);
-      throw error;
+      handleApiError(error, "Error auto-saving devices and cables");
+    } finally {
+      setIsAutoSaving(false);
     }
-  }; 
+  }, [
+    fiberLines,
+    modifiedCables,
+    updatedDevices,
+    imageIcons,
+    fetchDevices,
+    fetchCables,
+    handleApiError,
+  ]);
 
-  const removeSavedSelectedLine = async () => {
-    if (!mapState.selectedLineForActions || !mapState.isSavedRoutesEditable)
-      return;
-    const { index, isSavedLine } = mapState.selectedLineForActions;
+  // Debounced auto-save
+  const debouncedAutoSave = useMemo(() => debounce(autoSave, 1000), [autoSave]);
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      debouncedAutoSave.cancel();
+    };
+  }, [debouncedAutoSave]);
+
+  // Trigger auto-save only when cables have both ports connected or devices are updated
+  useEffect(() => {
+    const hasCablesToSave =
+      fiberLines.some((line) => line.startPortId && line.endPortId) ||
+      Object.values(modifiedCables).some(
+        (cable) => cable.startPortId && cable.endPortId && cable.hasEditedCables
+      ) ||
+      updatedDevices.length > 0;
+
+    if (hasCablesToSave) {
+      debouncedAutoSave();
+    }
+  }, [fiberLines, modifiedCables, updatedDevices, debouncedAutoSave]);
+
+  // Delete saved polyline
+  const removeSavedSelectedLine = useCallback(async () => {
+    if (!selectedLineForActions) return;
+    const { index, isSavedLine } = selectedLineForActions;
     if (!isSavedLine) return;
+    const line = savedPolylines[index];
+    if (!window.confirm(`Are you sure you want to delete cable ${line.name}?`))
+      return;
 
-    const line = mapState.savedPolylines[index];
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/v1/interface/${line.cableId}`,
+        `http://localhost:8000/api/v1/interface/${line.cableId}`,
         {
           method: "DELETE",
           headers: {
@@ -439,35 +449,33 @@ const MyMapV19 = () => {
       if (!response.ok)
         throw new Error(`Failed to delete cable: ${response.status}`);
 
-      setMapState((prevState) => ({
-        ...prevState,
-        savedPolylines: prevState.savedPolylines.filter((_, i) => i !== index),
-        selectedLineForActions: null,
-        lineActionPosition: null,
-        exactClickPosition: null,
-        tempModifiedCable: null,
-      }));
-      alert("Line deleted successfully!");
+      setUsedPorts((prev) =>
+        prev.filter(
+          (portId) => portId !== line.startPortId && portId !== line.endPortId
+        )
+      );
+
+      setSavedPolylines((prev) => prev.filter((_, i) => i !== index));
+      setModifiedCables((prev) => {
+        const updated = { ...prev };
+        delete updated[line.id];
+        return updated;
+      });
+      setSelectedLineForActions(null);
+      setLineActionPosition(null);
+      setExactClickPosition(null);
+      debouncedAutoSave();
     } catch (error) {
-      console.error("Error deleting line:", error);
-      alert(`Failed to delete line: ${error.message}`);
+      handleApiError(error, "Error deleting line");
     }
-  };
+  }, [
+    selectedLineForActions,
+    savedPolylines,
+    handleApiError,
+    debouncedAutoSave,
+  ]);
 
-  const isInteractionAllowed = (isSavedLine) =>
-    !isSavedLine || mapState.isSavedRoutesEditable;
-
-  const findNearestIcon = (lat, lng) => {
-    const threshold = 0.0001;
-    return mapState.imageIcons.find(
-      (icon) =>
-        Math.abs(icon.lat - lat) < threshold &&
-        Math.abs(icon.lng - lng) < threshold
-    );
-  };
-
-  const isSnappedToIcon = (lat, lng) => !!findNearestIcon(lat, lng);
-
+  // Handle map right-click
   const handleMapRightClick = useCallback((e) => {
     e.domEvent.preventDefault();
     const clickedPoint = {
@@ -476,49 +484,40 @@ const MyMapV19 = () => {
       x: e.domEvent.clientX,
       y: e.domEvent.clientY,
     };
-    setMapState((prevState) => ({
-      ...prevState,
-      selectedPoint: clickedPoint,
-      rightClickMarker: clickedPoint,
-      showModal: true,
-      tempModifiedCable: null,
-    }));
+    setSelectedPoint(clickedPoint);
+    setRightClickMarker(clickedPoint);
+    setShowModal(true);
   }, []);
 
-  const handleSelection = (type, icon) => {
-    const { selectedPoint, nextNumber } = mapState;
-    if (!selectedPoint) return;
+  // Handle device or fiber selection
+  const handleSelection = useCallback(
+    (type, icon) => {
+      if (!selectedPoint) return;
 
-    const validImageUrl = icon?.startsWith("/media/")
-      ? `http://127.0.0.1:8000${icon}`
-      : icon || "/img/default-icon.png";
+      const validImageUrl = icon?.startsWith("/media/")
+        ? `http://127.0.0.1:8000${icon}`
+        : icon || "/img/default-icon.png";
 
-    const selectedDevice = deviceTypes.find((device) => device.name === type);
+      const selectedDevice = deviceTypes.find((device) => device.name === type);
 
-    if (type === "Add Fiber") {
-      setMapState((prevState) => ({
-        ...prevState,
-        showModal: false,
-        rightClickMarker: selectedPoint,
-        showFiberForm: true,
-        fiberFormData: { name: "", type: "Fiber" },
-        tempModifiedCable: null,
-      }));
-    } else if (selectedDevice) {
-      setMapState((prevState) => ({
-        ...prevState,
-        showModal: false,
-        rightClickMarker: null,
-        showDeviceForm: true,
-        deviceFormData: {
+      if (type === "Add Fiber") {
+        setShowModal(false);
+        setRightClickMarker(selectedPoint);
+        setShowFiberForm(true);
+        setFiberFormData({ name: "", type: "Fiber" });
+      } else if (selectedDevice) {
+        setShowModal(false);
+        setRightClickMarker(null);
+        setShowDeviceForm(true);
+        setDeviceFormData({
           device: selectedDevice,
           lat: selectedPoint.lat,
           lng: selectedPoint.lng,
           nextNumber,
           type,
           imageUrl: validImageUrl,
-        },
-        deviceForm: {
+        });
+        setDeviceForm({
           deviceName: `${type}-${nextNumber}`,
           description: "",
           deviceModelId: "",
@@ -529,72 +528,68 @@ const MyMapV19 = () => {
           name: `${selectedPoint.lat.toFixed(2)}-${type}`,
           hostname: type === "OLT" ? "192.168.1.1" : "",
           community: type === "OLT" ? "public" : "",
-        },
-        tempModifiedCable: null,
-      }));
-    } else {
-      setMapState((prevState) => ({
-        ...prevState,
-        showModal: false,
-        rightClickMarker: null,
-        selectedPoint: null,
-        tempModifiedCable: null,
-      }));
-      alert(`Device type "${type}" not found.`);
-    }
-  };
+        });
+      } else {
+        setShowModal(false);
+        setRightClickMarker(null);
+        setSelectedPoint(null);
+        alert(`Device type "${type}" not found.`);
+      }
+    },
+    [selectedPoint, deviceTypes, nextNumber]
+  );
 
-  const handleDeviceFormSubmit = async (e) => {
-    e.preventDefault();
-    const { deviceFormData, deviceForm } = mapState;
-    if (!deviceFormData) return;
+  // Handle device form submission
+  const handleDeviceFormSubmit = useCallback(
+    async (e) => {
+      e.preventDefault();
+      if (!deviceFormData) return;
 
-    try {
-      const payload = {
-        device: {
-          name: deviceForm.deviceName,
-          description: deviceForm.description,
-          device_type_id: deviceFormData.device.id,
-          device_model_id: parseInt(deviceForm.deviceModelId),
-          latitude: deviceFormData.lat,
-          longitude: deviceFormData.lng,
-          ports: deviceForm.ports.map((port) => ({
-            name: port.name,
-            position: port.position,
-          })),
-        },
-        name: deviceForm.name,
-        ...(deviceFormData.type === "OLT" && {
-          hostname: deviceForm.hostname,
-          community: deviceForm.community,
-        }),
-      };
+      try {
+        const payload = {
+          device: {
+            name: deviceForm.deviceName,
+            description: deviceForm.description,
+            device_type_id: deviceFormData.device.id,
+            device_model_id: parseInt(deviceForm.deviceModelId),
+            latitude: deviceFormData.lat,
+            longitude: deviceFormData.lng,
+            ports: deviceForm.ports.map((port) => ({
+              name: port.name,
+              position: port.position,
+            })),
+          },
+          name: deviceForm.name,
+          ...(deviceFormData.type === "OLT" && {
+            hostname: deviceForm.hostname,
+            community: deviceForm.community,
+          }),
+        };
 
-      const endpointMap = {
-        OLT: "http://127.0.0.1:8000/api/v1/olt",
-        ONU: "http://127.0.0.1:8000/api/v1/onu",
-        Splitter: "http://127.0.0.1:8000/api/v1/splitter",
-      };
+        const endpointMap = {
+          OLT: "http://localhost:8000/api/v1/olt",
+          ONU: "http://localhost:8000/api/v1/onu",
+          Splitter: "http://localhost:8000/api/v1/splitter",
+        };
 
-      const endpoint = endpointMap[deviceFormData.type];
-      if (!endpoint)
-        throw new Error(`Invalid device type: ${deviceFormData.type}`);
+        const endpoint = endpointMap[deviceFormData.type];
+        if (!endpoint)
+          throw new Error(`Invalid device type: ${deviceFormData.type}`);
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
 
-      if (!response.ok)
-        throw new Error(`Failed to create ${deviceFormData.type}`);
-      await fetchDevices();
+        if (!response.ok)
+          throw new Error(`Failed to create ${deviceFormData.type}`);
+        await fetchDevices();
+        debouncedAutoSave();
 
-      setMapState((prevState) => ({
-        ...prevState,
-        showDeviceForm: false,
-        deviceFormData: null,
-        deviceForm: {
+        setShowDeviceForm(false);
+        setDeviceFormData(null);
+        setDeviceForm({
           deviceName: "",
           description: "",
           deviceModelId: "",
@@ -605,142 +600,166 @@ const MyMapV19 = () => {
           name: "",
           hostname: "",
           community: "",
-        },
-        rightClickMarker: null,
-        tempModifiedCable: null,
-      }));
-      alert(`${deviceFormData.type} created successfully!`);
-    } catch (error) {
-      console.error(`Error creating ${deviceFormData.type}:`, error);
-      alert(`Failed to create ${deviceFormData.type}: ${error.message}`);
-    }
-  };
+        });
+        setRightClickMarker(null);
+      } catch (error) {
+        handleApiError(error, `Error creating ${deviceFormData.type}`);
+      }
+    },
+    [
+      deviceFormData,
+      deviceForm,
+      fetchDevices,
+      handleApiError,
+      debouncedAutoSave,
+    ]
+  );
 
-  const handleDeviceFormInputChange = (field, value) => {
-    setMapState((prevState) => ({
-      ...prevState,
-      deviceForm: { ...prevState.deviceForm, [field]: value },
-    }));
-  };
+  // Handle device form input changes
+  const handleDeviceFormInputChange = useCallback((field, value) => {
+    setDeviceForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
 
-  const handlePortChange = (index, field, value) => {
-    setMapState((prevState) => {
-      const updatedPorts = [...prevState.deviceForm.ports];
+  // Handle port changes
+  const handlePortChange = useCallback((index, field, value) => {
+    setDeviceForm((prev) => {
+      const updatedPorts = [...prev.ports];
       updatedPorts[index] = {
         ...updatedPorts[index],
         [field]: field === "position" ? parseInt(value) : value,
       };
-      return {
-        ...prevState,
-        deviceForm: { ...prevState.deviceForm, ports: updatedPorts },
-      };
+      return { ...prev, ports: updatedPorts };
     });
-  };
+  }, []);
 
-  const addPort = () => {
-    setMapState((prevState) => ({
-      ...prevState,
-      deviceForm: {
-        ...prevState.deviceForm,
-        ports: [
-          ...prevState.deviceForm.ports,
-          { name: "", position: prevState.deviceForm.ports.length + 1 },
-        ],
-      },
+  // Add port
+  const addPort = useCallback(() => {
+    setDeviceForm((prev) => ({
+      ...prev,
+      ports: [...prev.ports, { name: "", position: prev.ports.length + 1 }],
     }));
-  };
+  }, []);
 
-  const removePort = (index) => {
-    setMapState((prevState) => {
-      const updatedPorts = prevState.deviceForm.ports
+  // Remove port
+  const removePort = useCallback((index) => {
+    setDeviceForm((prev) => {
+      const updatedPorts = prev.ports
         .filter((_, i) => i !== index)
         .map((port, i) => ({ ...port, position: i + 1 }));
-      return {
-        ...prevState,
-        deviceForm: { ...prevState.deviceForm, ports: updatedPorts },
-      };
+      return { ...prev, ports: updatedPorts };
     });
-  };
+  }, []);
 
-  const handlePortSelection = (e) => {
-    e.preventDefault();
-    const { selectedPortId, portDropdownEnd, tempCable } = mapState;
-    if (!selectedPortId || !tempCable) return;
+  // Handle port selection
+  const handlePortSelection = useCallback(
+    (e) => {
+      e.preventDefault();
+      if (!selectedPortId || !tempCable) return;
 
-    setMapState((prevState) => {
-      const updatedLines = [...prevState.fiberLines];
-      const lineIndex = updatedLines.findIndex(
-        (line) => line.id === tempCable.id
-      );
-      if (lineIndex === -1) return prevState;
-
-      const selectedPort = prevState.allPorts.find(
+      const selectedPort = allPorts.find(
         (port) => port.id === parseInt(selectedPortId)
       );
-      updatedLines[lineIndex] = {
-        ...updatedLines[lineIndex],
-        [portDropdownEnd === "start" ? "startPortId" : "endPortId"]:
-          selectedPortId,
-        [portDropdownEnd === "start" ? "startPortName" : "endPortName"]:
-          selectedPort?.name || `Port-${selectedPortId}`,
-        [portDropdownEnd === "start" ? "startDeviceId" : "endDeviceId"]:
-          prevState.portDropdownDevice?.deviceId || null,
-      };
 
-      return {
-        ...prevState,
-        fiberLines: updatedLines,
-        showPortDropdown: false,
-        portDropdownPosition: null,
-        portDropdownDevice: null,
-        portDropdownPorts: [],
-        selectedPortId: null,
-        portDropdownEnd: null,
-        tempCable: { ...updatedLines[lineIndex] },
-        tempModifiedCable: null,
-      };
-    });
-  };
+      if (tempCable.id.startsWith("cable-")) {
+        // Handle saved polylines
+        setModifiedCables((prev) => {
+          const baseCable =
+            prev[tempCable.id] ||
+            savedPolylines.find((p) => p.id === tempCable.id);
+          if (!baseCable) return prev;
 
-  const handlePortDropdownChange = (portId) => {
-    setMapState((prevState) => ({ ...prevState, selectedPortId: portId }));
-  };
+          const updatedCable = {
+            ...baseCable,
+            [`${portDropdownEnd === "start" ? "start" : "end"}DeviceId`]:
+              portDropdownDevice?.deviceId || null,
+            [`${portDropdownEnd === "start" ? "start" : "end"}PortId`]:
+              selectedPortId,
+            [`${portDropdownEnd === "start" ? "start" : "end"}PortName`]:
+              selectedPort?.name || `Port-${selectedPortId}`,
+            hasEditedCables: true,
+          };
 
-  const closePortDropdown = () => {
-    setMapState((prevState) => ({
-      ...prevState,
-      showPortDropdown: false,
-      portDropdownPosition: null,
-      portDropdownDevice: null,
-      portDropdownPorts: [],
-      selectedPortId: null,
-      portDropdownEnd: null,
-      tempCable: null,
-      tempModifiedCable: null,
-    }));
-  };
+          return {
+            ...prev,
+            [tempCable.id]: updatedCable,
+          };
+        });
+        setHasEditedCables(true);
+      } else {
+        // Handle new fiber lines
+        setFiberLines((prev) => {
+          const updatedLines = prev.map((line) => {
+            if (line.id !== tempCable.id) return line;
 
-  const handleRightClickOnIcon = (icon, e) => {
+            const updatedLine = {
+              ...line,
+              [`${portDropdownEnd === "start" ? "start" : "end"}PortId`]:
+                selectedPortId,
+              [`${portDropdownEnd === "start" ? "start" : "end"}PortName`]:
+                selectedPort?.name || `Port-${selectedPortId}`,
+              [`${portDropdownEnd === "start" ? "start" : "end"}DeviceId`]:
+                portDropdownDevice?.deviceId || null,
+            };
+
+            return updatedLine;
+          });
+
+          return updatedLines;
+        });
+      }
+
+      // Close port dropdown
+      setShowPortDropdown(false);
+      setPortDropdownPosition(null);
+      setPortDropdownDevice(null);
+      setPortDropdownPorts([]);
+      setSelectedPortId(null);
+      setPortDropdownEnd(null);
+      setTempCable(null);
+    },
+    [
+      selectedPortId,
+      tempCable,
+      allPorts,
+      portDropdownEnd,
+      portDropdownDevice,
+      savedPolylines,
+    ]
+  );
+
+  // Handle port dropdown change
+  const handlePortDropdownChange = useCallback((portId) => {
+    setSelectedPortId(portId);
+  }, []);
+
+  // Close port dropdown
+  const closePortDropdown = useCallback(() => {
+    setShowPortDropdown(false);
+    setPortDropdownPosition(null);
+    setPortDropdownDevice(null);
+    setPortDropdownPorts([]);
+    setSelectedPortId(null);
+    setPortDropdownEnd(null);
+    setTempCable(null);
+  }, []);
+
+  // Handle right-click on icon
+  const handleRightClickOnIcon = useCallback((icon, e) => {
     if (e.domEvent.button !== 2) return;
     e.domEvent.preventDefault();
     e.domEvent.stopPropagation();
 
-    if (icon.id.startsWith("icon-api-") && !mapState.isSavedRoutesEditable)
-      return;
+    setSelectedPoint({
+      ...icon,
+      x: e.domEvent.clientX,
+      y: e.domEvent.clientY,
+    });
+    setRightClickMarker(icon);
+    setShowModal(true);
+  }, []);
 
-    setMapState((prevState) => ({
-      ...prevState,
-      selectedPoint: { ...icon, x: e.domEvent.clientX, y: e.domEvent.clientY },
-      rightClickMarker: icon,
-      showModal: true,
-      selectedWaypoint: icon,
-      selectedWaypointInfo: { isIcon: true, iconId: icon.id },
-      waypointActionPosition: { x: e.domEvent.clientX, y: e.domEvent.clientY },
-      tempModifiedCable: null,
-    }));
-  };
-
-  const handleLineClick = (line, index, isSavedLine, e) => {
+  // Handle line click
+  const handleLineClick = useCallback((line, index, isSavedLine, e) => {
     e.domEvent.stopPropagation();
     e.domEvent.preventDefault();
 
@@ -748,210 +767,202 @@ const MyMapV19 = () => {
     const x = e.domEvent.clientX;
     const y = e.domEvent.clientY;
 
-    setMapState((prevState) => {
-      // Preserve tempModifiedCable if it exists and matches the clicked line
-      const tempModifiedCable =
-        prevState.tempModifiedCable?.id === line.id
-          ? prevState.tempModifiedCable
-          : isSavedLine
-          ? { ...line }
-          : null;
-
-      return {
-        ...prevState,
-        selectedLineForActions: { line, index, isSavedLine },
-        lineActionPosition: {
-          lat: clickedLatLng.lat(),
-          lng: clickedLatLng.lng(),
-          x,
-          y,
-        },
-        exactClickPosition: {
-          lat: clickedLatLng.lat(),
-          lng: clickedLatLng.lng(),
-          x,
-          y,
-        },
-        selectedWaypoint: null,
-        waypointActionPosition: null,
-        selectedWaypointInfo: null,
-        tempModifiedCable,
-      };
+    setSelectedLineForActions({ line, index, isSavedLine });
+    setLineActionPosition({
+      lat: clickedLatLng.lat(),
+      lng: clickedLatLng.lng(),
+      x,
+      y,
     });
-  };
+    setExactClickPosition({
+      lat: clickedLatLng.lat(),
+      lng: clickedLatLng.lng(),
+      x,
+      y,
+    });
+  }, []);
 
-  const addWaypoint = () => {
-    if (
-      !mapState.selectedLineForActions ||
-      !isInteractionAllowed(mapState.selectedLineForActions.isSavedLine)
-    )
-      return;
-    const { line, index, isSavedLine } = mapState.selectedLineForActions;
+  // Add waypoint
+  const addWaypoint = useCallback(() => {
+    if (!selectedLineForActions || !exactClickPosition) return;
+    const { line, index, isSavedLine } = selectedLineForActions;
+    const clickPoint = {
+      lat: exactClickPosition.lat,
+      lng: exactClickPosition.lng,
+    };
 
-    setMapState((prevState) => {
-      if (isSavedLine) {
-        const updatedCable = prevState.tempModifiedCable || { ...line };
-        const lastPoint = updatedCable.waypoints?.length
-          ? updatedCable.waypoints[updatedCable.waypoints.length - 1]
-          : updatedCable.to;
-        const midpoint = {
-          lat: (updatedCable.from.lat + lastPoint.lat) / 2,
-          lng: (updatedCable.from.lng + lastPoint.lng) / 2,
-        };
-        const updatedWaypoints = updatedCable.waypoints
-          ? [...updatedCable.waypoints, midpoint]
-          : [midpoint];
+    const getDistanceToSegment = (point, start, end) => {
+      const dx = end.lng - start.lng;
+      const dy = end.lat - start.lat;
+      const lenSquared = dx * dx + dy * dy;
+      if (lenSquared === 0)
+        return Math.sqrt(
+          (point.lat - start.lat) ** 2 + (point.lng - start.lng) ** 2
+        );
 
+      let t =
+        ((point.lng - start.lng) * dx + (point.lat - start.lat) * dy) /
+        lenSquared;
+      t = Math.max(0, Math.min(1, t));
+      const projection = {
+        lat: start.lat + t * dy,
+        lng: start.lng + t * dx,
+      };
+      return Math.sqrt(
+        (point.lat - projection.lat) ** 2 + (point.lng - projection.lng) ** 2
+      );
+    };
+
+    const baseCable =
+      isSavedLine && modifiedCables[line.id] ? modifiedCables[line.id] : line;
+    const fullPath = [
+      baseCable.from,
+      ...(baseCable.waypoints || []),
+      baseCable.to,
+    ];
+
+    let minDistance = Infinity;
+    let insertIndex = 0;
+    for (let i = 0; i < fullPath.length - 1; i++) {
+      const distance = getDistanceToSegment(
+        clickPoint,
+        fullPath[i],
+        fullPath[i + 1]
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        insertIndex = i + 1;
+      }
+    }
+
+    if (isSavedLine) {
+      setModifiedCables((prev) => {
+        const updatedWaypoints = [...(baseCable.waypoints || [])];
+        updatedWaypoints.splice(insertIndex - 1, 0, clickPoint);
         return {
-          ...prevState,
-          tempModifiedCable: {
-            ...updatedCable,
+          ...prev,
+          [line.id]: {
+            ...baseCable,
             waypoints: updatedWaypoints,
+            type: baseCable.type || "Fiber",
             hasEditedCables: true,
           },
-          selectedLineForActions: null,
-          lineActionPosition: null,
-          exactClickPosition: null,
         };
-      } else {
-        const updatedLines = [...prevState.fiberLines];
-        const lastPoint = updatedLines[index].waypoints?.length
-          ? updatedLines[index].waypoints[
-              updatedLines[index].waypoints.length - 1
-            ]
-          : updatedLines[index].to;
-        const midpoint = {
-          lat: (updatedLines[index].from.lat + lastPoint.lat) / 2,
-          lng: (updatedLines[index].from.lng + lastPoint.lng) / 2,
-        };
+      });
+      setHasEditedCables(true);
+    } else {
+      setFiberLines((prev) => {
+        const updatedLines = [...prev];
         const updatedWaypoints = updatedLines[index].waypoints
-          ? [...updatedLines[index].waypoints, midpoint]
-          : [midpoint];
-
+          ? [...updatedLines[index].waypoints]
+          : [];
+        updatedWaypoints.splice(insertIndex - 1, 0, clickPoint);
         updatedLines[index] = {
           ...updatedLines[index],
           waypoints: updatedWaypoints,
         };
-        return {
-          ...prevState,
-          fiberLines: updatedLines,
-          selectedLineForActions: null,
-          lineActionPosition: null,
-          exactClickPosition: null,
-        };
-      }
-    });
-  };
+        return updatedLines;
+      });
+    }
 
-  const handleWaypointClick = (
-    lineIndex,
-    waypointIndex,
-    isSavedLine,
-    waypoint,
-    e
-  ) => {
-    e.domEvent.preventDefault();
-    e.domEvent.stopPropagation();
+    setSelectedLineForActions(null);
+    setLineActionPosition(null);
+    setExactClickPosition(null);
+  }, [selectedLineForActions, exactClickPosition, modifiedCables]);
 
-    if (!isInteractionAllowed(isSavedLine)) return;
+  // Handle waypoint click
+  const handleWaypointClick = useCallback(
+    (line, index, waypointIndex, isSavedLine, e) => {
+      e.domEvent.stopPropagation();
+      setSelectedWaypoint({
+        line,
+        lineIndex: index,
+        waypointIndex,
+        isSavedLine,
+        position: {
+          x: e.domEvent.clientX,
+          y: e.domEvent.clientY,
+        },
+      });
+    },
+    []
+  );
 
-    setMapState((prevState) => ({
-      ...prevState,
-      selectedLineForActions: null,
-      lineActionPosition: null,
-      exactClickPosition: null,
-      showModal: false,
-      selectedWaypoint: waypoint,
-      waypointActionPosition: { x: e.domEvent.clientX, y: e.domEvent.clientY },
-      selectedWaypointInfo: { lineIndex, waypointIndex, isSavedLine },
-      tempModifiedCable: isSavedLine
-        ? { ...prevState.savedPolylines[lineIndex] }
-        : null,
-    }));
-  };
+  // Remove waypoint
+  const removeWaypoint = useCallback(() => {
+    if (!selectedWaypoint) return;
+    const { line, lineIndex, waypointIndex, isSavedLine } = selectedWaypoint;
 
-  const removeSelectedWaypoint = () => {
-    if (
-      !mapState.selectedWaypointInfo ||
-      !isInteractionAllowed(mapState.selectedWaypointInfo.isSavedLine)
-    )
-      return;
-    const { lineIndex, waypointIndex, isSavedLine } =
-      mapState.selectedWaypointInfo;
-
-    setMapState((prevState) => {
-      if (isSavedLine) {
-        const updatedCable = prevState.tempModifiedCable || {
-          ...prevState.savedPolylines[lineIndex],
-        };
-        const updatedWaypoints = updatedCable.waypoints.filter(
-          (_, wIdx) => wIdx !== waypointIndex
+    if (isSavedLine) {
+      setModifiedCables((prev) => {
+        const baseCable =
+          prev[line.id] || savedPolylines.find((p) => p.id === line.id);
+        if (!baseCable || !baseCable.waypoints) return prev;
+        const updatedWaypoints = baseCable.waypoints.filter(
+          (_, idx) => idx !== waypointIndex
         );
         return {
-          ...prevState,
-          tempModifiedCable: {
-            ...updatedCable,
+          ...prev,
+          [line.id]: {
+            ...baseCable,
             waypoints: updatedWaypoints,
+            type: baseCable.type || "Fiber",
             hasEditedCables: true,
           },
-          selectedWaypoint: null,
-          waypointActionPosition: null,
-          selectedWaypointInfo: null,
         };
-      } else {
-        const updatedLines = [...prevState.fiberLines];
+      });
+      setHasEditedCables(true);
+    } else {
+      setFiberLines((prev) => {
+        const updatedLines = [...prev];
+        const line = updatedLines[lineIndex];
+        if (!line || !line.waypoints) return prev;
         updatedLines[lineIndex] = {
-          ...updatedLines[lineIndex],
-          waypoints: updatedLines[lineIndex].waypoints.filter(
-            (_, wIdx) => wIdx !== waypointIndex
-          ),
+          ...line,
+          waypoints: line.waypoints.filter((_, idx) => idx !== waypointIndex),
         };
-        return {
-          ...prevState,
-          fiberLines: updatedLines,
-          selectedWaypoint: null,
-          waypointActionPosition: null,
-          selectedWaypointInfo: null,
-        };
-      }
-    });
-  };
+        return updatedLines;
+      });
+    }
+    setSelectedWaypoint(null);
+  }, [selectedWaypoint, savedPolylines]);
 
-  const handleIconClick = (icon, e) => {
+  // Handle icon click
+  const handleIconClick = useCallback((icon, e) => {
     if (e.domEvent.button !== 0) return;
     e.domEvent.preventDefault();
     e.domEvent.stopPropagation();
 
-    setMapState((prevState) => ({
-      ...prevState,
-      showDeviceModal: true,
-      selectedDevice: icon,
-      deviceModalPosition: { x: e.domEvent.clientX, y: e.domEvent.clientY },
-      selectedLineForActions: null,
-      lineActionPosition: null,
-      exactClickPosition: null,
-      showModal: false,
-      selectedWaypoint: null,
-      waypointActionPosition: null,
-      selectedWaypointInfo: null,
-      tempModifiedCable: null,
-    }));
-  };
+    setShowDeviceModal(true);
+    setSelectedDevice(icon);
+    setDeviceModalPosition({ x: e.domEvent.clientX, y: e.domEvent.clientY });
+    setSelectedLineForActions(null);
+    setLineActionPosition(null);
+    setExactClickPosition(null);
+    setShowModal(false);
+  }, []);
 
-  const removeSelectedIcon = async () => {
-    if (!mapState.selectedDevice) return;
-    const iconId = mapState.selectedDevice.id;
+  // Remove selected icon
+  const removeSelectedIcon = useCallback(async () => {
+    if (!selectedDevice) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to delete ${selectedDevice.type} device?`
+      )
+    )
+      return;
+    const iconId = selectedDevice.id;
     const isApiDevice = iconId.startsWith("icon-api-");
     const deviceId = isApiDevice ? iconId.split("-")[2] : iconId;
 
     try {
       if (isApiDevice) {
         const endpointMap = {
-          OLT: `http://127.0.0.1:8000/api/v1/olt/${deviceId}`,
-          ONU: `http://127.0.0.1:8000/api/v1/onu/${deviceId}`,
-          Splitter: `http://127.0.0.1:8000/api/v1/splitter/${deviceId}`,
+          OLT: `http://localhost:8000/api/v1/olt/${deviceId}`,
+          ONU: `http://localhost:8000/api/v1/onu/${deviceId}`,
+          Splitter: `http://localhost:8000/api/v1/splitter/${deviceId}`,
         };
-        const endpoint = endpointMap[mapState.selectedDevice.type];
+        const endpoint = endpointMap[selectedDevice.type];
         if (!endpoint) throw new Error(`Invalid device type`);
 
         const response = await fetch(endpoint, {
@@ -964,199 +975,170 @@ const MyMapV19 = () => {
         if (!response.ok) throw new Error(`Failed to delete device`);
       }
 
-      setMapState((prevState) => ({
-        ...prevState,
-        imageIcons: prevState.imageIcons.filter((icon) => icon.id !== iconId),
-        showDeviceModal: false,
-        selectedDevice: null,
-        deviceModalPosition: null,
-        updatedDevices: prevState.updatedDevices.filter(
-          (device) => device.deviceId !== deviceId
-        ),
-        tempModifiedCable: null,
-      }));
-      alert("Device removed successfully!");
-    } catch (error) {
-      console.error("Error removing device:", error);
-      alert(`Failed to remove device: ${error.message}`);
-    }
-  };
-
-  const saveDeviceChanges = async () => {
-    if (!mapState.selectedDevice) return;
-    const { selectedDevice } = mapState;
-
-    try {
-      if (selectedDevice.id.startsWith("icon-api-")) {
-        const deviceId = selectedDevice.id.split("-")[2];
-        const payload = {
-          latitude: selectedDevice.lat,
-          longitude: selectedDevice.lng,
-        };
-        const endpointMap = {
-          OLT: `http://127.0.0.1:8000/api/v1/olt/${deviceId}`,
-          ONU: `http://127.0.0.1:8000/api/v1/onu/${deviceId}`,
-          Splitter: `http://127.0.0.1:8000/api/v1/splitter/${deviceId}`,
-        };
-        const endpoint = endpointMap[selectedDevice.type];
-        if (!endpoint) throw new Error(`Invalid device type`);
-
-        const response = await fetch(endpoint, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) throw new Error(`Failed to update device`);
-      }
-
-      setMapState((prevState) => ({
-        ...prevState,
-        imageIcons: prevState.imageIcons.map((icon) =>
-          icon.id === selectedDevice.id ? { ...icon } : icon
-        ),
-        showDeviceModal: false,
-        selectedDevice: null,
-        deviceModalPosition: null,
-        updatedDevices: prevState.updatedDevices.filter(
-          (device) => device.deviceId !== selectedDevice.id.split("-")[2]
-        ),
-        tempModifiedCable: null,
-      }));
-      alert("Device saved successfully!");
-    } catch (error) {
-      console.error("Error saving device:", error);
-      alert(`Failed to save device: ${error.message}`);
-    }
-  };
-
-  const addSplitterAtWaypoint = () => {
-    if (
-      !mapState.selectedWaypointInfo ||
-      !isInteractionAllowed(mapState.selectedWaypointInfo.isSavedLine)
-    )
-      return;
-    const { lineIndex, waypointIndex, isSavedLine } =
-      mapState.selectedWaypointInfo;
-    const waypoint = (
-      isSavedLine ? mapState.savedPolylines : mapState.fiberLines
-    )[lineIndex].waypoints[waypointIndex];
-
-    const newSplitter = {
-      lat: waypoint.lat,
-      lng: waypoint.lng,
-      type: "Splitter",
-      id: `icon-${mapState.nextNumber}`,
-      imageUrl: "/img/splitter-icon.png",
-      deviceId: null,
-      portIds: [],
-    };
-
-    setMapState((prevState) => ({
-      ...prevState,
-      imageIcons: [...prevState.imageIcons, newSplitter],
-      nextNumber: prevState.nextNumber + 1,
-      selectedWaypoint: null,
-      waypointActionPosition: null,
-      selectedWaypointInfo: null,
-      tempModifiedCable: null,
-    }));
-  };
-
-  const handleMarkerDragEnd = (iconId, e) => {
-    const newLat = e.latLng.lat();
-    const newLng = e.latLng.lng();
-
-    setMapState((prevState) => {
-      const draggedIcon = prevState.imageIcons.find(
-        (icon) => icon.id === iconId
+      setImageIcons((prev) => prev.filter((icon) => icon.id !== iconId));
+      setShowDeviceModal(false);
+      setSelectedDevice(null);
+      setDeviceModalPosition(null);
+      setUpdatedDevices((prev) =>
+        prev.filter((device) => device.deviceId !== deviceId)
       );
-      const updatedImageIcons = prevState.imageIcons.map((icon) =>
-        icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
-      );
+      debouncedAutoSave();
+    } catch (error) {
+      handleApiError(error, "Error removing device");
+    }
+  }, [selectedDevice, handleApiError, debouncedAutoSave]);
 
-      let updatedDevices = [...prevState.updatedDevices];
-      if (iconId.startsWith("icon-api-")) {
-        const deviceId = iconId.split("-")[2];
-        const existingUpdateIndex = updatedDevices.findIndex(
-          (device) => device.deviceId === deviceId
-        );
-        if (existingUpdateIndex !== -1) {
-          updatedDevices[existingUpdateIndex] = {
-            deviceId,
-            lat: newLat,
-            lng: newLng,
-          };
-        } else {
-          updatedDevices.push({ deviceId, lat: newLat, lng: newLng });
+  // Handle marker drag end
+  const handleMarkerDragEnd = useCallback(
+    (iconId, e) => {
+      const newLat = e.latLng.lat();
+      const newLng = e.latLng.lng();
+
+      setImageIcons((prev) => {
+        const draggedIcon = prev.find((icon) => icon.id === iconId);
+        if (!draggedIcon) {
+          console.warn(`No icon found for id: ${iconId}`);
+          return prev;
         }
-      }
 
-      let updatedFiberLines = [...prevState.fiberLines];
-      let updatedSavedPolylines = [...prevState.savedPolylines];
-      let tempModifiedCable = prevState.tempModifiedCable
-        ? { ...prevState.tempModifiedCable }
-        : null;
+        // Update imageIcons with new position
+        const updatedIcons = prev.map((icon) =>
+          icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
+        );
 
-      const updateLines = (lines) =>
-        lines.map((line) => {
-          let updatedLine = { ...line };
-          if (
-            isSnappedToIcon(line.from.lat, line.from.lng) &&
-            line.from.lat === draggedIcon.lat &&
-            line.from.lng === draggedIcon.lng
-          ) {
-            updatedLine.from = { lat: newLat, lng: newLng };
+        // Update updatedDevices
+        const deviceId = draggedIcon.deviceId;
+        setUpdatedDevices((prevDevices) => {
+          const existingUpdateIndex = prevDevices.findIndex(
+            (device) => device.deviceId === deviceId
+          );
+          const updated = [...prevDevices];
+          if (existingUpdateIndex !== -1) {
+            updated[existingUpdateIndex] = {
+              deviceId,
+              lat: newLat,
+              lng: newLng,
+            };
+          } else {
+            updated.push({ deviceId, lat: newLat, lng: newLng });
           }
-          if (
-            isSnappedToIcon(line.to.lat, line.to.lng) &&
-            line.to.lat === draggedIcon.lat &&
-            line.to.lng === draggedIcon.lng
-          ) {
-            updatedLine.to = { lat: newLat, lng: newLng };
-          }
-          if (line.waypoints) {
-            updatedLine.waypoints = line.waypoints.map((wp) =>
-              wp.lat === draggedIcon.lat && wp.lng === draggedIcon.lng
-                ? { lat: newLat, lng: newLng }
-                : wp
-            );
-          }
-          return updatedLine;
+          // console.log(`Updated devices:`, updated);
+          return updated;
         });
 
-      updatedFiberLines = updateLines(updatedFiberLines);
-      if (tempModifiedCable) {
-        tempModifiedCable = updateLines([tempModifiedCable])[0];
-      } else {
-        updatedSavedPolylines = updateLines(updatedSavedPolylines);
-      }
+        // Update connected cables
+        setSavedPolylines((prev) =>
+          prev.map((polyline) => {
+            let updatedPolyline = { ...polyline };
+            let hasChanges = false;
+            if (
+              polyline.startDeviceId === draggedIcon.deviceId &&
+              isSnappedToIcon(polyline.from.lat, polyline.from.lng)
+            ) {
+              updatedPolyline.from = { lat: newLat, lng: newLng };
+              hasChanges = true;
+            }
+            if (
+              polyline.endDeviceId === draggedIcon.deviceId &&
+              isSnappedToIcon(polyline.to.lat, polyline.to.lng)
+            ) {
+              updatedPolyline.to = { lat: newLat, lng: newLng };
+              hasChanges = true;
+            }
+            if (polyline.waypoints) {
+              const updatedWaypoints = polyline.waypoints.map((wp) =>
+                isSnappedToIcon(wp.lat, wp.lng) &&
+                findNearestIcon(wp.lat, wp.lng)?.deviceId ===
+                  draggedIcon.deviceId
+                  ? { lat: newLat, lng: newLng }
+                  : wp
+              );
+              if (
+                updatedWaypoints.some(
+                  (wp, i) =>
+                    wp.lat !== polyline.waypoints[i]?.lat ||
+                    wp.lng !== polyline.waypoints[i]?.lng
+                )
+              ) {
+                updatedPolyline.waypoints = updatedWaypoints;
+                hasChanges = true;
+              }
+            }
+            if (hasChanges) {
+              setModifiedCables((prev) => ({
+                ...prev,
+                [polyline.id]: {
+                  ...polyline,
+                  from: updatedPolyline.from,
+                  to: updatedPolyline.to,
+                  waypoints: updatedPolyline.waypoints,
+                  type: polyline.type || "Fiber",
+                  hasEditedCables: true,
+                },
+              }));
+              setHasEditedCables(true);
+            }
+            return updatedPolyline;
+          })
+        );
 
-      return {
-        ...prevState,
-        imageIcons: updatedImageIcons,
-        fiberLines: updatedFiberLines,
-        savedPolylines: updatedSavedPolylines,
-        tempModifiedCable,
-        updatedDevices,
-        hasEditedCables: tempModifiedCable ? true : prevState.hasEditedCables,
-      };
-    });
-  };
+        setFiberLines((prevLines) =>
+          prevLines.map((line) => {
+            let updatedLine = { ...line };
+            let hasChanges = false;
+            if (
+              line.startDeviceId === draggedIcon.deviceId &&
+              isSnappedToIcon(line.from.lat, line.from.lng)
+            ) {
+              updatedLine.from = { lat: newLat, lng: newLng };
+              hasChanges = true;
+            }
+            if (
+              line.endDeviceId === draggedIcon.deviceId &&
+              isSnappedToIcon(line.to.lat, line.to.lng)
+            ) {
+              updatedLine.to = { lat: newLat, lng: newLng };
+              hasChanges = true;
+            }
+            if (line.waypoints) {
+              const updatedWaypoints = line.waypoints.map((wp) =>
+                isSnappedToIcon(wp.lat, wp.lng) &&
+                findNearestIcon(wp.lat, wp.lng)?.deviceId ===
+                  draggedIcon.deviceId
+                  ? { lat: newLat, lng: newLng }
+                  : wp
+              );
+              if (
+                updatedWaypoints.some(
+                  (wp, i) =>
+                    wp.lat !== line.waypoints[i]?.lat ||
+                    wp.lng !== line.waypoints[i]?.lng
+                )
+              ) {
+                updatedLine.waypoints = updatedWaypoints;
+                hasChanges = true;
+              }
+            }
+            return updatedLine;
+          })
+        );
 
-  const generateUniqueId = () =>
-    `line-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        return updatedIcons;
+      });
+    },
+    [isSnappedToIcon, findNearestIcon]
+  );
 
-  const addFiberLine = () => {
-    const { rightClickMarker, fiberFormData } = mapState;
-    if (
-      !rightClickMarker ||
-      !fiberFormData.name.trim() ||
-      !fiberFormData.type.trim()
-    ) {
-      alert("Fiber name and type are required.");
+  // Generate unique ID
+  const generateUniqueId = useCallback(
+    () => `line-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    []
+  );
+
+  // Add fiber line
+  const addFiberLine = useCallback(() => {
+    if (!rightClickMarker || !fiberFormData.type.trim()) {
+      alert("Fiber type is required.");
       return;
     }
 
@@ -1179,1065 +1161,387 @@ const MyMapV19 = () => {
       endPortName: null,
     };
 
-    setMapState((prevState) => ({
-      ...prevState,
-      fiberLines: [...prevState.fiberLines, newFiberLine],
-      showModal: false,
-      showFiberForm: false,
-      selectedPoint: null,
-      rightClickMarker: null,
-      fiberFormData: { name: "", type: "Fiber" },
-      tempCable: newFiberLine,
-      tempModifiedCable: null,
-    }));
-  };
+    setFiberLines((prev) => [...prev, newFiberLine]);
+    setShowModal(false);
+    setShowFiberForm(false);
+    setSelectedPoint(null);
+    setRightClickMarker(null);
+    setFiberFormData({ name: "", type: "Fiber" });
+    setTempCable(newFiberLine);
+  }, [rightClickMarker, fiberFormData, generateUniqueId]);
 
-  const handleStartMarkerDragEnd = (index, e) => {
-    const newLat = e.latLng.lat();
-    const newLng = e.latLng.lng();
-    const nearestIcon = findNearestIcon(newLat, newLng);
+  // Handle start marker drag end
+  const handleStartMarkerDragEnd = useCallback(
+    (index, e) => {
+      const newLat = e.latLng.lat();
+      const newLng = e.latLng.lng();
+      const nearestIcon = findNearestIcon(newLat, newLng);
 
-    setMapState((prevState) => {
-      const updatedLines = [...prevState.fiberLines];
-      const line = updatedLines[index];
-      if (!line) return prevState;
+      setFiberLines((prev) => {
+        const updatedLines = [...prev];
+        const line = updatedLines[index];
+        if (!line) return prev;
 
-      const newFrom = nearestIcon
-        ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-        : { lat: newLat, lng: newLng };
-      updatedLines[index] = {
-        ...line,
-        from: newFrom,
-        startDeviceId: nearestIcon?.deviceId || null,
-        startPortId: null,
-        startPortName: null,
-      };
-
-      const newState = {
-        ...prevState,
-        fiberLines: updatedLines,
-        tempCable: null,
-        showPortDropdown: false,
-        portDropdownPosition: null,
-        portDropdownDevice: null,
-        portDropdownPorts: [],
-        selectedPortId: null,
-        tempModifiedCable: null,
-      };
-
-      if (nearestIcon?.portIds?.length > 0) {
-        const devicePorts = prevState.allPorts.filter((port) =>
-          nearestIcon.portIds.includes(port.id)
-        );
-        if (devicePorts.length > 0) {
-          return {
-            ...newState,
-            showPortDropdown: true,
-            portDropdownPosition: {
-              x: e.domEvent?.clientX || window.innerWidth / 2,
-              y: e.domEvent?.clientY || window.innerHeight / 2,
-            },
-            portDropdownDevice: nearestIcon,
-            portDropdownPorts: devicePorts,
-            portDropdownEnd: "start",
-            tempCable: updatedLines[index],
-          };
-        }
-      }
-      return newState;
-    });
-  };
-
-  const handleEndMarkerDragEnd = (index, e) => {
-    const newLat = e.latLng.lat();
-    const newLng = e.latLng.lng();
-    const nearestIcon = findNearestIcon(newLat, newLng);
-
-    setMapState((prevState) => {
-      const updatedLines = [...prevState.fiberLines];
-      const line = updatedLines[index];
-      if (!line) return prevState;
-
-      const newTo = nearestIcon
-        ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-        : { lat: newLat, lng: newLng };
-      updatedLines[index] = {
-        ...line,
-        to: newTo,
-        endDeviceId: nearestIcon?.deviceId || null,
-        endPortId: null,
-        endPortName: null,
-      };
-
-      const newState = {
-        ...prevState,
-        fiberLines: updatedLines,
-        tempCable: null,
-        showPortDropdown: false,
-        portDropdownPosition: null,
-        portDropdownDevice: null,
-        portDropdownPorts: [],
-        selectedPortId: null,
-        tempModifiedCable: null,
-      };
-
-      if (nearestIcon?.portIds?.length > 0) {
-        const devicePorts = prevState.allPorts.filter((port) =>
-          nearestIcon.portIds.includes(port.id)
-        );
-        if (devicePorts.length > 0) {
-          return {
-            ...newState,
-            showPortDropdown: true,
-            portDropdownPosition: {
-              x: e.domEvent?.clientX || window.innerWidth / 2,
-              y: e.domEvent?.clientY || window.innerHeight / 2,
-            },
-            portDropdownDevice: nearestIcon,
-            portDropdownPorts: devicePorts,
-            portDropdownEnd: "end",
-            tempCable: updatedLines[index],
-          };
-        }
-      }
-      return newState;
-    });
-  };
-
-  const handleWaypointDragEnd = (lineIndex, waypointIndex, e) => {
-    const newLat = e.latLng.lat();
-    const newLng = e.latLng.lng();
-    const nearestIcon = findNearestIcon(newLat, newLng);
-
-    setMapState((prevState) => {
-      const updatedLines = [...prevState.fiberLines];
-      const line = updatedLines[lineIndex];
-      const newWaypoint = nearestIcon
-        ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-        : { lat: newLat, lng: newLng };
-
-      updatedLines[lineIndex] = {
-        ...line,
-        waypoints: line.waypoints.map((wp, idx) =>
-          idx === waypointIndex ? newWaypoint : wp
-        ),
-      };
-
-      return {
-        ...prevState,
-        fiberLines: updatedLines,
-        tempCable: null,
-        tempModifiedCable: null,
-      };
-    });
-  };
-
-  const handleSavedPolylinePointDragEnd = (polylineId, pointType, e) => {
-    const newLat = e.latLng.lat();
-    const newLng = e.latLng.lng();
-    const nearestIcon = findNearestIcon(newLat, newLng);
-
-    setMapState((prevState) => {
-      let tempModifiedCable =
-        prevState.tempModifiedCable ||
-        prevState.savedPolylines.find((p) => p.id === polylineId);
-      if (!tempModifiedCable) return prevState;
-
-      tempModifiedCable = {
-        ...tempModifiedCable,
-        [pointType]: nearestIcon
+        const newFrom = nearestIcon
           ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-          : { lat: newLat, lng: newLng },
-        [`${pointType}DeviceId`]: nearestIcon?.deviceId || null,
-        [`${pointType}PortId`]: nearestIcon?.portIds?.[0] || null,
-        hasEditedCables: true,
-      };
+          : { lat: newLat, lng: newLng };
+        updatedLines[index] = {
+          ...line,
+          from: newFrom,
+          startDeviceId: nearestIcon?.deviceId || null,
+          startPortId: null,
+          startPortName: null,
+        };
 
-      return {
-        ...prevState,
-        tempModifiedCable,
-        hasEditedCables: true,
-      };
-    });
-  };
+        if (nearestIcon?.portIds?.length > 0) {
+          const devicePorts = allPorts.filter(
+            (port) =>
+              nearestIcon.portIds.includes(port.id) &&
+              !usedPorts.includes(port.id)
+          );
+          if (devicePorts.length > 0) {
+            setShowPortDropdown(true);
+            setPortDropdownPosition({
+              x: e.domEvent?.clientX || window.innerWidth / 2,
+              y: e.domEvent?.clientY || window.innerHeight / 2,
+            });
+            setPortDropdownDevice(nearestIcon);
+            setPortDropdownPorts(devicePorts);
+            setPortDropdownEnd("start");
+            setTempCable(updatedLines[index]);
+          }
+        } else {
+          setShowPortDropdown(false);
+          setPortDropdownPosition(null);
+          setPortDropdownDevice(null);
+          setPortDropdownPorts([]);
+          setSelectedPortId(null);
+          setTempCable(null);
+        }
+        return updatedLines;
+      });
+    },
+    [findNearestIcon, allPorts, usedPorts]
+  );
 
-  const handleSavedPolylineWaypointDragEnd = (polylineId, waypointIndex, e) => {
-    const newLat = e.latLng.lat();
-    const newLng = e.latLng.lng();
-    const nearestIcon = findNearestIcon(newLat, newLng);
+  // Handle end marker drag end
+  const handleEndMarkerDragEnd = useCallback(
+    (index, e) => {
+      const newLat = e.latLng.lat();
+      const newLng = e.latLng.lng();
+      const nearestIcon = findNearestIcon(newLat, newLng);
 
-    setMapState((prevState) => {
-      let tempModifiedCable =
-        prevState.tempModifiedCable ||
-        prevState.savedPolylines.find((p) => p.id === polylineId);
-      if (!tempModifiedCable || !tempModifiedCable.waypoints) return prevState;
+      setFiberLines((prev) => {
+        const updatedLines = [...prev];
+        const line = updatedLines[index];
+        if (!line) return prev;
 
-      const newWaypoint = nearestIcon
-        ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-        : { lat: newLat, lng: newLng };
-      tempModifiedCable = {
-        ...tempModifiedCable,
-        waypoints: tempModifiedCable.waypoints.map((wp, idx) =>
-          idx === waypointIndex ? newWaypoint : wp
-        ),
-        hasEditedCables: true,
-      };
+        const newTo = nearestIcon
+          ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+          : { lat: newLat, lng: newLng };
+        updatedLines[index] = {
+          ...line,
+          to: newTo,
+          endDeviceId: nearestIcon?.deviceId || null,
+          endPortId: null,
+          endPortName: null,
+        };
 
-      return {
-        ...prevState,
-        tempModifiedCable,
-        hasEditedCables: true,
-      };
-    });
-  };
+        if (nearestIcon?.portIds?.length > 0) {
+          const devicePorts = allPorts.filter(
+            (port) =>
+              nearestIcon.portIds.includes(port.id) &&
+              !usedPorts.includes(port.id)
+          );
+          if (devicePorts.length > 0) {
+            setShowPortDropdown(true);
+            setPortDropdownPosition({
+              x: e.domEvent?.clientX || window.innerWidth / 2,
+              y: e.domEvent?.clientY || window.innerHeight / 2,
+            });
+            setPortDropdownDevice(nearestIcon);
+            setPortDropdownPorts(devicePorts);
+            setPortDropdownEnd("end");
+            setTempCable(updatedLines[index]);
+          }
+        } else {
+          setShowPortDropdown(false);
+          setPortDropdownPosition(null);
+          setPortDropdownDevice(null);
+          setPortDropdownPorts([]);
+          setSelectedPortId(null);
+          setTempCable(null);
+        }
+        return updatedLines;
+      });
+    },
+    [findNearestIcon, allPorts, usedPorts]
+  );
 
-  const closeWaypointActions = () => {
-    setMapState((prevState) => ({
-      ...prevState,
-      selectedWaypoint: null,
-      waypointActionPosition: null,
-      selectedWaypointInfo: null,
-      tempModifiedCable: null,
-    }));
-  };
+  // Handle waypoint drag end
+  const handleWaypointDragEnd = useCallback(
+    (lineIndex, waypointIndex, e) => {
+      const newLat = e.latLng.lat();
+      const newLng = e.latLng.lng();
+      const nearestIcon = findNearestIcon(newLat, newLng);
 
+      setFiberLines((prev) => {
+        const updatedLines = [...prev];
+        const line = updatedLines[lineIndex];
+        const newWaypoint = nearestIcon
+          ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+          : { lat: newLat, lng: newLng };
+
+        updatedLines[lineIndex] = {
+          ...line,
+          waypoints: line.waypoints.map((wp, idx) =>
+            idx === waypointIndex ? newWaypoint : wp
+          ),
+        };
+
+        setTempCable(null);
+        return updatedLines;
+      });
+    },
+    [findNearestIcon]
+  );
+
+  // Handle saved polyline point drag end
+  const handleSavedPolylinePointDragEnd = useCallback(
+    (polylineId, pointType, e) => {
+      const newLat = e.latLng.lat();
+      const newLng = e.latLng.lng();
+      const nearestIcon = findNearestIcon(newLat, newLng);
+
+      setModifiedCables((prev) => {
+        const baseCable =
+          prev[polylineId] || savedPolylines.find((p) => p.id === polylineId);
+        if (!baseCable) return prev;
+
+        const updatedCable = {
+          ...baseCable,
+          [pointType]: nearestIcon
+            ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+            : { lat: newLat, lng: newLng },
+          [`${pointType}DeviceId`]: nearestIcon?.deviceId || null,
+          type: baseCable.type || "Fiber",
+          hasEditedCables: true,
+        };
+
+        // Reset port IDs if not snapped to an icon
+        if (!nearestIcon) {
+          updatedCable[`${pointType}PortId`] = null;
+          updatedCable[`${pointType}PortName`] = null;
+        }
+
+        return {
+          ...prev,
+          [polylineId]: updatedCable,
+        };
+      });
+      setHasEditedCables(true);
+
+      // Show port dropdown if snapped to a device with available ports
+      if (nearestIcon?.portIds?.length > 0) {
+        const devicePorts = allPorts.filter(
+          (port) =>
+            nearestIcon.portIds.includes(port.id) &&
+            !usedPorts.includes(port.id)
+        );
+        if (devicePorts.length > 0) {
+          setShowPortDropdown(true);
+          setPortDropdownPosition({
+            x: e.domEvent?.clientX || window.innerWidth / 2,
+            y: e.domEvent?.clientY || window.innerHeight / 2,
+          });
+          setPortDropdownDevice(nearestIcon);
+          setPortDropdownPorts(devicePorts);
+          setPortDropdownEnd(pointType);
+          setTempCable({
+            id: polylineId,
+            [pointType]: nearestIcon
+              ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+              : { lat: newLat, lng: newLng },
+            [`${pointType}DeviceId`]: nearestIcon?.deviceId || null,
+          });
+        }
+      } else {
+        setShowPortDropdown(false);
+        setPortDropdownPosition(null);
+        setPortDropdownDevice(null);
+        setPortDropdownPorts([]);
+        setSelectedPortId(null);
+        setTempCable(null);
+      }
+    },
+    [findNearestIcon, savedPolylines, allPorts, usedPorts]
+  );
+
+  // Handle saved polyline waypoint drag end
+  const handleSavedPolylineWaypointDragEnd = useCallback(
+    (polylineId, waypointIndex, e) => {
+      const newLat = e.latLng.lat();
+      const newLng = e.latLng.lng();
+      const nearestIcon = findNearestIcon(newLat, newLng);
+
+      setModifiedCables((prev) => {
+        const baseCable =
+          prev[polylineId] || savedPolylines.find((p) => p.id === polylineId);
+        if (!baseCable || !baseCable.waypoints) return prev;
+
+        const newWaypoint = nearestIcon
+          ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+          : { lat: newLat, lng: newLng };
+        return {
+          ...prev,
+          [polylineId]: {
+            ...baseCable,
+            waypoints: baseCable.waypoints.map((wp, idx) =>
+              idx === waypointIndex ? newWaypoint : wp
+            ),
+            type: baseCable.type || "Fiber",
+            hasEditedCables: true,
+          },
+        };
+      });
+      setHasEditedCables(true);
+    },
+    [findNearestIcon, savedPolylines]
+  );
+
+  // Map load handler
   const onMapLoad = useCallback((map) => {
     mapRef.current = map;
   }, []);
+
+  useEffect(() => {
+    fetchDevices();
+    fetchCables();
+  }, [fetchDevices, fetchCables]);
 
   if (loadError) return <div>Error loading maps</div>;
   if (!isLoaded) return <div>Loading Maps...</div>;
 
   return (
     <>
-      <GoogleMap
-        mapContainerStyle={containerStyle}
-        center={center}
-        zoom={7}
-        onRightClick={handleMapRightClick}
-        options={{ styles: mapStyles, disableDefaultUI: false }}
-        onLoad={onMapLoad}
-      >
-        {mapState.imageIcons.map((icon) => (
-          <MarkerF
-            key={icon.id}
-            position={{ lat: icon.lat, lng: icon.lng }}
-            draggable={mapState.isSavedRoutesEditable}
-            icon={{
-              url: icon.imageUrl || "/img/default-icon.png",
-              scaledSize: new window.google.maps.Size(30, 30),
-              anchor: new window.google.maps.Point(15, 15),
-            }}
-            onDragEnd={(e) => handleMarkerDragEnd(icon.id, e)}
-            onRightClick={(e) => handleRightClickOnIcon(icon, e)}
-            onClick={(e) => handleIconClick(icon, e)}
-          />
-        ))}
-
-        {mapState.rightClickMarker && (
-          <MarkerF
-            key={`right-click-${mapState.rightClickMarker.lat}-${mapState.rightClickMarker.lng}`}
-            position={mapState.rightClickMarker}
-            icon={{
-              url: "/img/location.jpg",
-              scaledSize: new window.google.maps.Size(20, 20),
-            }}
-          />
-        )}
-
-        {mapState.fiberLines.map((line, index) => {
-          const fullPath = [line.from, ...(line.waypoints || []), line.to];
-          return (
-            <React.Fragment key={line.id}>
-              <PolylineF
-                path={fullPath}
-                options={{
-                  strokeColor: "#FF0000",
-                  strokeOpacity: 1.0,
-                  strokeWeight: 2,
-                  zIndex: 100,
-                }}
-                onClick={(e) => {
-                  e.domEvent.stopPropagation();
-                  handleLineClick(line, index, false, e);
-                }}
-              />
-              {mapState.selectedLineForActions &&
-                mapState.exactClickPosition &&
-                !mapState.selectedLineForActions.isSavedLine &&
-                mapState.selectedLineForActions.index === index && (
-                  <div
-                    className="line-action-modal"
-                    style={{
-                      top: `${mapState.exactClickPosition.y - 95}px`,
-                      left: `${mapState.exactClickPosition.x}px`,
-                      transform: "translateX(-50%)",
-                    }}
-                  >
-                    <div className="line-action-item" onClick={addWaypoint}>
-                      <Plus size={20} className="text-gray-600" />
-                      <span className="line-action-tooltip">Add Waypoint</span>
-                    </div>
-                    <div
-                      className="line-action-item"
-                      onClick={() =>
-                        setMapState((prev) => ({
-                          ...prev,
-                          fiberLines: prev.fiberLines.filter(
-                            (_, i) => i !== index
-                          ),
-                          selectedLineForActions: null,
-                          lineActionPosition: null,
-                          exactClickPosition: null,
-                        }))
-                      }
-                    >
-                      <Trash2 size={20} className="text-red-500" />
-                      <span className="line-action-tooltip">Delete Line</span>
-                    </div>
-                    {line.startPortId && line.endPortId && (
-                      <div
-                        className="line-action-item"
-                        onClick={() =>
-                          saveCableToInterface(line)
-                            .then(() => alert("Cable saved successfully!"))
-                            .catch((error) =>
-                              alert(`Failed to save cable: ${error.message}`)
-                            )
-                        }
-                      >
-                        <Save size={20} className="text-blue-500" />
-                        <span className="line-action-tooltip">Save Line</span>
-                      </div>
-                    )}
-                    <div
-                      className="line-action-item"
-                      onClick={() =>
-                        setMapState((prev) => ({
-                          ...prev,
-                          selectedLineForActions: null,
-                          lineActionPosition: null,
-                          exactClickPosition: null,
-                        }))
-                      }
-                    >
-                      <span className="line-action-close">×</span>
-                      <span className="line-action-tooltip">Close</span>
-                    </div>
-                    <div className="modal-spike"></div>
-                  </div>
-                )}
-              {(line.waypoints || []).map((waypoint, waypointIndex) => (
-                <MarkerF
-                  key={`waypoint-${line.id}-${waypointIndex}-${waypoint.lat}-${waypoint.lng}`}
-                  position={waypoint}
-                  draggable={true}
-                  onDragEnd={(e) =>
-                    handleWaypointDragEnd(index, waypointIndex, e)
-                  }
-                  icon={{
-                    url: "/img/location.jpg",
-                    scaledSize: new window.google.maps.Size(15, 15),
-                  }}
-                  onClick={(e) => {
-                    e.domEvent.stopPropagation();
-                    handleWaypointClick(
-                      index,
-                      waypointIndex,
-                      false,
-                      waypoint,
-                      e
-                    );
-                  }}
-                />
-              ))}
-              {!isSnappedToIcon(line.from.lat, line.from.lng) && (
-                <MarkerF
-                  key={`start-${line.id}`}
-                  position={line.from}
-                  draggable={true}
-                  onDragEnd={(e) => handleStartMarkerDragEnd(index, e)}
-                  icon={{
-                    url: "/img/location.jpg",
-                    scaledSize: new window.google.maps.Size(20, 20),
-                  }}
-                />
-              )}
-              {!isSnappedToIcon(line.to.lat, line.to.lng) && (
-                <MarkerF
-                  key={`end-${line.id}`}
-                  position={line.to}
-                  draggable={true}
-                  onDragEnd={(e) => handleEndMarkerDragEnd(index, e)}
-                  icon={{
-                    url: "/img/location.jpg",
-                    scaledSize: new window.google.maps.Size(20, 20),
-                  }}
-                />
-              )}
-            </React.Fragment>
-          );
-        })}
-
-        {mapState.showSavedRoutes &&
-          mapState.savedPolylines.map((polyline, index) => {
-            const isModified = mapState.tempModifiedCable?.id === polyline.id;
-            const displayPolyline = isModified
-              ? mapState.tempModifiedCable
-              : polyline;
-            const fullPath = [
-              displayPolyline.from,
-              ...(displayPolyline.waypoints || []),
-              displayPolyline.to,
-            ];
-
-            return (
-              <React.Fragment key={`saved-polyline-${polyline.id}`}>
-                <PolylineF
-                  path={fullPath}
-                  options={{
-                    strokeColor: "#FF0000",
-                    strokeOpacity: 1.0,
-                    strokeWeight: 2,
-                  }}
-                  onClick={(e) => {
-                    e.domEvent.stopPropagation();
-                    handleLineClick(polyline, index, true, e);
-                  }}
-                />
-                {mapState.selectedLineForActions &&
-                  mapState.exactClickPosition &&
-                  mapState.selectedLineForActions.isSavedLine &&
-                  mapState.selectedLineForActions.index === index && (
-                    <div
-                      className="line-action-modal"
-                      style={{
-                        top: `${mapState.exactClickPosition.y - 95}px`,
-                        left: `${mapState.exactClickPosition.x}px`,
-                        transform: "translateX(-50%)",
-                      }}
-                    >
-                      <div className="line-action-item" onClick={addWaypoint}>
-                        <Plus size={20} className="text-gray-600" />
-                        <span className="line-action-tooltip">
-                          Add Waypoint
-                        </span>
-                      </div>
-                      <div
-                        className="line-action-item"
-                        onClick={removeSavedSelectedLine}
-                      >
-                        <Trash2 size={20} className="text-red-500" />
-                        <span className="line-action-tooltip">Delete Line</span>
-                      </div>
-                      {mapState.tempModifiedCable && (
-                        <div
-                          className="line-action-item"
-                          onClick={() =>
-                            patchCableToInterface(mapState.tempModifiedCable)
-                              .then(() => alert("Cable updated successfully!"))
-                              .catch((error) =>
-                                alert(
-                                  `Failed to update cable: ${error.message}`
-                                )
-                              )
-                          }
-                        >
-                          <Save size={20} className="text-blue-500" />
-                          <span className="line-action-tooltip">
-                            Save Changes
-                          </span>
-                        </div>
-                      )}
-                      <div
-                        className="line-action-item"
-                        onClick={() =>
-                          setMapState((prev) => ({
-                            ...prev,
-                            selectedLineForActions: null,
-                            lineActionPosition: null,
-                            exactClickPosition: null,
-                            tempModifiedCable: null,
-                          }))
-                        }
-                      >
-                        <span className="line-action-close">×</span>
-                        <span className="line-action-tooltip">Close</span>
-                      </div>
-                      <div className="modal-spike"></div>
-                    </div>
-                  )}
-                {(displayPolyline.waypoints || []).map(
-                  (waypoint, waypointIndex) => (
-                    <MarkerF
-                      key={`saved-waypoint-${polyline.id}-${waypointIndex}-${waypoint.lat}-${waypoint.lng}`}
-                      position={waypoint}
-                      draggable={mapState.isSavedRoutesEditable}
-                      onDragEnd={(e) =>
-                        handleSavedPolylineWaypointDragEnd(
-                          polyline.id,
-                          waypointIndex,
-                          e
-                        )
-                      }
-                      icon={{
-                        url: "/img/location.jpg",
-                        scaledSize: new window.google.maps.Size(15, 15),
-                      }}
-                      onClick={(e) =>
-                        handleWaypointClick(
-                          index,
-                          waypointIndex,
-                          true,
-                          waypoint,
-                          e
-                        )
-                      }
-                    />
-                  )
-                )}
-                {!isSnappedToIcon(
-                  displayPolyline.from.lat,
-                  displayPolyline.from.lng
-                ) && (
-                  <MarkerF
-                    key={`saved-start-${polyline.id}`}
-                    position={displayPolyline.from}
-                    draggable={mapState.isSavedRoutesEditable}
-                    onDragEnd={(e) =>
-                      handleSavedPolylinePointDragEnd(polyline.id, "from", e)
-                    }
-                    icon={{
-                      url: "/img/location.jpg",
-                      scaledSize: new window.google.maps.Size(20, 20),
-                    }}
-                  />
-                )}
-                {!isSnappedToIcon(
-                  displayPolyline.to.lat,
-                  displayPolyline.to.lng
-                ) && (
-                  <MarkerF
-                    key={`saved-end-${polyline.id}`}
-                    position={displayPolyline.to}
-                    draggable={mapState.isSavedRoutesEditable}
-                    onDragEnd={(e) =>
-                      handleSavedPolylinePointDragEnd(polyline.id, "to", e)
-                    }
-                    icon={{
-                      url: "/img/location.jpg",
-                      scaledSize: new window.google.maps.Size(20, 20),
-                    }}
-                  />
-                )}
-              </React.Fragment>
-            );
-          })}
-
-        {mapState.selectedWaypoint && mapState.waypointActionPosition && (
-          <div
-            className="line-action-modal"
-            style={{
-              top: `${mapState.waypointActionPosition.y - 100}px`,
-              left: `${mapState.waypointActionPosition.x - 74}px`,
-            }}
-          >
-            <div
-              className="line-action-item"
-              onClick={
-                mapState.selectedWaypointInfo?.isIcon
-                  ? removeSelectedIcon
-                  : removeSelectedWaypoint
-              }
-            >
-              <Trash2 size={20} color="red" />
-              <span className="line-action-tooltip">Remove</span>
-            </div>
-            {!mapState.selectedWaypointInfo?.isIcon && (
-              <div className="line-action-item" onClick={addSplitterAtWaypoint}>
-                <Plus size={20} color="blue" />
-                <span className="line-action-tooltip">Add Splitter</span>
-              </div>
-            )}
-            {mapState.selectedWaypointInfo?.isSavedLine &&
-              mapState.tempModifiedCable && (
-                <div
-                  className="line-action-item"
-                  onClick={() =>
-                    patchCableToInterface(mapState.tempModifiedCable)
-                      .then(() => alert("Cable updated successfully!"))
-                      .catch((error) =>
-                        alert(`Failed to update cable: ${error.message}`)
-                      )
-                  }
-                >
-                  <Save size={20} className="text-blue-500" />
-                  <span className="line-action-tooltip">Save Changes</span>
-                </div>
-              )}
-            <div className="line-action-item" onClick={closeWaypointActions}>
-              <span className="close-icon">×</span>
-              <span className="line-action-tooltip">Close</span>
-            </div>
-            <div className="modal-spike"></div>
-          </div>
-        )}
-      </GoogleMap>
-
-      {mapState.showModal && mapState.selectedPoint && (
-        <div
-          className="modal"
-          style={{
-            top: `${mapState.selectedPoint.y - 110}px`,
-            left: `${mapState.selectedPoint.x - 210}px`,
-          }}
-        >
-          <button
-            className="modal-close"
-            onClick={() =>
-              setMapState((prev) => ({
-                ...prev,
-                showModal: false,
-                rightClickMarker: null,
-              }))
-            }
-          >
-            ×
-          </button>
-          <p className="modal-title">Select a type:</p>
-          <div className="modal-buttons">
-            {deviceTypes.map((device) => (
-              <button
-                key={device.name}
-                onClick={() => handleSelection(device.name, device.icon)}
-                className="modal-button"
-              >
-                {device.name}
-              </button>
-            ))}
-            <button
-              className="modal-button"
-              onClick={() => handleSelection("Add Fiber", null)}
-            >
-              Add Fiber
-            </button>
-          </div>
-          <div className="modal-spike"></div>
-        </div>
-      )}
-
-      {mapState.showFiberForm && mapState.rightClickMarker && (
-        <div
-          className="fiber-form-modal"
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            background: "white",
-            padding: "20px",
-            borderRadius: "8px",
-            boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
-            zIndex: 1000,
-            width: "300px",
-          }}
-        >
-          <h3 className="text-lg font-semibold mb-4">Create Fiber Line</h3>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              addFiberLine();
-            }}
-          >
-            <div className="mb-3">
-              <label className="block text-sm font-medium">Fiber Name</label>
-              <input
-                type="text"
-                value={mapState.fiberFormData.name}
-                onChange={(e) =>
-                  setMapState((prev) => ({
-                    ...prev,
-                    fiberFormData: {
-                      ...prev.fiberFormData,
-                      name: e.target.value,
-                    },
-                  }))
-                }
-                className="w-full p-2 border rounded"
-                placeholder="Enter fiber name"
-                required
-              />
-            </div>
-            <div className="mb-3">
-              <label className="block text-sm font-medium">Type</label>
-              <input
-                type="text"
-                value={mapState.fiberFormData.type}
-                onChange={(e) =>
-                  setMapState((prev) => ({
-                    ...prev,
-                    fiberFormData: {
-                      ...prev.fiberFormData,
-                      type: e.target.value,
-                    },
-                  }))
-                }
-                className="w-full p-2 border rounded"
-                placeholder="Enter fiber type (e.g., Fiber, Copper)"
-                required
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setMapState((prev) => ({
-                    ...prev,
-                    showFiberForm: false,
-                    rightClickMarker: null,
-                    fiberFormData: { name: "", type: "Fiber" },
-                  }))
-                }
-                className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              >
-                Submit
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {mapState.showDeviceModal &&
-        mapState.selectedDevice &&
-        mapState.deviceModalPosition && (
-          <div
-            className="line-action-modal"
-            style={{
-              top: `${mapState.deviceModalPosition.y - 95}px`,
-              left: `${mapState.deviceModalPosition.x}px`,
-              transform: "translateX(-50%)",
-              zIndex: 1000,
-            }}
-          >
-            <div className="line-action-item" onClick={removeSelectedIcon}>
-              <Trash2 size={20} className="text-red-500" />
-              <span className="line-action-tooltip">Remove Device</span>
-            </div>
-            <div className="line-action-item" onClick={saveDeviceChanges}>
-              <Save size={20} className="text-blue-500" />
-              <span className="line-action-tooltip">Save Device</span>
-            </div>
-            <div
-              className="line-action-item"
-              onClick={() =>
-                setMapState((prev) => ({
-                  ...prev,
-                  showDeviceModal: false,
-                  selectedDevice: null,
-                  deviceModalPosition: null,
-                }))
-              }
-            >
-              <span className="line-action-close">×</span>
-              <span className="line-action-tooltip">Close</span>
-            </div>
-            <div className="modal-spike"></div>
-          </div>
-        )}
-
-      {mapState.showDeviceForm && mapState.deviceFormData && (
-        <div
-          className="device-form-modal"
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            background: "white",
-            padding: "20px",
-            borderRadius: "8px",
-            boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
-            zIndex: 1000,
-            width: "400px",
-            maxHeight: "80vh",
-            overflowY: "auto",
-          }}
-        >
-          <h3 className="text-lg font-semibold mb-4">
-            Create {mapState.deviceFormData.type} Device
-          </h3>
-          <form onSubmit={handleDeviceFormSubmit}>
-            <div className="mb-3">
-              <label className="block text-sm font-medium">Device Name</label>
-              <input
-                type="text"
-                value={mapState.deviceForm.deviceName}
-                onChange={(e) =>
-                  handleDeviceFormInputChange("deviceName", e.target.value)
-                }
-                className="w-full p-2 border rounded"
-                placeholder="Enter device name"
-                required
-              />
-            </div>
-            <div className="mb-3">
-              <label className="block text-sm font-medium">Description</label>
-              <textarea
-                value={mapState.deviceForm.description}
-                onChange={(e) =>
-                  handleDeviceFormInputChange("description", e.target.value)
-                }
-                className="w-full p-2 border rounded"
-                placeholder="Enter description"
-                required
-              />
-            </div>
-            <div className="mb-3">
-              <label className="block text-sm font-medium">
-                Device Model ID
-              </label>
-              <input
-                type="number"
-                value={mapState.deviceForm.deviceModelId}
-                onChange={(e) =>
-                  handleDeviceFormInputChange("deviceModelId", e.target.value)
-                }
-                className="w-full p-2 border rounded"
-                placeholder="Enter device model ID"
-                required
-              />
-            </div>
-            <div className="mb-3">
-              <label className="block text-sm font-medium">
-                {mapState.deviceFormData.type} Name
-              </label>
-              <input
-                type="text"
-                value={mapState.deviceForm.name}
-                onChange={(e) =>
-                  handleDeviceFormInputChange("name", e.target.value)
-                }
-                className="w-full p-2 border rounded"
-                placeholder={`Enter ${mapState.deviceFormData.type} name`}
-                required
-              />
-            </div>
-            {mapState.deviceFormData.type === "OLT" && (
-              <>
-                <div className="mb-3">
-                  <label className="block text-sm font-medium">Hostname</label>
-                  <input
-                    type="text"
-                    value={mapState.deviceForm.hostname}
-                    onChange={(e) =>
-                      handleDeviceFormInputChange("hostname", e.target.value)
-                    }
-                    className="w-full p-2 border rounded"
-                    placeholder="Enter hostname"
-                    required
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="block text-sm font-medium">Community</label>
-                  <input
-                    type="text"
-                    value={mapState.deviceForm.community}
-                    onChange={(e) =>
-                      handleDeviceFormInputChange("community", e.target.value)
-                    }
-                    className="w-full p-2 border rounded"
-                    placeholder="Enter community"
-                    required
-                  />
-                </div>
-              </>
-            )}
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-2">Ports</label>
-              {mapState.deviceForm.ports.map((port, index) => (
-                <div key={index} className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    value={port.name}
-                    onChange={(e) =>
-                      handlePortChange(index, "name", e.target.value)
-                    }
-                    className="flex-1 p-2 border rounded"
-                    placeholder={`Port ${index + 1} name`}
-                    required
-                  />
-                  <input
-                    type="number"
-                    value={port.position}
-                    onChange={(e) =>
-                      handlePortChange(index, "position", e.target.value)
-                    }
-                    className="w-20 p-2 border rounded"
-                    placeholder="Position"
-                    required
-                  />
-                  {mapState.deviceForm.ports.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => removePort(index)}
-                      className="p-2 text-red-500 hover:text-red-700"
-                    >
-                      <Trash2 size={20} />
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={addPort}
-                className="mt-2 px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
-              >
-                Add Port
-              </button>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setMapState((prev) => ({
-                    ...prev,
-                    showDeviceForm: false,
-                    deviceFormData: null,
-                    deviceForm: {
-                      deviceName: "",
-                      description: "",
-                      deviceModelId: "",
-                      ports: [
-                        { name: "", position: 1 },
-                        { name: "", position: 2 },
-                      ],
-                      name: "",
-                      hostname: "",
-                      community: "",
-                    },
-                    rightClickMarker: null,
-                  }))
-                }
-                className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              >
-                Submit
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {mapState.showPortDropdown &&
-        mapState.portDropdownPosition &&
-        mapState.portDropdownDevice && (
-          <div
-            className="port-dropdown-modal"
-            style={{
-              position: "fixed",
-              top: `${mapState.portDropdownPosition.y - 180}px`,
-              left: `${mapState.portDropdownPosition.x - 100}px`,
-              background: "white",
-              padding: "15px",
-              borderRadius: "8px",
-              boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
-              zIndex: 1000,
-              width: "220px",
-            }}
-          >
-            <h3 className="text-md font-semibold mb-3">
-              Select Port for {mapState.portDropdownDevice.type} (
-              {mapState.portDropdownEnd === "start" ? "Start" : "End"})
-            </h3>
-            <form onSubmit={handlePortSelection}>
-              <div className="mb-3">
-                <select
-                  value={mapState.selectedPortId || ""}
-                  onChange={(e) => handlePortDropdownChange(e.target.value)}
-                  className="w-full p-2 border rounded"
-                  required
-                >
-                  <option value="">Select a port</option>
-                  {mapState.portDropdownPorts.map((port) => (
-                    <option key={port.id} value={port.id}>
-                      {port.name || `Port ${port.position}`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closePortDropdown}
-                  className="px-3 py-1 bg-gray-300 rounded hover:bg-gray-400"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!mapState.selectedPortId}
-                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
-                >
-                  Select
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-      <div
-        style={{
-          position: "absolute",
-          top: 10,
-          right: 10,
-          backgroundColor: "white",
-          padding: "10px",
-          borderRadius: "5px",
-          boxShadow: "0 2px 5px rgba(0,0,0,0.3)",
-          zIndex: 1000,
+      <MapComponent
+        imageIcons={imageIcons}
+        fiberLines={fiberLines}
+        savedPolylines={savedPolylines}
+        rightClickMarker={rightClickMarker}
+        showSavedRoutes={showSavedRoutes}
+        selectedLineForActions={selectedLineForActions}
+        exactClickPosition={exactClickPosition}
+        modifiedCables={modifiedCables}
+        isSnappedToIcon={isSnappedToIcon}
+        handleMapRightClick={handleMapRightClick}
+        handleRightClickOnIcon={handleRightClickOnIcon}
+        handleIconClick={handleIconClick}
+        handleLineClick={handleLineClick}
+        handleMarkerDragEnd={handleMarkerDragEnd}
+        handleStartMarkerDragEnd={handleStartMarkerDragEnd}
+        handleEndMarkerDragEnd={handleEndMarkerDragEnd}
+        handleWaypointDragEnd={handleWaypointDragEnd}
+        handleSavedPolylinePointDragEnd={handleSavedPolylinePointDragEnd}
+        handleSavedPolylineWaypointDragEnd={handleSavedPolylineWaypointDragEnd}
+        addWaypoint={addWaypoint}
+        removeSavedSelectedLine={removeSavedSelectedLine}
+        setFiberLines={setFiberLines}
+        setSelectedLineForActions={setSelectedLineForActions}
+        setLineActionPosition={setLineActionPosition}
+        setExactClickPosition={setExactClickPosition}
+        setModifiedCables={setModifiedCables}
+        setHasEditedCables={setHasEditedCables}
+        onMapLoad={onMapLoad}
+        handleWaypointClick={handleWaypointClick}
+      />
+      <ContextMenuModal
+        isVisible={showModal}
+        selectedPoint={selectedPoint}
+        deviceTypes={deviceTypes}
+        handleSelection={handleSelection}
+        onClose={() => {
+          setShowModal(false);
+          setRightClickMarker(null);
         }}
-      >
-        <button
-          onClick={() =>
-            setMapState((prev) => ({
-              ...prev,
-              showSavedRoutes: !prev.showSavedRoutes,
-            }))
-          }
-          style={{ margin: "5px" }}
-        >
-          {mapState.showSavedRoutes ? <EyeOff /> : <Eye />}
-          {mapState.showSavedRoutes
-            ? " Hide Saved Routes"
-            : " Show Saved Routes"}
-        </button>
-        <button
-          onClick={() =>
-            setMapState((prev) => ({
-              ...prev,
-              isSavedRoutesEditable: !prev.isSavedRoutesEditable,
-              tempModifiedCable: null,
-            }))
-          }
-          style={{ margin: "5px" }}
-        >
-          {mapState.isSavedRoutesEditable ? <Lock /> : <Unlock />}
-          {mapState.isSavedRoutesEditable ? " Lock Editing" : " Unlock Editing"}
-        </button>
-      </div>
+      />
+      <FiberFormModal
+        isVisible={showFiberForm}
+        rightClickMarker={rightClickMarker}
+        fiberFormData={fiberFormData}
+        setFiberFormData={setFiberFormData}
+        onSubmit={addFiberLine}
+        onCancel={() => {
+          setShowFiberForm(false);
+          setRightClickMarker(null);
+          setFiberFormData({ name: "", type: "Fiber" });
+        }}
+      />
+      <DeviceModal
+        isVisible={showDeviceModal}
+        selectedDevice={selectedDevice}
+        deviceModalPosition={deviceModalPosition}
+        onRemove={removeSelectedIcon}
+        onClose={() => {
+          setShowDeviceModal(false);
+          setSelectedDevice(null);
+          setDeviceModalPosition(null);
+        }}
+      />
+      <DeviceFormModal
+        isVisible={showDeviceForm}
+        deviceFormData={deviceFormData}
+        deviceForm={deviceForm}
+        deviceTypes={deviceTypes}
+        handleDeviceFormSubmit={handleDeviceFormSubmit}
+        handleDeviceFormInputChange={handleDeviceFormInputChange}
+        handlePortChange={handlePortChange}
+        addPort={addPort}
+        removePort={removePort}
+        onCancel={() => {
+          setShowDeviceForm(false);
+          setDeviceFormData(null);
+          setDeviceForm({
+            deviceName: "",
+            description: "",
+            deviceModelId: "",
+            ports: [
+              { name: "", position: 1 },
+              { name: "", position: 2 },
+            ],
+            name: "",
+            hostname: "",
+            community: "",
+          });
+          setRightClickMarker(null);
+        }}
+      />
+      <PortDropdownModal
+        isVisible={showPortDropdown}
+        portDropdownPosition={portDropdownPosition}
+        portDropdownDevice={portDropdownDevice}
+        ports={portDropdownPorts || []}
+        selectedPortId={selectedPortId}
+        portDropdownEnd={portDropdownEnd}
+        handlePortSelection={handlePortSelection}
+        handlePortDropdownChange={handlePortDropdownChange}
+        onCancel={closePortDropdown}
+      />
+      <WaypointActionModal
+        isVisible={!!selectedWaypoint}
+        selectedWaypoint={selectedWaypoint}
+        onRemove={removeWaypoint}
+        onClose={() => setSelectedWaypoint(null)}
+      />
+      <ControlPanel
+        showSavedRoutes={showSavedRoutes}
+        setShowSavedRoutes={setShowSavedRoutes}
+        isAutoSaving={isAutoSaving}
+        hasEditedCables={hasEditedCables}
+        fiberLines={fiberLines}
+      />
     </>
   );
 };
 
-export default MyMapV19;
+export default FiberMapPage;
