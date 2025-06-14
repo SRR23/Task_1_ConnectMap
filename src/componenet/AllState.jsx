@@ -16,6 +16,15 @@ import ControlPanel from "../ControlPanel/ControlPanel";
 import WaypointActionModal from "../Modal/WaypointActionModal";
 import debounce from "lodash/debounce";
 
+// ... (other imports remain unchanged)
+
+// Define API endpoints for device types
+const DEVICE_ENDPOINTS = {
+  OLT: "http://localhost:8000/api/v1/olt",
+  ONU: "http://localhost:8000/api/v1/onu",
+  Splitter: "http://localhost:8000/api/v1/splitter",
+};
+
 const FiberMapPage = () => {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
@@ -23,7 +32,7 @@ const FiberMapPage = () => {
 
   const mapRef = useRef(null);
 
-  // State declarations
+  // State declarations (unchanged for brevity)
   const [savedPolylines, setSavedPolylines] = useState([]);
   const [fiberLines, setFiberLines] = useState([]);
   const [imageIcons, setImageIcons] = useState([]);
@@ -98,7 +107,7 @@ const FiberMapPage = () => {
     [findNearestIcon]
   );
 
-  // Fetch device types and models
+  // Fetch device types and models (unchanged)
   useEffect(() => {
     const fetchDeviceTypes = async () => {
       try {
@@ -128,7 +137,7 @@ const FiberMapPage = () => {
     fetchDeviceModels();
   }, [handleApiError]);
 
-  // Fetch devices
+  // Fetch devices (unchanged)
   const fetchDevices = useCallback(async () => {
     try {
       const response = await fetch("http://localhost:8000/api/v1/devices");
@@ -162,7 +171,6 @@ const FiberMapPage = () => {
       setImageIcons(icons);
       setAllPorts(ports);
       setNextNumber(icons.length + 1);
-      // Only reset modifiedCables if no pending updates
       if (!hasEditedCables) {
         setModifiedCables({});
       }
@@ -171,7 +179,7 @@ const FiberMapPage = () => {
     }
   }, [handleApiError, hasEditedCables]);
 
-  // Fetch cables
+  // Fetch cables (unchanged)
   const fetchCables = useCallback(async () => {
     try {
       const response = await fetch("http://localhost:8000/api/v1/interface");
@@ -224,14 +232,50 @@ const FiberMapPage = () => {
     }
   }, [handleApiError, hasEditedCables]);
 
-  // Auto-save function
-  const autoSave = useCallback(async () => {
-    try {
-      setIsAutoSaving(true);
+  // --- Auto-Save Refactored Functions ---
 
-      // Save updated device positions first
-      for (const device of updatedDevices) {
-        // Find device in imageIcons
+  // Save a single device position
+  const saveDevicePosition = useCallback(
+    async (device, deviceIcon) => {
+      const endpoint = DEVICE_ENDPOINTS[deviceIcon.type];
+      if (!endpoint) {
+        console.warn(`Invalid device type for deviceId: ${device.deviceId}`);
+        return false;
+      }
+
+      const payload = {
+        latitude: device.lat,
+        longitude: device.lng,
+      };
+
+      try {
+        const response = await fetch(`${endpoint}/${device.deviceId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to update device ${device.deviceId}: ${response.status}`
+          );
+        }
+        return true;
+      } catch (error) {
+        handleApiError(error, `Error saving device ${device.deviceId}`);
+        return false;
+      }
+    },
+    [handleApiError]
+  );
+
+  // Save all updated device positions
+  const saveUpdatedDevices = useCallback(
+    async () => {
+      const savePromises = updatedDevices.map(async (device) => {
         const deviceIcon = imageIcons.find(
           (icon) => icon.deviceId === device.deviceId
         );
@@ -239,65 +283,39 @@ const FiberMapPage = () => {
           console.warn(
             `Device icon not found for deviceId: ${device.deviceId}`
           );
-          continue;
+          return false;
         }
+        return saveDevicePosition(device, deviceIcon);
+      });
 
-        const endpointMap = {
-          OLT: `http://localhost:8000/api/v1/olt/${device.deviceId}`,
-          ONU: `http://localhost:8000/api/v1/onu/${device.deviceId}`,
-          Splitter: `http://localhost:8000/api/v1/splitter/${device.deviceId}`,
-        };
-        const endpoint = endpointMap[deviceIcon.type];
-        if (!endpoint) {
-          console.warn(`Invalid device type for deviceId: ${device.deviceId}`);
-          continue;
-        }
+      const results = await Promise.all(savePromises);
+      return results.every((result) => result);
+    },
+    [updatedDevices, imageIcons, saveDevicePosition]
+  );
 
-        const devicePayload = {
-          latitude: device.lat,
-          longitude: device.lng,
-        };
-        // console.log(`Saving device ${device.deviceId} at`, devicePayload);
-        const deviceResponse = await fetch(endpoint, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify(devicePayload),
-        });
-        if (!deviceResponse.ok) {
-          throw new Error(
-            `Failed to update device ${device.deviceId}: ${deviceResponse.status}`
-          );
-        }
-      }
+  // Prepare payload for a cable
+  const prepareCablePayload = useCallback((line) => ({
+    start: { device_id: line.startDeviceId, port_id: line.startPortId },
+    end: { device_id: line.endDeviceId, port_id: line.endPortId },
+    cable: {
+      name: line.name || `Cable-${Date.now()}`,
+      type: line.type.toLowerCase(),
+      path: {
+        coords: [
+          [line.from.lat, line.from.lng],
+          ...(line.waypoints || []).map((wp) => [wp.lat, wp.lng]),
+          [line.to.lat, line.to.lng],
+        ],
+      },
+    },
+  }), []);
 
-      // Save new fiber lines (only if both ports are connected)
-      const cablesToSave = fiberLines.filter(
-        (line) => line.startPortId && line.endPortId
-      );
-      const cablesToKeep = fiberLines.filter(
-        (line) => !line.startPortId || !line.endPortId
-      );
-
-      for (const line of cablesToSave) {
-        const payload = {
-          start: { device_id: line.startDeviceId, port_id: line.startPortId },
-          end: { device_id: line.endDeviceId, port_id: line.endPortId },
-          cable: {
-            name: line.name || `Cable-${Date.now()}`,
-            type: line.type.toLowerCase(),
-            path: {
-              coords: [
-                [line.from.lat, line.from.lng],
-                ...(line.waypoints || []).map((wp) => [wp.lat, wp.lng]),
-                [line.to.lat, line.to.lng],
-              ],
-            },
-          },
-        };
-        // console.log(`Saving new cable:`, payload);
+  // Save a single new cable
+  const saveNewCable = useCallback(
+    async (line) => {
+      const payload = prepareCablePayload(line);
+      try {
         const response = await fetch("http://localhost:8000/api/v1/interface", {
           method: "POST",
           headers: {
@@ -306,11 +324,13 @@ const FiberMapPage = () => {
           },
           body: JSON.stringify(payload),
         });
+
         if (!response.ok) {
           throw new Error(
             `Failed to save cable ${line.name || "Unnamed"}: ${response.status}`
           );
         }
+
         if (line.startPortId || line.endPortId) {
           setUsedPorts((prev) => [
             ...prev,
@@ -318,37 +338,48 @@ const FiberMapPage = () => {
             ...(line.endPortId ? [line.endPortId] : []),
           ]);
         }
+        return true;
+      } catch (error) {
+        handleApiError(error, `Error saving cable ${line.name || "Unnamed"}`);
+        return false;
+      }
+    },
+    [prepareCablePayload, handleApiError]
+  );
+
+  // Save all new fiber lines
+  const saveNewFiberLines = useCallback(
+    async () => {
+      const cablesToSave = fiberLines.filter(
+        (line) => line.startPortId && line.endPortId
+      );
+      const cablesToKeep = fiberLines.filter(
+        (line) => !line.startPortId || !line.endPortId
+      );
+
+      const savePromises = cablesToSave.map((line) => saveNewCable(line));
+      const results = await Promise.all(savePromises);
+
+      if (results.every((result) => result)) {
+        setFiberLines(cablesToKeep);
+        return true;
+      }
+      return false;
+    },
+    [fiberLines, saveNewCable]
+  );
+
+  // Save a single modified cable
+  const saveModifiedCable = useCallback(
+    async (cableId, cable) => {
+      if (!cable.hasEditedCables || !cable.startPortId || !cable.endPortId) {
+        return true; // Skip cables that haven't been edited or are incomplete
       }
 
-      // Save edited cables (only if both ports are connected)
-      for (const cableId in modifiedCables) {
-        const cable = modifiedCables[cableId];
-        if (!cable.hasEditedCables || !cable.startPortId || !cable.endPortId) {
-          continue;
-        }
-        const interfaceId = cable.id.split("-")[1];
-        const payload = {
-          start: {
-            device_id: cable.startDeviceId,
-            port_id: cable.startPortId,
-          },
-          end: {
-            device_id: cable.endDeviceId,
-            port_id: cable.endPortId,
-          },
-          cable: {
-            name: cable.name || `Cable-${interfaceId}`,
-            type: cable.type?.toLowerCase() || "fiber",
-            path: {
-              coords: [
-                [cable.from.lat, cable.from.lng],
-                ...(cable.waypoints || []).map((wp) => [wp.lat, wp.lng]),
-                [cable.to.lat, cable.to.lng],
-              ],
-            },
-          },
-        };
-        // console.log(`Updating cable ${cableId}:`, payload);
+      const interfaceId = cableId.split("-")[1];
+      const payload = prepareCablePayload(cable);
+
+      try {
         const response = await fetch(
           `http://localhost:8000/api/v1/interface/${interfaceId}`,
           {
@@ -360,49 +391,84 @@ const FiberMapPage = () => {
             body: JSON.stringify(payload),
           }
         );
+
         if (!response.ok) {
           throw new Error(
             `Failed to update cable ${cable.name || "Unnamed"}: ${response.status}`
           );
         }
+        return true;
+      } catch (error) {
+        handleApiError(error, `Error updating cable ${cable.name || "Unnamed"}`);
+        return false;
       }
+    },
+    [prepareCablePayload, handleApiError]
+  );
 
-      // Update state after successful saves
-      setFiberLines(cablesToKeep);
-      setModifiedCables((prev) => {
-        const updated = {};
-        for (const cableId in prev) {
-          if (!prev[cableId].startPortId || !prev[cableId].endPortId) {
-            updated[cableId] = prev[cableId];
+  // Save all modified cables
+  const saveModifiedCablesFn = useCallback(
+    async () => {
+      const savePromises = Object.entries(modifiedCables).map(
+        ([cableId, cable]) => saveModifiedCable(cableId, cable)
+      );
+      const results = await Promise.all(savePromises);
+
+      if (results.every((result) => result)) {
+        setModifiedCables((prev) => {
+          const updated = {};
+          for (const cableId in prev) {
+            if (!prev[cableId].startPortId || !prev[cableId].endPortId) {
+              updated[cableId] = prev[cableId];
+            }
           }
-        }
-        return updated;
-      });
-      setUpdatedDevices([]);
-      setSelectedLineForActions(null);
-      setLineActionPosition(null);
-      setExactClickPosition(null);
-      setTempCable(null);
-      setHasEditedCables(Object.keys(modifiedCables).length > 0);
-      await fetchDevices();
-      await fetchCables();
+          return updated;
+        });
+        return true;
+      }
+      return false;
+    },
+    [modifiedCables, saveModifiedCable]
+  );
+
+  // Main auto-save orchestration
+  const autoSave = useCallback(async () => {
+    try {
+      setIsAutoSaving(true);
+
+      const devicesSaved = await saveUpdatedDevices();
+      const newCablesSaved = await saveNewFiberLines();
+      const modifiedCablesSaved = await saveModifiedCablesFn();
+
+      if (devicesSaved && newCablesSaved && modifiedCablesSaved) {
+        // Reset states only if all saves were successful
+        setUpdatedDevices([]);
+        setSelectedLineForActions(null);
+        setLineActionPosition(null);
+        setExactClickPosition(null);
+        setTempCable(null);
+        setHasEditedCables(Object.keys(modifiedCables).length > 0);
+
+        // Refresh data
+        await Promise.all([fetchDevices(), fetchCables()]);
+      }
     } catch (error) {
-      handleApiError(error, "Error auto-saving devices and cables");
+      handleApiError(error, "Error during auto-save");
     } finally {
       setIsAutoSaving(false);
     }
   }, [
-    fiberLines,
-    modifiedCables,
-    updatedDevices,
-    imageIcons,
+    saveUpdatedDevices,
+    saveNewFiberLines,
+    saveModifiedCablesFn,
     fetchDevices,
     fetchCables,
     handleApiError,
+    modifiedCables,
   ]);
 
   // Debounced auto-save
-  const debouncedAutoSave = useMemo(() => debounce(autoSave, 1000), [autoSave]);
+  const debouncedAutoSave = useMemo(() => debounce(autoSave, 500), [autoSave]);
 
   // Cleanup debounce on unmount
   useEffect(() => {
@@ -411,7 +477,7 @@ const FiberMapPage = () => {
     };
   }, [debouncedAutoSave]);
 
-  // Trigger auto-save only when cables have both ports connected or devices are updated
+  // Trigger auto-save when necessary
   useEffect(() => {
     const hasCablesToSave =
       fiberLines.some((line) => line.startPortId && line.endPortId) ||
