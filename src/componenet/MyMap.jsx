@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useMemo,
-} from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useLoadScript } from "@react-google-maps/api";
 import MapComponent from "../Map/MapComponent";
 import FiberFormModal from "../Modal/FiberFormModal";
@@ -29,6 +23,7 @@ const FiberMapPage = () => {
   });
 
   const mapRef = useRef(null);
+  const hasShownAlert = useRef(false); // Track alerts
 
   // State declarations
   const [savedPolylines, setSavedPolylines] = useState([]);
@@ -81,6 +76,40 @@ const FiberMapPage = () => {
   const [selectedWaypoint, setSelectedWaypoint] = useState(null);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [previousCableState, setPreviousCableState] = useState(null);
+  const [initialCableState, setInitialCableState] = useState(null);
+
+  // Undo/redo stacks
+  const [savedUndoStack, setSavedUndoStack] = useState([]);
+  const [savedRedoStack, setSavedRedoStack] = useState([]);
+
+  // Capture state for undo/redo (includes cables and devices)
+  const captureState = useCallback((isSavedLine = false) => {
+    if (isSavedLine) {
+      console.log("Capturing state for saved line and devices", {
+        savedPolylinesCount: savedPolylines.length,
+        modifiedCablesCount: Object.keys(modifiedCables).length,
+        imageIconsCount: imageIcons.length,
+        updatedDevicesCount: updatedDevices.length,
+      });
+      setSavedUndoStack((prev) => {
+        const newStack = [...prev];
+        if (newStack.length >= 20) newStack.shift();
+        newStack.push({
+          cables: [...savedPolylines],
+          modified: { ...modifiedCables },
+          devices: imageIcons.map(icon => ({
+            id: icon.id,
+            lat: icon.lat,
+            lng: icon.lng,
+            deviceId: icon.deviceId
+          })),
+          updatedDevices: [...updatedDevices],
+        });
+        return newStack;
+      });
+      setSavedRedoStack([]);
+    }
+  }, [savedPolylines, modifiedCables, imageIcons, updatedDevices]);
 
   // Centralized error handler
   const handleApiError = useCallback((error, message) => {
@@ -167,7 +196,6 @@ const FiberMapPage = () => {
           portIds: device.port_device.map((port) => port.id),
         }));
 
-      // Only update states if there are changes
       setImageIcons((prev) => {
         if (JSON.stringify(prev) === JSON.stringify(icons)) return prev;
         return icons;
@@ -232,7 +260,6 @@ const FiberMapPage = () => {
         .flatMap((cable) => [cable.start?.id, cable.end?.id])
         .filter((id) => id != null);
 
-      // Only update states if there are changes
       setSavedPolylines((prev) => {
         if (JSON.stringify(prev) === JSON.stringify(polylines)) return prev;
         return polylines;
@@ -243,7 +270,6 @@ const FiberMapPage = () => {
         return newUsedPorts;
       });
 
-      // Only preserve incomplete cables in modifiedCables
       setModifiedCables((prev) => {
         const updated = {};
         Object.entries(prev).forEach(([cableId, cable]) => {
@@ -307,13 +333,9 @@ const FiberMapPage = () => {
         (icon) => icon.deviceId === device.deviceId
       );
       if (!deviceIcon) {
-        // console.warn(`Device icon not found for deviceId: ${device.deviceId}`);
         return false;
       }
       const success = await saveDevicePosition(device, deviceIcon);
-      if (success) {
-        // console.log(`Successfully saved device ${device.deviceId}`);
-      }
       return success;
     });
 
@@ -392,23 +414,29 @@ const FiberMapPage = () => {
     const results = await Promise.all(savePromises);
 
     if (results.every((result) => result)) {
-      // Remove saved cables from fiberLines immediately
       setFiberLines(cablesToKeep);
+      setInitialCableState(null);
       return true;
     }
-    // Keep all cables if save fails to prevent data loss
     return false;
   }, [fiberLines, saveNewCable]);
 
   // Save a single modified cable
   const saveModifiedCable = useCallback(
     async (cableId, cable) => {
+      console.log("Attempting to save modified cable", { cableId, cable });
       if (!cable.hasEditedCables || !cable.startPortId || !cable.endPortId) {
-        return true; // Skip cables that haven't been edited or are incomplete
+        console.log("Skipping cable save due to missing fields", {
+          hasEditedCables: cable.hasEditedCables,
+          startPortId: cable.startPortId,
+          endPortId: cable.endPortId,
+        });
+        return true;
       }
 
       const interfaceId = cableId.split("-")[1];
       const payload = prepareCablePayload(cable);
+      console.log("Saving cable with payload", { interfaceId, payload });
 
       try {
         const response = await fetch(
@@ -428,12 +456,10 @@ const FiberMapPage = () => {
             `Failed to update cable ${cable.name || "Unnamed"}: ${response.status}`
           );
         }
+        console.log("Cable saved successfully", { cableId });
         return true;
       } catch (error) {
-        handleApiError(
-          error,
-          `Error updating cable ${cable.name || "Unnamed"}`
-        );
+        handleApiError(error, `Error updating cable ${cable.name || "Unnamed"}`);
         return false;
       }
     },
@@ -442,12 +468,16 @@ const FiberMapPage = () => {
 
   // Save all modified cables
   const saveModifiedCablesFn = useCallback(async () => {
+    console.log("Saving all modified cables", {
+      modifiedCablesCount: Object.keys(modifiedCables).length,
+    });
     const savePromises = Object.entries(modifiedCables).map(
       ([cableId, cable]) => saveModifiedCable(cableId, cable)
     );
     const results = await Promise.all(savePromises);
-
-    return results.every((result) => result);
+    const success = results.every((result) => result);
+    console.log("Modified cables save completed", { success });
+    return success;
   }, [modifiedCables, saveModifiedCable]);
 
   // Main auto-save orchestration
@@ -460,31 +490,27 @@ const FiberMapPage = () => {
       const modifiedCablesSaved = await saveModifiedCablesFn();
 
       if (devicesSaved && newCablesSaved && modifiedCablesSaved) {
-        // Fetch new data before clearing states
         const [devicesFetched, cablesFetched] = await Promise.all([
           fetchDevices(),
           fetchCables(),
         ]);
 
         if (devicesFetched && cablesFetched) {
-          // Clear states only if fetches are successful
           setUpdatedDevices([]);
           setSelectedLineForActions(null);
           setLineActionPosition(null);
           setExactClickPosition(null);
           setTempCable(null);
-          // Clear modifiedCables for successfully saved or irrelevant cables
           setModifiedCables((prev) => {
             const updated = {};
             Object.entries(prev).forEach(([cableId, cable]) => {
-              // Only keep incomplete cables that were edited but not saved
               if (!cable.startPortId || !cable.endPortId) {
                 updated[cableId] = { ...cable, hasEditedCables: false };
               }
             });
             return updated;
           });
-          setHasEditedCables(false); // Reset hasEditedCables
+          setHasEditedCables(false);
         } else {
           throw new Error("Failed to fetch updated data after saving");
         }
@@ -515,7 +541,135 @@ const FiberMapPage = () => {
     };
   }, [debouncedAutoSave]);
 
-  // Trigger auto-save when necessary
+  // Undo function
+  const undo = useCallback(() => {
+    if (savedUndoStack.length > 0) {
+      console.log("Performing undo", {
+        undoStackLength: savedUndoStack.length,
+        redoStackLength: savedRedoStack.length,
+      });
+      setSavedRedoStack((prev) => {
+        const newStack = [...prev];
+        if (newStack.length >= 20) newStack.shift();
+        newStack.push({
+          cables: [...savedPolylines],
+          modified: { ...modifiedCables },
+          devices: imageIcons.map(icon => ({
+            id: icon.id,
+            lat: icon.lat,
+            lng: icon.lng,
+            deviceId: icon.deviceId
+          })),
+          updatedDevices: [...updatedDevices],
+        });
+        return newStack;
+      });
+
+      const prevState = savedUndoStack[savedUndoStack.length - 1];
+      console.log("Restoring previous state", {
+        cablesCount: prevState.cables.length,
+        modifiedCablesCount: Object.keys(prevState.modified || {}).length,
+        devicesCount: prevState.devices.length,
+        updatedDevicesCount: prevState.updatedDevices.length,
+      });
+
+      // Merge cable data to ensure startPortId and endPortId are preserved
+      const modifiedCablesWithEdits = {};
+      prevState.cables.forEach((cable) => {
+        const modifiedCable = prevState.modified[cable.id] || cable;
+        modifiedCablesWithEdits[cable.id] = {
+          ...cable,
+          ...modifiedCable,
+          hasEditedCables: true,
+        };
+      });
+
+      setSavedPolylines(prevState.cables);
+      setModifiedCables(modifiedCablesWithEdits);
+      setImageIcons(prevState.devices);
+      setUpdatedDevices(prevState.updatedDevices);
+      setSavedUndoStack((prev) => prev.slice(0, -1));
+      setHasEditedCables(true);
+      console.log("Undo completed, hasEditedCables set to true");
+      debouncedAutoSave();
+    } else {
+      console.log("No undo actions available");
+    }
+  }, [
+    savedUndoStack,
+    savedPolylines,
+    modifiedCables,
+    imageIcons,
+    updatedDevices,
+    savedRedoStack,
+    debouncedAutoSave,
+  ]);
+
+  // Redo function
+  const redo = useCallback(() => {
+    if (savedRedoStack.length > 0) {
+      console.log("Performing redo", {
+        undoStackLength: savedUndoStack.length,
+        redoStackLength: savedRedoStack.length,
+      });
+      setSavedUndoStack((prev) => {
+        const newStack = [...prev];
+        if (newStack.length >= 20) newStack.shift();
+        newStack.push({
+          cables: [...savedPolylines],
+          modified: { ...modifiedCables },
+          devices: imageIcons.map(icon => ({
+            id: icon.id,
+            lat: icon.lat,
+            lng: icon.lng,
+            deviceId: icon.deviceId
+          })),
+          updatedDevices: [...updatedDevices],
+        });
+        return newStack;
+      });
+
+      const nextState = savedRedoStack[savedRedoStack.length - 1];
+      console.log("Restoring next state", {
+        cablesCount: nextState.cables.length,
+        modifiedCablesCount: Object.keys(nextState.modified || {}).length,
+        devicesCount: nextState.devices.length,
+        updatedDevicesCount: nextState.updatedDevices.length,
+      });
+
+      // Merge cable data to ensure startPortId and endPortId are preserved
+      const modifiedCablesWithEdits = {};
+      nextState.cables.forEach((cable) => {
+        const modifiedCable = nextState.modified[cable.id] || cable;
+        modifiedCablesWithEdits[cable.id] = {
+          ...cable,
+          ...modifiedCable,
+          hasEditedCables: true,
+        };
+      });
+
+      setSavedPolylines(nextState.cables);
+      setModifiedCables(modifiedCablesWithEdits);
+      setImageIcons(nextState.devices);
+      setUpdatedDevices(nextState.updatedDevices);
+      setSavedRedoStack((prev) => prev.slice(0, -1));
+      setHasEditedCables(true);
+      console.log("Redo completed, hasEditedCables set to true");
+      debouncedAutoSave();
+    } else {
+      console.log("No redo actions available");
+    }
+  }, [
+    savedRedoStack,
+    savedPolylines,
+    modifiedCables,
+    imageIcons,
+    updatedDevices,
+    savedUndoStack,
+    debouncedAutoSave,
+  ]);
+
+  // Trigger Auto-save useEffect
   useEffect(() => {
     const hasCablesToSave =
       fiberLines.some((line) => line.startPortId && line.endPortId) ||
@@ -524,19 +678,24 @@ const FiberMapPage = () => {
       ) ||
       updatedDevices.length > 0;
 
-    if (hasCablesToSave && !isAutoSaving) {
-      // console.log("Triggering autoSave due to:", {
-      //   fiberLines: fiberLines.length,
-      //   modifiedCables: Object.keys(modifiedCables).length,
-      //   updatedDevices: updatedDevices.length,
-      // });
+    console.log("Checking auto-save condition", {
+      hasCablesToSave,
+      fiberLinesCount: fiberLines.length,
+      modifiedCablesCount: Object.keys(modifiedCables).length,
+      updatedDevicesCount: updatedDevices.length,
+      hasEditedCables,
+      isAutoSaving,
+    });
 
+    if (hasCablesToSave && !isAutoSaving) {
+      console.log("Triggering debounced auto-save");
       debouncedAutoSave();
     }
   }, [
     fiberLines,
     modifiedCables,
     updatedDevices,
+    hasEditedCables,
     debouncedAutoSave,
     isAutoSaving,
   ]);
@@ -549,6 +708,8 @@ const FiberMapPage = () => {
     const line = savedPolylines[index];
     if (!window.confirm(`Are you sure you want to delete cable ${line.type}?`))
       return;
+
+    captureState(true);
 
     try {
       const response = await fetch(
@@ -589,6 +750,7 @@ const FiberMapPage = () => {
     savedPolylines,
     handleApiError,
     debouncedAutoSave,
+    captureState,
   ]);
 
   // Handle map right-click
@@ -634,19 +796,13 @@ const FiberMapPage = () => {
           imageUrl: validImageUrl,
         });
         setDeviceForm({
-          // deviceName: `${type}-${nextNumber}`,
           deviceName: "",
           description: "",
           deviceModelId: "",
-          // ports: [
-          //   { name: `Port 1-${type}-${nextNumber}`, position: 1 },
-          //   { name: `Port 2-${type}-${nextNumber}`, position: 2 },
-          // ],
           ports: [
             { name: "Port 1", position: 1 },
             { name: "Port 2", position: 2 },
           ],
-          // name: `${selectedPoint.lat.toFixed(2)}-${type}`,
           name: "",
           hostname: type === "OLT" ? "192.168.1.1" : "",
           community: type === "OLT" ? "public" : "",
@@ -783,7 +939,6 @@ const FiberMapPage = () => {
       );
 
       if (tempCable.id.startsWith("cable-")) {
-        // Handle saved polylines
         setModifiedCables((prev) => {
           const baseCable =
             prev[tempCable.id] ||
@@ -808,7 +963,6 @@ const FiberMapPage = () => {
         });
         setHasEditedCables(true);
       } else {
-        // Handle new fiber lines
         setFiberLines((prev) => {
           const updatedLines = prev.map((line) => {
             if (line.id !== tempCable.id) return line;
@@ -830,10 +984,8 @@ const FiberMapPage = () => {
         });
       }
 
-      // Clear previous state after successful port selection
       setPreviousCableState(null);
-
-      // Close port dropdown
+      setInitialCableState(null);
       setShowPortDropdown(false);
       setPortDropdownPosition(null);
       setPortDropdownDevice(null);
@@ -858,70 +1010,51 @@ const FiberMapPage = () => {
   }, []);
 
   // Close port dropdown
-  // const closePortDropdown = useCallback(() => {
-  //   if (tempCable && !selectedPortId) {
-  //     // alert("Port selection is required to connect the cable to a device.");
-  //     if (previousCableState) {
-  //       if (tempCable.id.startsWith("cable-")) {
-  //         // Revert modified saved polyline
-  //         setModifiedCables((prev) => {
-  //           const updated = { ...prev };
-  //           updated[tempCable.id] = {
-  //             ...previousCableState,
-  //             hasEditedCables: true,
-  //           };
-  //           return updated;
-  //         });
-  //         setHasEditedCables(true);
-  //       } else {
-  //         // Revert new fiber line
-  //         setFiberLines((prev) =>
-  //           prev.map((line) =>
-  //             line.id === tempCable.id ? { ...previousCableState } : line
-  //           )
-  //         );
-  //       }
-  //     }
-  //   }
-
-  //   setShowPortDropdown(false);
-  //   setPortDropdownPosition(null);
-  //   setPortDropdownDevice(null);
-  //   setPortDropdownPorts([]);
-  //   setSelectedPortId(null);
-  //   setPortDropdownEnd(null);
-  //   setTempCable(null);
-  //   setPreviousCableState(null);
-  // }, [tempCable, selectedPortId, previousCableState]);
-
   const closePortDropdown = useCallback(() => {
-    // Show alert if a cable is being edited and the modal is open (indicating cancellation)
     if (tempCable && showPortDropdown) {
-      // alert("Port selection is required to connect the cable to a device.");
+      if (!hasShownAlert.current) {
+        hasShownAlert.current = true;
+        // alert("Port selection is required to connect the cable to a device.");
+      }
       if (previousCableState) {
         if (tempCable.id.startsWith("cable-")) {
-          // Revert modified saved polyline
           setModifiedCables((prev) => {
             const updated = { ...prev };
             updated[tempCable.id] = {
               ...previousCableState,
-              hasEditedCables: true,
+              hasEditedCables: false,
             };
             return updated;
           });
-          setHasEditedCables(true);
+          setHasEditedCables(false);
         } else {
-          // Revert new fiber line
           setFiberLines((prev) =>
             prev.map((line) =>
-              line.id === tempCable.id ? { ...previousCableState } : line
+              line.id === tempCable.id
+                ? initialCableState && line.id === initialCableState.id
+                  ? {
+                    ...initialCableState,
+                    from: { ...initialCableState.from },
+                    to: { ...initialCableState.to },
+                    waypoints: initialCableState.waypoints
+                      ? [...initialCableState.waypoints]
+                      : [],
+                  }
+                  : {
+                    ...previousCableState,
+                    from: { ...previousCableState.from },
+                    to: { ...previousCableState.to },
+                    waypoints: previousCableState.waypoints
+                      ? [...previousCableState.waypoints]
+                      : [],
+                  }
+                : line
             )
           );
         }
       }
     }
 
-    // Clear modal-related states
     setShowPortDropdown(false);
     setPortDropdownPosition(null);
     setPortDropdownDevice(null);
@@ -930,7 +1063,9 @@ const FiberMapPage = () => {
     setPortDropdownEnd(null);
     setTempCable(null);
     setPreviousCableState(null);
-  }, [tempCable, showPortDropdown, previousCableState]);
+    setInitialCableState(null);
+    hasShownAlert.current = false;
+  }, [tempCable, showPortDropdown, previousCableState, initialCableState]);
 
   // Handle right-click on icon
   const handleRightClickOnIcon = useCallback((icon, e) => {
@@ -1025,6 +1160,8 @@ const FiberMapPage = () => {
     }
 
     if (isSavedLine) {
+      captureState(true);
+
       setModifiedCables((prev) => {
         const updatedWaypoints = [...(baseCable.waypoints || [])];
         updatedWaypoints.splice(insertIndex - 1, 0, clickPoint);
@@ -1057,7 +1194,7 @@ const FiberMapPage = () => {
     setSelectedLineForActions(null);
     setLineActionPosition(null);
     setExactClickPosition(null);
-  }, [selectedLineForActions, exactClickPosition, modifiedCables]);
+  }, [selectedLineForActions, exactClickPosition, modifiedCables, captureState]);
 
   // Handle waypoint click
   const handleWaypointClick = useCallback(
@@ -1081,6 +1218,8 @@ const FiberMapPage = () => {
   const removeWaypoint = useCallback(() => {
     if (!selectedWaypoint) return;
     const { line, lineIndex, waypointIndex, isSavedLine } = selectedWaypoint;
+
+    captureState(true);
 
     if (isSavedLine) {
       setModifiedCables((prev) => {
@@ -1114,7 +1253,7 @@ const FiberMapPage = () => {
       });
     }
     setSelectedWaypoint(null);
-  }, [selectedWaypoint, savedPolylines]);
+  }, [selectedWaypoint, savedPolylines, captureState]);
 
   // Handle icon click
   const handleIconClick = useCallback((icon, e) => {
@@ -1143,6 +1282,8 @@ const FiberMapPage = () => {
     const iconId = selectedDevice.id;
     const isApiDevice = iconId.startsWith("icon-api-");
     const deviceId = isApiDevice ? iconId.split("-")[2] : iconId;
+
+    captureState(true);
 
     try {
       if (isApiDevice) {
@@ -1175,11 +1316,13 @@ const FiberMapPage = () => {
     } catch (error) {
       handleApiError(error, "Error removing device");
     }
-  }, [selectedDevice, handleApiError, debouncedAutoSave]);
+  }, [selectedDevice, handleApiError, debouncedAutoSave, captureState]);
 
   // Handle marker drag end
   const handleMarkerDragEnd = useCallback(
     (iconId, e) => {
+      captureState(true);
+
       const newLat = e.latLng.lat();
       const newLng = e.latLng.lng();
 
@@ -1190,12 +1333,10 @@ const FiberMapPage = () => {
           return prev;
         }
 
-        // Update imageIcons with new position
         const updatedIcons = prev.map((icon) =>
           icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
         );
 
-        // Update updatedDevices
         const deviceId = draggedIcon.deviceId;
         setUpdatedDevices((prevDevices) => {
           const existingUpdateIndex = prevDevices.findIndex(
@@ -1214,7 +1355,6 @@ const FiberMapPage = () => {
           return updated;
         });
 
-        // Update connected cables
         setSavedPolylines((prev) =>
           prev.map((polyline) => {
             let updatedPolyline = { ...polyline };
@@ -1236,7 +1376,7 @@ const FiberMapPage = () => {
             if (polyline.waypoints) {
               const updatedWaypoints = polyline.waypoints.map((wp) =>
                 isSnappedToIcon(wp.lat, wp.lng) &&
-                findNearestIcon(wp.lat, wp.lng)?.deviceId ===
+                  findNearestIcon(wp.lat, wp.lng)?.deviceId ===
                   draggedIcon.deviceId
                   ? { lat: newLat, lng: newLng }
                   : wp
@@ -1291,7 +1431,7 @@ const FiberMapPage = () => {
             if (line.waypoints) {
               const updatedWaypoints = line.waypoints.map((wp) =>
                 isSnappedToIcon(wp.lat, wp.lng) &&
-                findNearestIcon(wp.lat, wp.lng)?.deviceId ===
+                  findNearestIcon(wp.lat, wp.lng)?.deviceId ===
                   draggedIcon.deviceId
                   ? { lat: newLat, lng: newLng }
                   : wp
@@ -1314,7 +1454,7 @@ const FiberMapPage = () => {
         return updatedIcons;
       });
     },
-    [isSnappedToIcon, findNearestIcon]
+    [isSnappedToIcon, findNearestIcon, captureState]
   );
 
   // Generate unique ID
@@ -1329,6 +1469,8 @@ const FiberMapPage = () => {
       alert("Fiber type is required.");
       return;
     }
+
+    captureState(false);
 
     const newFiberLine = {
       id: generateUniqueId(),
@@ -1350,51 +1492,83 @@ const FiberMapPage = () => {
     };
 
     setFiberLines((prev) => [...prev, newFiberLine]);
+    setInitialCableState(newFiberLine);
     setShowModal(false);
     setShowFiberForm(false);
     setSelectedPoint(null);
     setRightClickMarker(null);
     setFiberFormData({ name: "", type: "Fiber" });
     setTempCable(newFiberLine);
-  }, [rightClickMarker, fiberFormData, generateUniqueId]);
+  }, [rightClickMarker, fiberFormData, generateUniqueId, captureState]);
+
+  // Handle waypoint drag end
+  const handleWaypointDragEnd = useCallback(
+    (lineIndex, waypointIndex, e) => {
+      const newLat = e.latLng.lat();
+      const newLng = e.latLng.lng();
+      const nearestIcon = findNearestIcon(newLat, newLng);
+
+      captureState(true);
+
+      setFiberLines((prev) => {
+        const updatedLines = [...prev];
+        const line = updatedLines[lineIndex];
+        const newWaypoint = nearestIcon
+          ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
+          : { lat: newLat, lng: newLng };
+
+        updatedLines[lineIndex] = {
+          ...line,
+          waypoints: line.waypoints.map((wp, idx) =>
+            idx === waypointIndex ? newWaypoint : wp
+          ),
+        };
+
+        setTempCable(null);
+        return updatedLines;
+      });
+    },
+    [findNearestIcon, captureState]
+  );
 
   // Handle start marker drag end
   const handleStartMarkerDragEnd = useCallback(
     (index, e) => {
+      captureState(false);
+
       if (showPortDropdown && tempCable && !tempCable.startPortId) {
-        alert(
-          "Please select a port for the current connection before connecting the other end."
-        );
+        if (!hasShownAlert.current) {
+          hasShownAlert.current = true;
+          alert(
+            "Please select a port for the current connection before connecting the other end."
+          );
+          setTimeout(() => {
+            hasShownAlert.current = false;
+          }, 0);
+        }
         if (previousCableState && tempCable.id === previousCableState.id) {
           setFiberLines((prev) =>
             prev.map((line) =>
               line.id === tempCable.id
                 ? {
-                    ...previousCableState,
-                    from: { ...previousCableState.from },
-                    to: { ...previousCableState.to },
-                    waypoints: previousCableState.waypoints
-                      ? [...previousCableState.waypoints]
-                      : [],
-                  }
+                  ...previousCableState,
+                  from: { ...previousCableState.from },
+                  to: { ...previousCableState.to },
+                  waypoints: previousCableState.waypoints
+                    ? [...previousCableState.waypoints]
+                    : [],
+                }
                 : line
             )
           );
-          setTempCable({
-            ...previousCableState,
-            from: { ...previousCableState.from },
-            to: { ...previousCableState.to },
-            waypoints: previousCableState.waypoints
-              ? [...previousCableState.waypoints]
-              : [],
-          });
+          setTempCable(null);
           setShowPortDropdown(false);
           setPortDropdownPosition(null);
           setPortDropdownDevice(null);
           setPortDropdownPorts([]);
           setSelectedPortId(null);
           setPortDropdownEnd(null);
-          setPreviousCableState(null);
+          // Do not clear previousCableState here to preserve it for subsequent drags
         }
         return;
       }
@@ -1408,10 +1582,12 @@ const FiberMapPage = () => {
         const line = updatedLines[index];
         if (!line) return prev;
 
+        // Always set previousCableState before modifying the line
         setPreviousCableState({
           ...line,
           from: { ...line.from },
           to: { ...line.to },
+          waypoints: line.waypoints ? [...line.waypoints] : [],
         });
 
         const newFrom = nearestIcon
@@ -1448,37 +1624,33 @@ const FiberMapPage = () => {
               startPortName: null,
             };
           } else {
-            alert(
-              "No available ports on this device. Please select another device."
-            );
-            if (previousCableState) {
-              updatedLines[index] = {
-                ...previousCableState,
-                from: { ...previousCableState.from },
-                to: { ...previousCableState.to },
-                waypoints: previousCableState.waypoints
-                  ? [...previousCableState.waypoints]
-                  : [],
-              };
-              setTempCable({
-                ...previousCableState,
-                from: { ...previousCableState.from },
-                to: { ...previousCableState.to },
-                waypoints: previousCableState.waypoints
-                  ? [...previousCableState.waypoints]
-                  : [],
-              });
-            } else {
-              setTempCable(null);
+            if (!hasShownAlert.current) {
+              hasShownAlert.current = true;
+              alert(
+                "No available ports on this device. Please select another device."
+              );
+              setTimeout(() => {
+                hasShownAlert.current = false;
+              }, 0);
             }
+            // Use current line as fallback if previousCableState is null
+            const fallbackState = previousCableState || initialCableState || line;
+            updatedLines[index] = {
+              ...fallbackState,
+              from: { ...fallbackState.from },
+              to: { ...fallbackState.to },
+              waypoints: fallbackState.waypoints
+                ? [...fallbackState.waypoints]
+                : [],
+            };
+            setTempCable(null);
             setShowPortDropdown(false);
             setPortDropdownPosition(null);
             setPortDropdownDevice(null);
             setPortDropdownPorts([]);
             setSelectedPortId(null);
             setPortDropdownEnd(null);
-            setPreviousCableState(null);
-            return updatedLines;
+            // Preserve previousCableState for subsequent drags
           }
         } else {
           updatedLines[index] = {
@@ -1494,7 +1666,7 @@ const FiberMapPage = () => {
           setPortDropdownPorts([]);
           setSelectedPortId(null);
           setTempCable(null);
-          setPreviousCableState(null);
+          // Preserve previousCableState for subsequent drags
         }
         return updatedLines;
       });
@@ -1506,46 +1678,49 @@ const FiberMapPage = () => {
       showPortDropdown,
       tempCable,
       previousCableState,
+      initialCableState,
+      captureState,
     ]
   );
 
   // Handle end marker drag end
   const handleEndMarkerDragEnd = useCallback(
     (index, e) => {
+      captureState(false);
+
       if (showPortDropdown && tempCable && !tempCable.endPortId) {
-        alert(
-          "Please select a port for the current connection before connecting the other end."
-        );
+        if (!hasShownAlert.current) {
+          hasShownAlert.current = true;
+          alert(
+            "Please select a port for the current connection before connecting the other end."
+          );
+          setTimeout(() => {
+            hasShownAlert.current = false;
+          }, 0);
+        }
         if (previousCableState && tempCable.id === previousCableState.id) {
           setFiberLines((prev) =>
             prev.map((line) =>
               line.id === tempCable.id
                 ? {
-                    ...previousCableState,
-                    from: { ...previousCableState.from },
-                    to: { ...previousCableState.to },
-                    waypoints: previousCableState.waypoints
-                      ? [...previousCableState.waypoints]
-                      : [],
-                  }
+                  ...previousCableState,
+                  from: { ...previousCableState.from },
+                  to: { ...previousCableState.to },
+                  waypoints: previousCableState.waypoints
+                    ? [...previousCableState.waypoints]
+                    : [],
+                }
                 : line
             )
           );
-          setTempCable({
-            ...previousCableState,
-            from: { ...previousCableState.from },
-            to: { ...previousCableState.to },
-            waypoints: previousCableState.waypoints
-              ? [...previousCableState.waypoints]
-              : [],
-          });
+          setTempCable(null);
           setShowPortDropdown(false);
           setPortDropdownPosition(null);
           setPortDropdownDevice(null);
           setPortDropdownPorts([]);
           setSelectedPortId(null);
           setPortDropdownEnd(null);
-          setPreviousCableState(null);
+          // Do not clear previousCableState here to preserve it for subsequent drags
         }
         return;
       }
@@ -1559,10 +1734,12 @@ const FiberMapPage = () => {
         const line = updatedLines[index];
         if (!line) return prev;
 
+        // Always set previousCableState before modifying the line
         setPreviousCableState({
           ...line,
           from: { ...line.from },
           to: { ...line.to },
+          waypoints: line.waypoints ? [...line.waypoints] : [],
         });
 
         const newTo = nearestIcon
@@ -1599,37 +1776,33 @@ const FiberMapPage = () => {
               endPortName: null,
             };
           } else {
-            alert(
-              "No available ports on this device. Please select another device."
-            );
-            if (previousCableState) {
-              updatedLines[index] = {
-                ...previousCableState,
-                from: { ...previousCableState.from },
-                to: { ...previousCableState.to },
-                waypoints: previousCableState.waypoints
-                  ? [...previousCableState.waypoints]
-                  : [],
-              };
-              setTempCable({
-                ...previousCableState,
-                from: { ...previousCableState.from },
-                to: { ...previousCableState.to },
-                waypoints: previousCableState.waypoints
-                  ? [...previousCableState.waypoints]
-                  : [],
-              });
-            } else {
-              setTempCable(null);
+            if (!hasShownAlert.current) {
+              hasShownAlert.current = true;
+              alert(
+                "No available ports on this device. Please select another device."
+              );
+              setTimeout(() => {
+                hasShownAlert.current = false;
+              }, 0);
             }
+            // Use current line as fallback if previousCableState is null
+            const fallbackState = previousCableState || initialCableState || line;
+            updatedLines[index] = {
+              ...fallbackState,
+              from: { ...fallbackState.from },
+              to: { ...fallbackState.to },
+              waypoints: fallbackState.waypoints
+                ? [...fallbackState.waypoints]
+                : [],
+            };
+            setTempCable(null);
             setShowPortDropdown(false);
             setPortDropdownPosition(null);
             setPortDropdownDevice(null);
             setPortDropdownPorts([]);
             setSelectedPortId(null);
             setPortDropdownEnd(null);
-            setPreviousCableState(null);
-            return updatedLines;
+            // Preserve previousCableState for subsequent drags
           }
         } else {
           updatedLines[index] = {
@@ -1645,7 +1818,7 @@ const FiberMapPage = () => {
           setPortDropdownPorts([]);
           setSelectedPortId(null);
           setTempCable(null);
-          setPreviousCableState(null);
+          // Preserve previousCableState for subsequent drags
         }
         return updatedLines;
       });
@@ -1657,49 +1830,31 @@ const FiberMapPage = () => {
       showPortDropdown,
       tempCable,
       previousCableState,
+      initialCableState,
+      captureState,
     ]
-  );
-
-  // Handle waypoint drag end
-  const handleWaypointDragEnd = useCallback(
-    (lineIndex, waypointIndex, e) => {
-      const newLat = e.latLng.lat();
-      const newLng = e.latLng.lng();
-      const nearestIcon = findNearestIcon(newLat, newLng);
-
-      setFiberLines((prev) => {
-        const updatedLines = [...prev];
-        const line = updatedLines[lineIndex];
-        const newWaypoint = nearestIcon
-          ? { lat: nearestIcon.lat, lng: nearestIcon.lng }
-          : { lat: newLat, lng: newLng };
-
-        updatedLines[lineIndex] = {
-          ...line,
-          waypoints: line.waypoints.map((wp, idx) =>
-            idx === waypointIndex ? newWaypoint : wp
-          ),
-        };
-
-        setTempCable(null);
-        return updatedLines;
-      });
-    },
-    [findNearestIcon]
   );
 
   // Handle saved polyline point drag end
   const handleSavedPolylinePointDragEnd = useCallback(
     (polylineId, pointType, e) => {
+      captureState(true);
+
       if (
         showPortDropdown &&
         tempCable &&
-        ((pointType === "from" && !tempCable.endPortId) ||
-          (pointType === "to" && !tempCable.startPortId))
+        ((pointType === "from" && !tempCable.startPortId) ||
+          (pointType === "to" && !tempCable.endPortId))
       ) {
-        alert(
-          "Please select a port for the current connection before connecting the other end."
-        );
+        if (!hasShownAlert.current) {
+          hasShownAlert.current = true;
+          alert(
+            "Please select a port for the current connection before connecting the other end."
+          );
+          setTimeout(() => {
+            hasShownAlert.current = false;
+          }, 0);
+        }
         if (previousCableState && tempCable.id === previousCableState.id) {
           setModifiedCables((prev) => {
             const updated = { ...prev };
@@ -1710,26 +1865,19 @@ const FiberMapPage = () => {
               waypoints: previousCableState.waypoints
                 ? [...previousCableState.waypoints]
                 : [],
-              hasEditedCables: false, // Reset hasEditedCables
+              hasEditedCables: false,
             };
             return updated;
           });
-          setHasEditedCables(false); // Reset hasEditedCables
-          setTempCable({
-            ...previousCableState,
-            from: { ...previousCableState.from },
-            to: { ...previousCableState.to },
-            waypoints: previousCableState.waypoints
-              ? [...previousCableState.waypoints]
-              : [],
-          });
+          setHasEditedCables(false);
+          setTempCable(null);
           setShowPortDropdown(false);
           setPortDropdownPosition(null);
           setPortDropdownDevice(null);
           setPortDropdownPorts([]);
           setSelectedPortId(null);
           setPortDropdownEnd(null);
-          setPreviousCableState(null);
+          // Do not clear previousCableState to preserve it for subsequent drags
         }
         return;
       }
@@ -1743,10 +1891,12 @@ const FiberMapPage = () => {
           prev[polylineId] || savedPolylines.find((p) => p.id === polylineId);
         if (!baseCable) return prev;
 
+        // Always set previousCableState before modifying the cable
         setPreviousCableState({
           ...baseCable,
           from: { ...baseCable.from },
           to: { ...baseCable.to },
+          waypoints: baseCable.waypoints ? [...baseCable.waypoints] : [],
         });
 
         const newPosition = nearestIcon
@@ -1764,13 +1914,11 @@ const FiberMapPage = () => {
               ...baseCable,
               [pointType]: newPosition,
               [`${pointType}DeviceId`]: nearestIcon?.deviceId || null,
+              [`${pointType}PortId`]: null,
+              [`${pointType}PortName`]: null,
               type: baseCable.type || "Fiber",
               hasEditedCables: true,
             };
-            if (!nearestIcon) {
-              updatedCable[`${pointType}PortId`] = null;
-              updatedCable[`${pointType}PortName`] = null;
-            }
             setShowPortDropdown(true);
             setPortDropdownPosition({
               x: e.domEvent?.clientX || window.innerWidth / 2,
@@ -1783,6 +1931,8 @@ const FiberMapPage = () => {
               id: polylineId,
               [pointType]: newPosition,
               [`${pointType}DeviceId`]: nearestIcon?.deviceId || null,
+              [`${pointType}PortId`]: null,
+              [`${pointType}PortName`]: null,
             });
             setHasEditedCables(true);
             return {
@@ -1790,36 +1940,39 @@ const FiberMapPage = () => {
               [polylineId]: updatedCable,
             };
           } else {
-            alert(
-              "No available ports on this device. Please select another device."
-            );
-            if (previousCableState) {
-              const updatedCable = {
-                ...previousCableState,
-                from: { ...previousCableState.from },
-                to: { ...previousCableState.to },
-                waypoints: previousCableState.waypoints
-                  ? [...previousCableState.waypoints]
-                  : [],
-                hasEditedCables: false, // Reset hasEditedCables
-              };
-              setHasEditedCables(false); // Reset hasEditedCables
-              setTempCable({
-                ...previousCableState,
-                from: { ...previousCableState.from },
-                to: { ...previousCableState.to },
-                waypoints: previousCableState.waypoints
-                  ? [...previousCableState.waypoints]
-                  : [],
-              });
-              return {
-                ...prev,
-                [polylineId]: updatedCable,
-              };
-            } else {
-              setTempCable(null);
-              return prev;
+            if (!hasShownAlert.current) {
+              hasShownAlert.current = true;
+              alert(
+                "No available ports on this device. Please select another device."
+              );
+              setTimeout(() => {
+                hasShownAlert.current = false;
+              }, 0);
             }
+            // Use baseCable as fallback if previousCableState is null
+            const fallbackCable = previousCableState || baseCable;
+            const updatedCable = {
+              ...fallbackCable,
+              from: { ...fallbackCable.from },
+              to: { ...fallbackCable.to },
+              waypoints: fallbackCable.waypoints
+                ? [...fallbackCable.waypoints]
+                : [],
+              hasEditedCables: false,
+            };
+            setHasEditedCables(false);
+            setTempCable(null);
+            setShowPortDropdown(false);
+            setPortDropdownPosition(null);
+            setPortDropdownDevice(null);
+            setPortDropdownPorts([]);
+            setSelectedPortId(null);
+            setPortDropdownEnd(null);
+            // Preserve previousCableState for subsequent drags
+            return {
+              ...prev,
+              [polylineId]: updatedCable,
+            };
           }
         } else {
           const updatedCable = {
@@ -1829,7 +1982,7 @@ const FiberMapPage = () => {
             [`${pointType}PortId`]: null,
             [`${pointType}PortName`]: null,
             type: baseCable.type || "Fiber",
-            hasEditedCables: true, // Keep hasEditedCables true for valid edits
+            hasEditedCables: true,
           };
           setHasEditedCables(true);
           setShowPortDropdown(false);
@@ -1838,7 +1991,7 @@ const FiberMapPage = () => {
           setPortDropdownPorts([]);
           setSelectedPortId(null);
           setTempCable(null);
-          setPreviousCableState(null);
+          // Preserve previousCableState for subsequent drags
           return {
             ...prev,
             [polylineId]: updatedCable,
@@ -1854,6 +2007,7 @@ const FiberMapPage = () => {
       showPortDropdown,
       tempCable,
       previousCableState,
+      captureState,
     ]
   );
 
@@ -1863,6 +2017,8 @@ const FiberMapPage = () => {
       const newLat = e.latLng.lat();
       const newLng = e.latLng.lng();
       const nearestIcon = findNearestIcon(newLat, newLng);
+
+      captureState(true);
 
       setModifiedCables((prev) => {
         const baseCable =
@@ -1886,7 +2042,7 @@ const FiberMapPage = () => {
       });
       setHasEditedCables(true);
     },
-    [findNearestIcon, savedPolylines]
+    [findNearestIcon, savedPolylines, captureState]
   );
 
   // Map load handler
@@ -2019,9 +2175,14 @@ const FiberMapPage = () => {
         isAutoSaving={isAutoSaving}
         hasEditedCables={hasEditedCables}
         fiberLines={fiberLines}
+        undo={undo}
+        redo={redo}
+        canUndo={savedUndoStack.length > 0}
+        canRedo={savedRedoStack.length > 0}
       />
     </>
   );
 };
+
 
 export default FiberMapPage;
