@@ -104,6 +104,7 @@ const FiberMapPage = () => {
             deviceId: icon.deviceId
           })),
           updatedDevices: [...updatedDevices],
+
         });
         return newStack;
       });
@@ -480,12 +481,17 @@ const FiberMapPage = () => {
     return success;
   }, [modifiedCables, saveModifiedCable]);
 
-  // Main auto-save orchestration
+
+  // Main auto-save
+
   const autoSave = useCallback(async () => {
     try {
       setIsAutoSaving(true);
 
-      const devicesSaved = await saveUpdatedDevices();
+      let devicesSaved = true;
+      if (updatedDevices.length > 0) {
+        devicesSaved = await saveUpdatedDevices();
+      }
       const newCablesSaved = await saveNewFiberLines();
       const modifiedCablesSaved = await saveModifiedCablesFn();
 
@@ -542,59 +548,103 @@ const FiberMapPage = () => {
   }, [debouncedAutoSave]);
 
   // Undo function
+
   const undo = useCallback(() => {
-    if (savedUndoStack.length > 0) {
-      console.log("Performing undo", {
-        undoStackLength: savedUndoStack.length,
-        redoStackLength: savedRedoStack.length,
-      });
-      setSavedRedoStack((prev) => {
-        const newStack = [...prev];
-        if (newStack.length >= 20) newStack.shift();
-        newStack.push({
-          cables: [...savedPolylines],
-          modified: { ...modifiedCables },
-          devices: imageIcons.map(icon => ({
-            id: icon.id,
-            lat: icon.lat,
-            lng: icon.lng,
-            deviceId: icon.deviceId
-          })),
-          updatedDevices: [...updatedDevices],
-        });
-        return newStack;
-      });
-
-      const prevState = savedUndoStack[savedUndoStack.length - 1];
-      console.log("Restoring previous state", {
-        cablesCount: prevState.cables.length,
-        modifiedCablesCount: Object.keys(prevState.modified || {}).length,
-        devicesCount: prevState.devices.length,
-        updatedDevicesCount: prevState.updatedDevices.length,
-      });
-
-      // Merge cable data to ensure startPortId and endPortId are preserved
-      const modifiedCablesWithEdits = {};
-      prevState.cables.forEach((cable) => {
-        const modifiedCable = prevState.modified[cable.id] || cable;
-        modifiedCablesWithEdits[cable.id] = {
-          ...cable,
-          ...modifiedCable,
-          hasEditedCables: true,
-        };
-      });
-
-      setSavedPolylines(prevState.cables);
-      setModifiedCables(modifiedCablesWithEdits);
-      setImageIcons(prevState.devices);
-      setUpdatedDevices(prevState.updatedDevices);
-      setSavedUndoStack((prev) => prev.slice(0, -1));
-      setHasEditedCables(true);
-      console.log("Undo completed, hasEditedCables set to true");
-      debouncedAutoSave();
-    } else {
+    if (savedUndoStack.length === 0) {
       console.log("No undo actions available");
+      return;
     }
+
+    console.log("Performing undo", {
+      undoStackLength: savedUndoStack.length,
+      redoStackLength: savedRedoStack.length,
+    });
+
+    setSavedRedoStack((prev) => {
+      const newStack = [...prev];
+      if (newStack.length >= 20) newStack.shift();
+      newStack.push({
+        cables: [...savedPolylines],
+        modified: { ...modifiedCables },
+        devices: imageIcons.map(icon => ({
+          id: icon.id,
+          lat: icon.lat,
+          lng: icon.lng,
+          deviceId: icon.deviceId
+        })),
+        updatedDevices: [...updatedDevices],
+      });
+      return newStack;
+    });
+
+    const prevState = savedUndoStack[savedUndoStack.length - 1];
+    console.log("Restoring previous state", {
+      cablesCount: prevState.cables.length,
+      modifiedCablesCount: Object.keys(prevState.modified || {}).length,
+      devicesCount: prevState.devices.length,
+      updatedDevicesCount: prevState.updatedDevices.length,
+    });
+
+    // Merge cable data
+    const modifiedCablesWithEdits = {};
+    prevState.cables.forEach((cable) => {
+      const modifiedCable = prevState.modified[cable.id] || cable;
+      modifiedCablesWithEdits[cable.id] = {
+        ...cable,
+        ...modifiedCable,
+        hasEditedCables: true,
+      };
+    });
+
+    // Update states
+    setSavedPolylines(prevState.cables);
+    setModifiedCables(modifiedCablesWithEdits);
+    setImageIcons(prevState.devices);
+    setHasEditedCables(true);
+
+    // Update updatedDevices and sync with backend
+    const newUpdatedDevices = prevState.devices
+      .filter(device => {
+        const currentIcon = imageIcons.find(icon => icon.id === device.id);
+        return (
+          currentIcon &&
+          (currentIcon.lat !== device.lat || currentIcon.lng !== device.lng)
+        );
+      })
+      .map(device => ({
+        deviceId: device.deviceId,
+        lat: device.lat,
+        lng: device.lng,
+      }));
+
+    setUpdatedDevices(newUpdatedDevices);
+
+    // Sync undone device positions with backend
+    const syncPromises = newUpdatedDevices.map(async (device) => {
+      const deviceIcon = prevState.devices.find(
+        (icon) => icon.deviceId === device.deviceId
+      );
+      if (!deviceIcon) return false;
+      return await saveDevicePosition(device, { type: imageIcons.find(icon => icon.deviceId === device.deviceId)?.type });
+    });
+
+    Promise.all(syncPromises)
+      .then((results) => {
+        if (results.every(result => result)) {
+          console.log("Undone device positions synced successfully");
+          // Fetch updated devices to ensure consistency
+          fetchDevices();
+        } else {
+          console.error("Failed to sync some undone device positions");
+        }
+      })
+      .catch((error) => {
+        handleApiError(error, "Error syncing undone device positions");
+      });
+
+    setSavedUndoStack((prev) => prev.slice(0, -1));
+    debouncedAutoSave();
+    console.log("Undo completed, hasEditedCables set to true");
   }, [
     savedUndoStack,
     savedPolylines,
@@ -602,63 +652,112 @@ const FiberMapPage = () => {
     imageIcons,
     updatedDevices,
     savedRedoStack,
+    saveDevicePosition,
+    fetchDevices,
+    handleApiError,
     debouncedAutoSave,
   ]);
+
 
   // Redo function
+
   const redo = useCallback(() => {
-    if (savedRedoStack.length > 0) {
-      console.log("Performing redo", {
-        undoStackLength: savedUndoStack.length,
-        redoStackLength: savedRedoStack.length,
-      });
-      setSavedUndoStack((prev) => {
-        const newStack = [...prev];
-        if (newStack.length >= 20) newStack.shift();
-        newStack.push({
-          cables: [...savedPolylines],
-          modified: { ...modifiedCables },
-          devices: imageIcons.map(icon => ({
-            id: icon.id,
-            lat: icon.lat,
-            lng: icon.lng,
-            deviceId: icon.deviceId
-          })),
-          updatedDevices: [...updatedDevices],
-        });
-        return newStack;
-      });
-
-      const nextState = savedRedoStack[savedRedoStack.length - 1];
-      console.log("Restoring next state", {
-        cablesCount: nextState.cables.length,
-        modifiedCablesCount: Object.keys(nextState.modified || {}).length,
-        devicesCount: nextState.devices.length,
-        updatedDevicesCount: nextState.updatedDevices.length,
-      });
-
-      // Merge cable data to ensure startPortId and endPortId are preserved
-      const modifiedCablesWithEdits = {};
-      nextState.cables.forEach((cable) => {
-        const modifiedCable = nextState.modified[cable.id] || cable;
-        modifiedCablesWithEdits[cable.id] = {
-          ...cable,
-          ...modifiedCable,
-          hasEditedCables: true,
-        };
-      });
-
-      setSavedPolylines(nextState.cables);
-      setModifiedCables(modifiedCablesWithEdits);
-      setImageIcons(nextState.devices);
-      setUpdatedDevices(nextState.updatedDevices);
-      setSavedRedoStack((prev) => prev.slice(0, -1));
-      setHasEditedCables(true);
-      console.log("Redo completed, hasEditedCables set to true");
-      debouncedAutoSave();
-    } else {
+    if (savedRedoStack.length === 0) {
       console.log("No redo actions available");
+      return;
     }
+
+    console.log("Performing redo", {
+      undoStackLength: savedUndoStack.length,
+      redoStackLength: savedRedoStack.length,
+    });
+
+    // Save current state to undo stack before redoing
+    setSavedUndoStack((prev) => {
+      const newStack = [...prev];
+      if (newStack.length >= 20) newStack.shift();
+      newStack.push({
+        cables: [...savedPolylines],
+        modified: { ...modifiedCables },
+        devices: imageIcons.map(icon => ({
+          id: icon.id,
+          lat: icon.lat,
+          lng: icon.lng,
+          deviceId: icon.deviceId
+        })),
+        updatedDevices: [...updatedDevices],
+      });
+      return newStack;
+    });
+
+    const nextState = savedRedoStack[savedRedoStack.length - 1];
+    console.log("Restoring next state", {
+      cablesCount: nextState.cables.length,
+      modifiedCablesCount: Object.keys(nextState.modified || {}).length,
+      devicesCount: nextState.devices.length,
+      updatedDevicesCount: nextState.updatedDevices.length,
+    });
+
+    // Merge cable data
+    const modifiedCablesWithEdits = {};
+    nextState.cables.forEach((cable) => {
+      const modifiedCable = nextState.modified[cable.id] || cable;
+      modifiedCablesWithEdits[cable.id] = {
+        ...cable,
+        ...modifiedCable,
+        hasEditedCables: true,
+      };
+    });
+
+    // Update states
+    setSavedPolylines(nextState.cables);
+    setModifiedCables(modifiedCablesWithEdits);
+    setImageIcons(nextState.devices);
+    setHasEditedCables(true);
+
+    // Update updatedDevices and sync with backend
+    const newUpdatedDevices = nextState.devices
+      .filter(device => {
+        const currentIcon = imageIcons.find(icon => icon.id === device.id);
+        return (
+          currentIcon &&
+          (currentIcon.lat !== device.lat || currentIcon.lng !== device.lng)
+        );
+      })
+      .map(device => ({
+        deviceId: device.deviceId,
+        lat: device.lat,
+        lng: device.lng,
+      }));
+
+    setUpdatedDevices(newUpdatedDevices);
+
+    // Sync redone device positions with backend
+    const syncPromises = newUpdatedDevices.map(async (device) => {
+      const deviceIcon = nextState.devices.find(
+        (icon) => icon.deviceId === device.deviceId
+      );
+      if (!deviceIcon) return false;
+      return await saveDevicePosition(device, { type: imageIcons.find(icon => icon.deviceId === device.deviceId)?.type });
+    });
+
+    Promise.all(syncPromises)
+      .then((results) => {
+        if (results.every(result => result)) {
+          console.log("Redone device positions synced successfully");
+          // Fetch updated devices to ensure consistency
+          fetchDevices();
+        } else {
+          console.error("Failed to sync some redone device positions");
+        }
+      })
+      .catch((error) => {
+        handleApiError(error, "Error syncing redone device positions");
+      });
+
+    setSavedRedoStack((prev) => prev.slice(0, -1));
+    debouncedAutoSave();
+    console.log("Redo completed, hasEditedCables set to true");
   }, [
     savedRedoStack,
     savedPolylines,
@@ -666,8 +765,12 @@ const FiberMapPage = () => {
     imageIcons,
     updatedDevices,
     savedUndoStack,
+    saveDevicePosition,
+    fetchDevices,
+    handleApiError,
     debouncedAutoSave,
   ]);
+
 
   // Trigger Auto-save useEffect
   useEffect(() => {
@@ -709,7 +812,7 @@ const FiberMapPage = () => {
     if (!window.confirm(`Are you sure you want to delete cable ${line.type}?`))
       return;
 
-    captureState(true);
+    // captureState(true);
 
     try {
       const response = await fetch(
@@ -1319,6 +1422,144 @@ const FiberMapPage = () => {
   }, [selectedDevice, handleApiError, debouncedAutoSave, captureState]);
 
   // Handle marker drag end
+  // const handleMarkerDragEnd = useCallback(
+  //   (iconId, e) => {
+  //     captureState(true);
+
+  //     const newLat = e.latLng.lat();
+  //     const newLng = e.latLng.lng();
+
+  //     setImageIcons((prev) => {
+  //       const draggedIcon = prev.find((icon) => icon.id === iconId);
+  //       if (!draggedIcon) {
+  //         console.warn(`No icon found for id: ${iconId}`);
+  //         return prev;
+  //       }
+
+  //       const updatedIcons = prev.map((icon) =>
+  //         icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
+  //       );
+
+  //       const deviceId = draggedIcon.deviceId;
+  //       setUpdatedDevices((prevDevices) => {
+  //         const existingUpdateIndex = prevDevices.findIndex(
+  //           (device) => device.deviceId === deviceId
+  //         );
+  //         const updated = [...prevDevices];
+  //         if (existingUpdateIndex !== -1) {
+  //           updated[existingUpdateIndex] = {
+  //             deviceId,
+  //             lat: newLat,
+  //             lng: newLng,
+  //           };
+  //         } else {
+  //           updated.push({ deviceId, lat: newLat, lng: newLng });
+  //         }
+  //         return updated;
+  //       });
+
+  //       setSavedPolylines((prev) =>
+  //         prev.map((polyline) => {
+  //           let updatedPolyline = { ...polyline };
+  //           let hasChanges = false;
+  //           if (
+  //             polyline.startDeviceId === draggedIcon.deviceId &&
+  //             isSnappedToIcon(polyline.from.lat, polyline.from.lng)
+  //           ) {
+  //             updatedPolyline.from = { lat: newLat, lng: newLng };
+  //             hasChanges = true;
+  //           }
+  //           if (
+  //             polyline.endDeviceId === draggedIcon.deviceId &&
+  //             isSnappedToIcon(polyline.to.lat, polyline.to.lng)
+  //           ) {
+  //             updatedPolyline.to = { lat: newLat, lng: newLng };
+  //             hasChanges = true;
+  //           }
+  //           if (polyline.waypoints) {
+  //             const updatedWaypoints = polyline.waypoints.map((wp) =>
+  //               isSnappedToIcon(wp.lat, wp.lng) &&
+  //                 findNearestIcon(wp.lat, wp.lng)?.deviceId ===
+  //                 draggedIcon.deviceId
+  //                 ? { lat: newLat, lng: newLng }
+  //                 : wp
+  //             );
+  //             if (
+  //               updatedWaypoints.some(
+  //                 (wp, i) =>
+  //                   wp.lat !== polyline.waypoints[i]?.lat ||
+  //                   wp.lng !== polyline.waypoints[i]?.lng
+  //               )
+  //             ) {
+  //               updatedPolyline.waypoints = updatedWaypoints;
+  //               hasChanges = true;
+  //             }
+  //           }
+  //           if (hasChanges) {
+  //             setModifiedCables((prev) => ({
+  //               ...prev,
+  //               [polyline.id]: {
+  //                 ...polyline,
+  //                 from: updatedPolyline.from,
+  //                 to: updatedPolyline.to,
+  //                 waypoints: updatedPolyline.waypoints,
+  //                 type: polyline.type || "Fiber",
+  //                 hasEditedCables: true,
+  //               },
+  //             }));
+  //             setHasEditedCables(true);
+  //           }
+  //           return updatedPolyline;
+  //         })
+  //       );
+
+  //       setFiberLines((prevLines) =>
+  //         prevLines.map((line) => {
+  //           let updatedLine = { ...line };
+  //           let hasChanges = false;
+  //           if (
+  //             line.startDeviceId === draggedIcon.deviceId &&
+  //             isSnappedToIcon(line.from.lat, line.from.lng)
+  //           ) {
+  //             updatedLine.from = { lat: newLat, lng: newLng };
+  //             hasChanges = true;
+  //           }
+  //           if (
+  //             line.endDeviceId === draggedIcon.deviceId &&
+  //             isSnappedToIcon(line.to.lat, line.to.lng)
+  //           ) {
+  //             updatedLine.to = { lat: newLat, lng: newLng };
+  //             hasChanges = true;
+  //           }
+  //           if (line.waypoints) {
+  //             const updatedWaypoints = line.waypoints.map((wp) =>
+  //               isSnappedToIcon(wp.lat, wp.lng) &&
+  //                 findNearestIcon(wp.lat, wp.lng)?.deviceId ===
+  //                 draggedIcon.deviceId
+  //                 ? { lat: newLat, lng: newLng }
+  //                 : wp
+  //             );
+  //             if (
+  //               updatedWaypoints.some(
+  //                 (wp, i) =>
+  //                   wp.lat !== line.waypoints[i]?.lat ||
+  //                   wp.lng !== line.waypoints[i]?.lng
+  //               )
+  //             ) {
+  //               updatedLine.waypoints = updatedWaypoints;
+  //               hasChanges = true;
+  //             }
+  //           }
+  //           return updatedLine;
+  //         })
+  //       );
+
+  //       return updatedIcons;
+  //     });
+  //   },
+  //   [isSnappedToIcon, findNearestIcon, captureState]
+  // );
+
   const handleMarkerDragEnd = useCallback(
     (iconId, e) => {
       captureState(true);
@@ -1339,22 +1580,14 @@ const FiberMapPage = () => {
 
         const deviceId = draggedIcon.deviceId;
         setUpdatedDevices((prevDevices) => {
-          const existingUpdateIndex = prevDevices.findIndex(
-            (device) => device.deviceId === deviceId
+          const updated = prevDevices.filter(
+            (device) => device.deviceId !== deviceId
           );
-          const updated = [...prevDevices];
-          if (existingUpdateIndex !== -1) {
-            updated[existingUpdateIndex] = {
-              deviceId,
-              lat: newLat,
-              lng: newLng,
-            };
-          } else {
-            updated.push({ deviceId, lat: newLat, lng: newLng });
-          }
+          updated.push({ deviceId, lat: newLat, lng: newLng });
           return updated;
         });
 
+        // Update cables connected to the dragged device
         setSavedPolylines((prev) =>
           prev.map((polyline) => {
             let updatedPolyline = { ...polyline };
@@ -1376,8 +1609,7 @@ const FiberMapPage = () => {
             if (polyline.waypoints) {
               const updatedWaypoints = polyline.waypoints.map((wp) =>
                 isSnappedToIcon(wp.lat, wp.lng) &&
-                  findNearestIcon(wp.lat, wp.lng)?.deviceId ===
-                  draggedIcon.deviceId
+                  findNearestIcon(wp.lat, wp.lng)?.deviceId === draggedIcon.deviceId
                   ? { lat: newLat, lng: newLng }
                   : wp
               );
@@ -1431,8 +1663,7 @@ const FiberMapPage = () => {
             if (line.waypoints) {
               const updatedWaypoints = line.waypoints.map((wp) =>
                 isSnappedToIcon(wp.lat, wp.lng) &&
-                  findNearestIcon(wp.lat, wp.lng)?.deviceId ===
-                  draggedIcon.deviceId
+                  findNearestIcon(wp.lat, wp.lng)?.deviceId === draggedIcon.deviceId
                   ? { lat: newLat, lng: newLng }
                   : wp
               );
@@ -2186,3 +2417,5 @@ const FiberMapPage = () => {
 
 
 export default FiberMapPage;
+
+// Updated
