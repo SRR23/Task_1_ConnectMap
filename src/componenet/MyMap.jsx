@@ -83,6 +83,7 @@ const FiberMapPage = () => {
   const [savedRedoStack, setSavedRedoStack] = useState([]);
 
   // Capture state for undo/redo (includes cables and devices)
+
   const captureState = useCallback((isSavedLine = false) => {
     if (isSavedLine) {
       console.log("Capturing state for saved line and devices", {
@@ -91,12 +92,32 @@ const FiberMapPage = () => {
         imageIconsCount: imageIcons.length,
         updatedDevicesCount: updatedDevices.length,
       });
+
+      // Filter out any cables that reference non-existent devices
+      const validCables = savedPolylines.filter(cable => {
+        const startDeviceExists = !cable.startDeviceId ||
+          imageIcons.some(icon => icon.deviceId === cable.startDeviceId);
+        const endDeviceExists = !cable.endDeviceId ||
+          imageIcons.some(icon => icon.deviceId === cable.endDeviceId);
+        return startDeviceExists && endDeviceExists;
+      });
+
+      const validModified = Object.fromEntries(
+        Object.entries(modifiedCables).filter(([_, cable]) => {
+          const startDeviceExists = !cable.startDeviceId ||
+            imageIcons.some(icon => icon.deviceId === cable.startDeviceId);
+          const endDeviceExists = !cable.endDeviceId ||
+            imageIcons.some(icon => icon.deviceId === cable.endDeviceId);
+          return startDeviceExists && endDeviceExists;
+        })
+      );
+
       setSavedUndoStack((prev) => {
         const newStack = [...prev];
         if (newStack.length >= 20) newStack.shift();
         newStack.push({
-          cables: [...savedPolylines],
-          modified: { ...modifiedCables },
+          cables: validCables,
+          modified: validModified,
           devices: imageIcons.map(icon => ({
             id: icon.id,
             lat: icon.lat,
@@ -104,7 +125,6 @@ const FiberMapPage = () => {
             deviceId: icon.deviceId
           })),
           updatedDevices: [...updatedDevices],
-
         });
         return newStack;
       });
@@ -350,7 +370,7 @@ const FiberMapPage = () => {
       start: { device_id: line.startDeviceId, port_id: line.startPortId },
       end: { device_id: line.endDeviceId, port_id: line.endPortId },
       cable: {
-        name: line.name || `Cable-${Date.now()}`,
+        name: line.name || "",  // Use user-provided name or empty string
         type: line.type.toLowerCase(),
         path: {
           coords: [
@@ -812,8 +832,6 @@ const FiberMapPage = () => {
     if (!window.confirm(`Are you sure you want to delete cable ${line.type}?`))
       return;
 
-    // captureState(true);
-
     try {
       const response = await fetch(
         `http://localhost:8000/api/v1/interface/${line.cableId}`,
@@ -835,12 +853,29 @@ const FiberMapPage = () => {
         )
       );
 
+      // Remove from saved polylines
       setSavedPolylines((prev) => prev.filter((_, i) => i !== index));
+
+      // Remove from modified cables
       setModifiedCables((prev) => {
         const updated = { ...prev };
         delete updated[line.id];
         return updated;
       });
+
+      // Remove from undo stack
+      setSavedUndoStack((prev) =>
+        prev.map(state => ({
+          ...state,
+          cables: state.cables.filter(cable => cable.id !== line.id),
+          modified: Object.fromEntries(
+            Object.entries(state.modified).filter(([id]) => id !== line.id)
+          )
+        })).filter(state =>
+          state.cables.length > 0 || Object.keys(state.modified).length > 0
+        )
+      );
+
       setSelectedLineForActions(null);
       setLineActionPosition(null);
       setExactClickPosition(null);
@@ -853,7 +888,6 @@ const FiberMapPage = () => {
     savedPolylines,
     handleApiError,
     debouncedAutoSave,
-    captureState,
   ]);
 
   // Handle map right-click
@@ -929,7 +963,7 @@ const FiberMapPage = () => {
       try {
         const payload = {
           device: {
-            name: deviceForm.deviceName,
+            name: deviceForm.deviceName || deviceForm.name, // Use user-provided name,
             description: deviceForm.description,
             device_type_id: deviceFormData.device.id,
             device_model_id: parseInt(deviceForm.deviceModelId),
@@ -940,7 +974,7 @@ const FiberMapPage = () => {
               position: port.position,
             })),
           },
-          name: deviceForm.name,
+          name: deviceForm.deviceName || deviceForm.name, // Ensure consistent naming,
           ...(deviceFormData.type === "OLT" && {
             hostname: deviceForm.hostname,
             community: deviceForm.community,
@@ -1170,21 +1204,6 @@ const FiberMapPage = () => {
     hasShownAlert.current = false;
   }, [tempCable, showPortDropdown, previousCableState, initialCableState]);
 
-  // Handle right-click on icon
-  const handleRightClickOnIcon = useCallback((icon, e) => {
-    if (e.domEvent.button !== 2) return;
-    e.domEvent.preventDefault();
-    e.domEvent.stopPropagation();
-
-    setSelectedPoint({
-      ...icon,
-      x: e.domEvent.clientX,
-      y: e.domEvent.clientY,
-    });
-    setRightClickMarker(icon);
-    setShowModal(true);
-  }, []);
-
   // Handle line click
   const handleLineClick = useCallback((line, index, isSavedLine, e) => {
     e.domEvent.stopPropagation();
@@ -1374,6 +1393,7 @@ const FiberMapPage = () => {
   }, []);
 
   // Remove selected icon
+
   const removeSelectedIcon = useCallback(async () => {
     if (!selectedDevice) return;
     if (
@@ -1385,8 +1405,6 @@ const FiberMapPage = () => {
     const iconId = selectedDevice.id;
     const isApiDevice = iconId.startsWith("icon-api-");
     const deviceId = isApiDevice ? iconId.split("-")[2] : iconId;
-
-    captureState(true);
 
     try {
       if (isApiDevice) {
@@ -1408,6 +1426,50 @@ const FiberMapPage = () => {
         if (!response.ok) throw new Error(`Failed to delete device`);
       }
 
+      // Clean up connected cables from state
+      setSavedPolylines(prev =>
+        prev.filter(polyline =>
+          polyline.startDeviceId !== deviceId && polyline.endDeviceId !== deviceId
+        )
+      );
+
+      setModifiedCables(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(key => {
+          if (updated[key].startDeviceId === deviceId || updated[key].endDeviceId === deviceId) {
+            delete updated[key];
+          }
+        });
+        return updated;
+      });
+
+      setFiberLines(prev =>
+        prev.filter(line =>
+          line.startDeviceId !== deviceId && line.endDeviceId !== deviceId
+        )
+      );
+
+      // Clean up from undo stack
+      setSavedUndoStack(prev =>
+        prev.map(state => ({
+          ...state,
+          cables: state.cables.filter(cable =>
+            cable.startDeviceId !== deviceId && cable.endDeviceId !== deviceId
+          ),
+          modified: Object.fromEntries(
+            Object.entries(state.modified).filter(([_, cable]) =>
+              cable.startDeviceId !== deviceId && cable.endDeviceId !== deviceId
+            )
+          ),
+          devices: state.devices.filter(device => device.deviceId !== deviceId),
+          updatedDevices: state.updatedDevices.filter(device => device.deviceId !== deviceId)
+        })).filter(state =>
+          state.cables.length > 0 ||
+          Object.keys(state.modified).length > 0 ||
+          state.devices.length > 0
+        )
+      );
+
       setImageIcons((prev) => prev.filter((icon) => icon.id !== iconId));
       setShowDeviceModal(false);
       setSelectedDevice(null);
@@ -1419,146 +1481,8 @@ const FiberMapPage = () => {
     } catch (error) {
       handleApiError(error, "Error removing device");
     }
-  }, [selectedDevice, handleApiError, debouncedAutoSave, captureState]);
+  }, [selectedDevice, handleApiError, debouncedAutoSave]);
 
-  // Handle marker drag end
-  // const handleMarkerDragEnd = useCallback(
-  //   (iconId, e) => {
-  //     captureState(true);
-
-  //     const newLat = e.latLng.lat();
-  //     const newLng = e.latLng.lng();
-
-  //     setImageIcons((prev) => {
-  //       const draggedIcon = prev.find((icon) => icon.id === iconId);
-  //       if (!draggedIcon) {
-  //         console.warn(`No icon found for id: ${iconId}`);
-  //         return prev;
-  //       }
-
-  //       const updatedIcons = prev.map((icon) =>
-  //         icon.id === iconId ? { ...icon, lat: newLat, lng: newLng } : icon
-  //       );
-
-  //       const deviceId = draggedIcon.deviceId;
-  //       setUpdatedDevices((prevDevices) => {
-  //         const existingUpdateIndex = prevDevices.findIndex(
-  //           (device) => device.deviceId === deviceId
-  //         );
-  //         const updated = [...prevDevices];
-  //         if (existingUpdateIndex !== -1) {
-  //           updated[existingUpdateIndex] = {
-  //             deviceId,
-  //             lat: newLat,
-  //             lng: newLng,
-  //           };
-  //         } else {
-  //           updated.push({ deviceId, lat: newLat, lng: newLng });
-  //         }
-  //         return updated;
-  //       });
-
-  //       setSavedPolylines((prev) =>
-  //         prev.map((polyline) => {
-  //           let updatedPolyline = { ...polyline };
-  //           let hasChanges = false;
-  //           if (
-  //             polyline.startDeviceId === draggedIcon.deviceId &&
-  //             isSnappedToIcon(polyline.from.lat, polyline.from.lng)
-  //           ) {
-  //             updatedPolyline.from = { lat: newLat, lng: newLng };
-  //             hasChanges = true;
-  //           }
-  //           if (
-  //             polyline.endDeviceId === draggedIcon.deviceId &&
-  //             isSnappedToIcon(polyline.to.lat, polyline.to.lng)
-  //           ) {
-  //             updatedPolyline.to = { lat: newLat, lng: newLng };
-  //             hasChanges = true;
-  //           }
-  //           if (polyline.waypoints) {
-  //             const updatedWaypoints = polyline.waypoints.map((wp) =>
-  //               isSnappedToIcon(wp.lat, wp.lng) &&
-  //                 findNearestIcon(wp.lat, wp.lng)?.deviceId ===
-  //                 draggedIcon.deviceId
-  //                 ? { lat: newLat, lng: newLng }
-  //                 : wp
-  //             );
-  //             if (
-  //               updatedWaypoints.some(
-  //                 (wp, i) =>
-  //                   wp.lat !== polyline.waypoints[i]?.lat ||
-  //                   wp.lng !== polyline.waypoints[i]?.lng
-  //               )
-  //             ) {
-  //               updatedPolyline.waypoints = updatedWaypoints;
-  //               hasChanges = true;
-  //             }
-  //           }
-  //           if (hasChanges) {
-  //             setModifiedCables((prev) => ({
-  //               ...prev,
-  //               [polyline.id]: {
-  //                 ...polyline,
-  //                 from: updatedPolyline.from,
-  //                 to: updatedPolyline.to,
-  //                 waypoints: updatedPolyline.waypoints,
-  //                 type: polyline.type || "Fiber",
-  //                 hasEditedCables: true,
-  //               },
-  //             }));
-  //             setHasEditedCables(true);
-  //           }
-  //           return updatedPolyline;
-  //         })
-  //       );
-
-  //       setFiberLines((prevLines) =>
-  //         prevLines.map((line) => {
-  //           let updatedLine = { ...line };
-  //           let hasChanges = false;
-  //           if (
-  //             line.startDeviceId === draggedIcon.deviceId &&
-  //             isSnappedToIcon(line.from.lat, line.from.lng)
-  //           ) {
-  //             updatedLine.from = { lat: newLat, lng: newLng };
-  //             hasChanges = true;
-  //           }
-  //           if (
-  //             line.endDeviceId === draggedIcon.deviceId &&
-  //             isSnappedToIcon(line.to.lat, line.to.lng)
-  //           ) {
-  //             updatedLine.to = { lat: newLat, lng: newLng };
-  //             hasChanges = true;
-  //           }
-  //           if (line.waypoints) {
-  //             const updatedWaypoints = line.waypoints.map((wp) =>
-  //               isSnappedToIcon(wp.lat, wp.lng) &&
-  //                 findNearestIcon(wp.lat, wp.lng)?.deviceId ===
-  //                 draggedIcon.deviceId
-  //                 ? { lat: newLat, lng: newLng }
-  //                 : wp
-  //             );
-  //             if (
-  //               updatedWaypoints.some(
-  //                 (wp, i) =>
-  //                   wp.lat !== line.waypoints[i]?.lat ||
-  //                   wp.lng !== line.waypoints[i]?.lng
-  //               )
-  //             ) {
-  //               updatedLine.waypoints = updatedWaypoints;
-  //               hasChanges = true;
-  //             }
-  //           }
-  //           return updatedLine;
-  //         })
-  //       );
-
-  //       return updatedIcons;
-  //     });
-  //   },
-  //   [isSnappedToIcon, findNearestIcon, captureState]
-  // );
 
   const handleMarkerDragEnd = useCallback(
     (iconId, e) => {
@@ -1590,18 +1514,45 @@ const FiberMapPage = () => {
         // Update cables connected to the dragged device
         setSavedPolylines((prev) =>
           prev.map((polyline) => {
+            // Check if either end of the cable is connected to a non-existent device
+            const startDeviceExists = polyline.startDeviceId
+              ? updatedIcons.some(icon => icon.deviceId === polyline.startDeviceId)
+              : true;
+            const endDeviceExists = polyline.endDeviceId
+              ? updatedIcons.some(icon => icon.deviceId === polyline.endDeviceId)
+              : true;
+
             let updatedPolyline = { ...polyline };
             let hasChanges = false;
+
+            if (!startDeviceExists) {
+              updatedPolyline.from = { lat: newLat, lng: newLng };
+              updatedPolyline.startDeviceId = null;
+              updatedPolyline.startPortId = null;
+              updatedPolyline.startPortName = null;
+              hasChanges = true;
+            }
+
+            if (!endDeviceExists) {
+              updatedPolyline.to = { lat: newLat, lng: newLng };
+              updatedPolyline.endDeviceId = null;
+              updatedPolyline.endPortId = null;
+              updatedPolyline.endPortName = null;
+              hasChanges = true;
+            }
+
             if (
               polyline.startDeviceId === draggedIcon.deviceId &&
-              isSnappedToIcon(polyline.from.lat, polyline.from.lng)
+              isSnappedToIcon(polyline.from.lat, polyline.from.lng) &&
+              startDeviceExists
             ) {
               updatedPolyline.from = { lat: newLat, lng: newLng };
               hasChanges = true;
             }
             if (
               polyline.endDeviceId === draggedIcon.deviceId &&
-              isSnappedToIcon(polyline.to.lat, polyline.to.lng)
+              isSnappedToIcon(polyline.to.lat, polyline.to.lng) &&
+              endDeviceExists
             ) {
               updatedPolyline.to = { lat: newLat, lng: newLng };
               hasChanges = true;
@@ -1609,7 +1560,8 @@ const FiberMapPage = () => {
             if (polyline.waypoints) {
               const updatedWaypoints = polyline.waypoints.map((wp) =>
                 isSnappedToIcon(wp.lat, wp.lng) &&
-                  findNearestIcon(wp.lat, wp.lng)?.deviceId === draggedIcon.deviceId
+                  findNearestIcon(wp.lat, wp.lng)?.deviceId ===
+                  draggedIcon.deviceId
                   ? { lat: newLat, lng: newLng }
                   : wp
               );
@@ -1632,6 +1584,10 @@ const FiberMapPage = () => {
                   from: updatedPolyline.from,
                   to: updatedPolyline.to,
                   waypoints: updatedPolyline.waypoints,
+                  startDeviceId: updatedPolyline.startDeviceId,
+                  endDeviceId: updatedPolyline.endDeviceId,
+                  startPortId: updatedPolyline.startPortId,
+                  endPortId: updatedPolyline.endPortId,
                   type: polyline.type || "Fiber",
                   hasEditedCables: true,
                 },
@@ -1644,18 +1600,45 @@ const FiberMapPage = () => {
 
         setFiberLines((prevLines) =>
           prevLines.map((line) => {
+            // Similar checks for fiberLines
+            const startDeviceExists = line.startDeviceId
+              ? updatedIcons.some(icon => icon.deviceId === line.startDeviceId)
+              : true;
+            const endDeviceExists = line.endDeviceId
+              ? updatedIcons.some(icon => icon.deviceId === line.endDeviceId)
+              : true;
+
             let updatedLine = { ...line };
             let hasChanges = false;
+
+            if (!startDeviceExists) {
+              updatedLine.from = { lat: newLat, lng: newLng };
+              updatedLine.startDeviceId = null;
+              updatedLine.startPortId = null;
+              updatedLine.startPortName = null;
+              hasChanges = true;
+            }
+
+            if (!endDeviceExists) {
+              updatedLine.to = { lat: newLat, lng: newLng };
+              updatedLine.endDeviceId = null;
+              updatedLine.endPortId = null;
+              updatedLine.endPortName = null;
+              hasChanges = true;
+            }
+
             if (
               line.startDeviceId === draggedIcon.deviceId &&
-              isSnappedToIcon(line.from.lat, line.from.lng)
+              isSnappedToIcon(line.from.lat, line.from.lng) &&
+              startDeviceExists
             ) {
               updatedLine.from = { lat: newLat, lng: newLng };
               hasChanges = true;
             }
             if (
               line.endDeviceId === draggedIcon.deviceId &&
-              isSnappedToIcon(line.to.lat, line.to.lng)
+              isSnappedToIcon(line.to.lat, line.to.lng) &&
+              endDeviceExists
             ) {
               updatedLine.to = { lat: newLat, lng: newLng };
               hasChanges = true;
@@ -1663,7 +1646,8 @@ const FiberMapPage = () => {
             if (line.waypoints) {
               const updatedWaypoints = line.waypoints.map((wp) =>
                 isSnappedToIcon(wp.lat, wp.lng) &&
-                  findNearestIcon(wp.lat, wp.lng)?.deviceId === draggedIcon.deviceId
+                  findNearestIcon(wp.lat, wp.lng)?.deviceId ===
+                  draggedIcon.deviceId
                   ? { lat: newLat, lng: newLng }
                   : wp
               );
@@ -1689,6 +1673,7 @@ const FiberMapPage = () => {
   );
 
   // Generate unique ID
+
   const generateUniqueId = useCallback(
     () => `line-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     []
@@ -1712,7 +1697,7 @@ const FiberMapPage = () => {
       },
       waypoints: [],
       createdAt: Date.now(),
-      name: fiberFormData.name,
+      name: fiberFormData.name || "", // Use user-provided name or empty string,
       type: fiberFormData.type,
       startDeviceId: null,
       endDeviceId: null,
@@ -2067,6 +2052,7 @@ const FiberMapPage = () => {
   );
 
   // Handle saved polyline point drag end
+
   const handleSavedPolylinePointDragEnd = useCallback(
     (polylineId, pointType, e) => {
       captureState(true);
@@ -2108,9 +2094,8 @@ const FiberMapPage = () => {
           setPortDropdownPorts([]);
           setSelectedPortId(null);
           setPortDropdownEnd(null);
-          // Do not clear previousCableState to preserve it for subsequent drags
+          return;
         }
-        return;
       }
 
       const newLat = e.latLng.lat();
@@ -2122,7 +2107,35 @@ const FiberMapPage = () => {
           prev[polylineId] || savedPolylines.find((p) => p.id === polylineId);
         if (!baseCable) return prev;
 
-        // Always set previousCableState before modifying the cable
+        // Check if the other end of the cable is connected to a non-existent device
+        const otherEndType = pointType === "from" ? "to" : "from";
+        const otherEndDeviceId = baseCable[`${otherEndType}DeviceId`];
+        const otherEndDeviceExists = otherEndDeviceId
+          ? imageIcons.some(icon => icon.deviceId === otherEndDeviceId)
+          : true;
+
+        if (!otherEndDeviceExists) {
+          // If the other end device doesn't exist, reset that connection
+          const updatedCable = {
+            ...baseCable,
+            [pointType]: { lat: newLat, lng: newLng },
+            [`${pointType}DeviceId`]: null,
+            [`${pointType}PortId`]: null,
+            [`${pointType}PortName`]: null,
+            [otherEndType]: { ...baseCable[otherEndType] },
+            [`${otherEndType}DeviceId`]: null,
+            [`${otherEndType}PortId`]: null,
+            [`${otherEndType}PortName`]: null,
+            type: baseCable.type || "Fiber",
+            hasEditedCables: true,
+          };
+          return {
+            ...prev,
+            [polylineId]: updatedCable,
+          };
+        }
+
+        // Rest of the existing logic for handling the drag...
         setPreviousCableState({
           ...baseCable,
           from: { ...baseCable.from },
@@ -2180,7 +2193,6 @@ const FiberMapPage = () => {
                 hasShownAlert.current = false;
               }, 0);
             }
-            // Use baseCable as fallback if previousCableState is null
             const fallbackCable = previousCableState || baseCable;
             const updatedCable = {
               ...fallbackCable,
@@ -2199,7 +2211,6 @@ const FiberMapPage = () => {
             setPortDropdownPorts([]);
             setSelectedPortId(null);
             setPortDropdownEnd(null);
-            // Preserve previousCableState for subsequent drags
             return {
               ...prev,
               [polylineId]: updatedCable,
@@ -2222,7 +2233,6 @@ const FiberMapPage = () => {
           setPortDropdownPorts([]);
           setSelectedPortId(null);
           setTempCable(null);
-          // Preserve previousCableState for subsequent drags
           return {
             ...prev,
             [polylineId]: updatedCable,
@@ -2239,6 +2249,7 @@ const FiberMapPage = () => {
       tempCable,
       previousCableState,
       captureState,
+      imageIcons
     ]
   );
 
@@ -2302,7 +2313,6 @@ const FiberMapPage = () => {
         modifiedCables={modifiedCables}
         isSnappedToIcon={isSnappedToIcon}
         handleMapRightClick={handleMapRightClick}
-        handleRightClickOnIcon={handleRightClickOnIcon}
         handleIconClick={handleIconClick}
         handleLineClick={handleLineClick}
         handleMarkerDragEnd={handleMarkerDragEnd}
@@ -2417,5 +2427,3 @@ const FiberMapPage = () => {
 
 
 export default FiberMapPage;
-
-// Updated
